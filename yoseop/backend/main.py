@@ -31,7 +31,18 @@ from llm.core.ai_candidate_model import AICandidateModel, AnswerRequest
 from llm.core.answer_quality_controller import QualityLevel
 from llm.core.interview_system import QuestionType, QuestionAnswer
 from llm.core.llm_manager import LLMProvider
-# UnifiedInterviewSession 제거 - 원래 설계 복구
+
+# 데이터베이스 확장 임포트
+try:
+    from extensions.database_integration import database_router
+    from extensions.migration_api import migration_router
+    DATABASE_ENABLED = True
+    print("✅ 데이터베이스 확장 로드 성공")
+    print("✅ 마이그레이션 API 로드 성공")
+except ImportError as e:
+    DATABASE_ENABLED = False
+    print(f"⚠️ 데이터베이스 확장 로드 실패: {e}")
+    print("   메모리 기반 모드로 실행됩니다.")
 
 # 회사 이름 매핑
 COMPANY_NAME_MAP = {
@@ -68,6 +79,13 @@ app.add_middleware(
 
 # 정적 파일 서빙 (React 빌드 파일)
 # app.mount("/static", StaticFiles(directory="../demo_react"), name="static")
+
+# 데이터베이스 라우터 등록
+if DATABASE_ENABLED:
+    app.include_router(database_router)
+    app.include_router(migration_router)
+    print("✅ 데이터베이스 API 라우터 등록 완료")
+    print("✅ 마이그레이션 API 라우터 등록 완료")
 
 # 전역 상태 관리 - 단순화
 class ApplicationState:
@@ -147,7 +165,7 @@ async def start_interview(
             profile = await generate_personalized_profile(settings.documents, state)
         else:
             # 기본 프로필 생성
-            from core.document_processor import UserProfile
+            from llm.core.document_processor import UserProfile
             profile = UserProfile(
                 name=settings.candidate_name,
                 background={"career_years": "1", "current_position": "신입"},
@@ -311,7 +329,7 @@ async def start_ai_competition(
         interview_logger.info("AI 비교 면접 시작")
         
         # 기본 프로필 생성
-        from core.document_processor import UserProfile
+        from llm.core.document_processor import UserProfile
         quick_profile = UserProfile(
             name=settings.candidate_name,
             background={"career_years": "3", "current_position": "개발자"},
@@ -347,7 +365,7 @@ async def start_ai_competition(
         print(f"📝 생성된 사용자 질문: {user_first_question}")
         
         # AI 세션 시작 (완전히 다른 세션 ID로)
-        from core.document_processor import UserProfile
+        from llm.core.document_processor import UserProfile
         
         # 완전 고유한 세션 ID 생성 (AI용)
         ai_unique_id = str(uuid.uuid4())[:8]  # 8자리 고유 ID
@@ -401,7 +419,7 @@ async def start_ai_competition(
         print(f"   - 세션 분리됨: {user_session_id != ai_session_id}")
         
         # AI 이름 가져오기
-        from core.llm_manager import LLMProvider
+        from llm.core.llm_manager import LLMProvider
         ai_name = state.ai_candidate_model.get_ai_name(LLMProvider.OPENAI_GPT4O_MINI)
         
         # 랜덤으로 시작자 결정 (50% 확률)
@@ -529,10 +547,10 @@ async def get_ai_answer(
             question_type = "MOTIVATION"
         
         # core의 기존 답변 생성 기능 사용
-        from core.ai_candidate_model import AnswerRequest
-        from core.interview_system import QuestionType
-        from core.answer_quality_controller import QualityLevel
-        from core.llm_manager import LLMProvider
+        from llm.core.ai_candidate_model import AnswerRequest
+        from llm.core.interview_system import QuestionType
+        from llm.core.answer_quality_controller import QualityLevel
+        from llm.core.llm_manager import LLMProvider
         
         # QuestionType 매핑
         question_type_map = {
@@ -701,10 +719,10 @@ async def process_comparison_ai_turn(
             # AI 답변을 PersonalizedInterviewSystem을 통해 생성
             # 먼저 AICandidateModel로 답변 생성
             try:
-                from core.ai_candidate_model import AnswerRequest
-                from core.interview_system import QuestionType
-                from core.answer_quality_controller import QualityLevel
-                from core.llm_manager import LLMProvider
+                from llm.core.ai_candidate_model import AnswerRequest
+                from llm.core.interview_system import QuestionType
+                from llm.core.answer_quality_controller import QualityLevel
+                from llm.core.llm_manager import LLMProvider
                 
                 # QuestionType 매핑
                 question_type_map = {
@@ -937,7 +955,7 @@ async def generate_standard_interview_questions(settings: InterviewSettings, sta
         company_id = get_company_id(settings.company)
         
         # DocumentProcessor의 UserProfile 형식으로 생성
-        from core.document_processor import UserProfile
+        from llm.core.document_processor import UserProfile
         
         basic_profile = UserProfile(
             name=settings.user_name,

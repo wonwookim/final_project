@@ -159,7 +159,7 @@ const InterviewActive: React.FC = () => {
         
         setTimeline([newTurn]);
         dispatch({ type: 'ADD_QUESTION', payload: normalizedQuestion });
-        setTimeLeft(response.question.time_limit || 120);
+        setTimeLeft(normalizedQuestion.time_limit || 120);
         setInterviewState('comparison_mode');  // 비교 면접 모드로 설정
       } else if (response.current_phase === 'ai_turn') {
         // AI부터 시작하는 경우

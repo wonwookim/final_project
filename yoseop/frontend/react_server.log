@@ -3467,3 +3467,24 @@ src/pages/InterviewActive.tsx
 
 webpack compiled with 1 warning
 No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src/pages/InterviewActive.tsx
+  Line 67:6:    React Hook useEffect has missing dependencies: 'comparisonMode', 'comparisonSessionId', 'initializeComparisonMode', 'isLoading', 'loadFirstQuestion', 'navigate', 'state.currentQuestionIndex', and 'state.questions'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  Line 91:6:    React Hook useEffect has a missing dependency: 'handleTimeUp'. Either include it or remove the dependency array                                                                                                                                                            react-hooks/exhaustive-deps
+  Line 423:13:  'response' is assigned a value but never used                                                                                                                                                                                                                              @typescript-eslint/no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+WARNING in [eslint] 
+src/pages/InterviewActive.tsx
+  Line 67:6:    React Hook useEffect has missing dependencies: 'comparisonMode', 'comparisonSessionId', 'initializeComparisonMode', 'isLoading', 'loadFirstQuestion', 'navigate', 'state.currentQuestionIndex', and 'state.questions'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  Line 91:6:    React Hook useEffect has a missing dependency: 'handleTimeUp'. Either include it or remove the dependency array                                                                                                                                                            react-hooks/exhaustive-deps
+  Line 423:13:  'response' is assigned a value but never used                                                                                                                                                                                                                              @typescript-eslint/no-unused-vars
+
+webpack compiled with 1 warning
+No issues found.
+The build failed because the process exited too early. This probably means the system ran out of memory or someone called `kill -9` on the process.
