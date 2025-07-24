@@ -8,6 +8,7 @@ import openai
 import json
 import time
 import threading
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from collections import defaultdict, deque
 from typing import Dict, List, Any, Optional, Union
 from abc import ABC, abstractmethod
@@ -99,52 +100,58 @@ class OpenAIClient(BaseLLMClient):
         # Rate limiter 초기화 (분당 20회 제한)
         self.rate_limiter = RateLimiter(max_requests=20, time_window=60.0)
     
+    @retry(
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=2, min=2, max=30),
+        retry=retry_if_exception_type((openai.RateLimitError, openai.APIError, ConnectionError))
+    )
     def generate_response(self, prompt: str, system_prompt: str = "") -> LLMResponse:
-        """OpenAI API를 통한 응답 생성 (재시도 로직 포함)"""
-        import time
+        """OpenAI API를 통한 응답 생성 (개선된 재시도 로직)"""
         start_time = time.time()
         
         # Rate limiting 적용
         self.rate_limiter.acquire()
         
-        max_retries = 5  # 재시도 횟수 증가
-        base_delay = 2.0  # 기본 대기 시간 증가
-        
-        for attempt in range(max_retries):
-            try:
-                messages = []
-                if system_prompt:
-                    messages.append({"role": "system", "content": system_prompt})
-                messages.append({"role": "user", "content": prompt})
-                
-                # 요청 파라미터 최적화 (안정성 향상)
-                request_params = {
-                    "model": self.config.model_name,
-                    "messages": messages,
-                    "max_tokens": min(self.config.max_tokens, 400),  # 토큰 제한 강화
-                    "temperature": self.config.temperature,
-                    "timeout": 60.0  # 타임아웃 설정
-                }
-                
-                # 추가 파라미터가 있으면 병합
-                if self.config.additional_params:
-                    request_params.update(self.config.additional_params)
-                
-                response = self.client.chat.completions.create(**request_params)
-                
-                response_time = time.time() - start_time
-                
-                return LLMResponse(
-                    content=response.choices[0].message.content.strip(),
-                    provider=self.config.provider,
-                    model_name=self.config.model_name,
-                    token_count=response.usage.total_tokens if response.usage else None,
-                    response_time=response_time
-                )
-                
-            except Exception as e:
-                error_msg = str(e)
-                print(f"⚠️ API 호출 실패 (시도 {attempt + 1}/{max_retries}): {error_msg}")
+        try:
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+            
+            # 요청 파라미터 최적화
+            request_params = {
+                "model": self.config.model_name,
+                "messages": messages,
+                "max_tokens": min(self.config.max_tokens, 300),  # 토큰 제한 강화
+                "temperature": self.config.temperature,
+                "timeout": 45.0  # 타임아웃 단축
+            }
+            
+            if self.config.additional_params:
+                request_params.update(self.config.additional_params)
+            
+            response = self.client.chat.completions.create(**request_params)
+            response_time = time.time() - start_time
+            
+            return LLMResponse(
+                content=response.choices[0].message.content.strip(),
+                provider=self.config.provider,
+                model_name=self.config.model_name,
+                token_count=response.usage.total_tokens if response.usage else None,
+                response_time=response_time
+            )
+            
+        except Exception as e:
+            error_msg = str(e)
+            print(f"⚠️ API 호출 실패: {error_msg}")
+            
+            # 529 오류 특별 처리
+            if "529" in error_msg or "overloaded" in error_msg.lower():
+                print("🔄 서버 과부하 감지 - 추가 대기 후 재시도")
+                time.sleep(10)  # 추가 대기
+                raise openai.APIError("Server overloaded - retry needed")
+            
+            raise e
                 
                 # 오버로드 에러, rate limit, 또는 서버 에러인 경우 재시도
                 if any(keyword in error_msg.lower() for keyword in ["overloaded", "rate limit", "429", "503", "502", "500", "timeout"]):

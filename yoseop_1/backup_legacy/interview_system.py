@@ -1,18 +1,27 @@
 import json
 import openai
+import os
 from typing import List, Dict, Any, Optional
 import time
 from datetime import datetime
 from dataclasses import dataclass
 from enum import Enum
+from dotenv import load_dotenv
+
+# .env 파일에서 환경변수 로드
+load_dotenv()
 
 class QuestionType(Enum):
     INTRO = "자기소개"
     MOTIVATION = "지원동기"
+    MOTIVE = "동기"
     HR = "인사"
     TECH = "기술"
     COLLABORATION = "협업"
     FOLLOWUP = "심화"
+    GENERAL = "일반"
+    BASIC = "기본"
+    FUTURE = "미래"
 
 @dataclass
 class QuestionAnswer:
@@ -35,15 +44,36 @@ class InterviewSession:
         self.session_id = f"{company_id}_{position.replace(' ', '_')}_{int(time.time())}"
         self.created_at = datetime.now()
         
-        # 고정된 질문 순서 (첫 2개는 무조건 자기소개, 지원동기)
+        # 고정된 질문 순서 (총 20개 질문)
         self.question_plan = [
+            # 기본 질문 (2개)
             {"type": QuestionType.INTRO, "fixed": True},
             {"type": QuestionType.MOTIVATION, "fixed": True},
+            
+            # 인사 영역 (6개)
             {"type": QuestionType.HR, "fixed": False},
+            {"type": QuestionType.HR, "fixed": False},
+            {"type": QuestionType.HR, "fixed": False},
+            {"type": QuestionType.HR, "fixed": False},
+            {"type": QuestionType.HR, "fixed": False},
+            {"type": QuestionType.HR, "fixed": False},
+            
+            # 기술 영역 (8개)
             {"type": QuestionType.TECH, "fixed": False},
             {"type": QuestionType.TECH, "fixed": False},
+            {"type": QuestionType.TECH, "fixed": False},
+            {"type": QuestionType.TECH, "fixed": False},
+            {"type": QuestionType.TECH, "fixed": False},
+            {"type": QuestionType.TECH, "fixed": False},
+            {"type": QuestionType.TECH, "fixed": False},
+            {"type": QuestionType.TECH, "fixed": False},
+            
+            # 협업 영역 (3개)
             {"type": QuestionType.COLLABORATION, "fixed": False},
-            {"type": QuestionType.TECH, "fixed": False},
+            {"type": QuestionType.COLLABORATION, "fixed": False},
+            {"type": QuestionType.COLLABORATION, "fixed": False},
+            
+            # 심화 질문 (1개)
             {"type": QuestionType.FOLLOWUP, "fixed": False}
         ]
         
@@ -73,7 +103,14 @@ class InterviewSession:
         return context
 
 class FinalInterviewSystem:
-    def __init__(self, api_key: str, companies_data_path: str = "data/companies_data.json"):
+    def __init__(self, api_key: str = None, companies_data_path: str = "llm/shared/data/companies_data.json"):
+        # API 키 자동 로드
+        if not api_key:
+            api_key = os.getenv('OPENAI_API_KEY')
+        
+        if not api_key:
+            raise ValueError("OpenAI API 키가 필요합니다. .env 파일에 OPENAI_API_KEY를 설정하거나 직접 전달하세요.")
+        
         self.client = openai.OpenAI(api_key=api_key)
         self.companies_data = self._load_companies_data(companies_data_path)
         self.sessions: Dict[str, InterviewSession] = {}
@@ -262,31 +299,50 @@ class FinalInterviewSystem:
         }
         return fallback_questions.get(question_type, f"{candidate_name}님, 본인에 대해 말씀해 주세요.")
     
-    def submit_answer(self, session_id: str, answer_content: str) -> Dict[str, Any]:
+    def submit_answer(self, session_id: str, answer_content: str, current_question_data: Dict[str, str] = None) -> Dict[str, Any]:
         session = self.sessions.get(session_id)
         if not session:
             return {"error": "세션을 찾을 수 없습니다"}
         
-        # 현재 질문 정보 가져오기
-        current_question = self.get_next_question(session_id)
-        if not current_question:
-            return {"error": "진행 중인 질문이 없습니다"}
+        print(f"DEBUG: submit_answer 호출 - 세션: {session_id}, 현재 질문 수: {session.current_question_count}, 전체 질문 수: {len(session.question_plan)}")
         
-        # 질문-답변 쌍 생성 (평가는 나중에)
-        qa_pair = QuestionAnswer(
-            question_id=current_question["question_id"],
-            question_type=QuestionType(current_question["question_type"]),
-            question_content=current_question["question_content"],
-            answer_content=answer_content,
-            timestamp=datetime.now(),
-            question_intent=current_question["question_intent"]
+        # 현재 질문 계획 가져오기 (질문을 다시 생성하지 않고)
+        current_question_plan = session.get_next_question_plan()
+        if not current_question_plan:
+            print(f"DEBUG: 현재 질문 계획이 없음 - 면접 완료")
+            return {
+                "status": "interview_complete",
+                "message": "면접이 완료되었습니다. 평가를 진행합니다.",
+                "total_questions": session.current_question_count
+            }
+        
+        # 현재 질문 정보 가져오기 - 실제 질문을 다시 생성하여 저장
+        company_data = self.get_company_data(session.company_id)
+        question_content, question_intent = self._generate_next_question(
+            session, company_data, current_question_plan["type"], current_question_plan.get("fixed", False)
         )
         
-        # 세션에 추가
+        question_id = f"q_{session.current_question_count + 1}"
+        question_type = current_question_plan["type"]
+        
+        # 질문-답변 쌍 생성 (실제 내용으로)
+        qa_pair = QuestionAnswer(
+            question_id=question_id,
+            question_type=question_type,
+            question_content=question_content,
+            answer_content=answer_content,
+            timestamp=datetime.now(),
+            question_intent=question_intent
+        )
+        
+        # 세션에 추가 (이 과정에서 current_question_count가 증가)
         session.add_qa_pair(qa_pair)
+        
+        print(f"DEBUG: 답변 추가 완료 - 새로운 현재 질문 수: {session.current_question_count}")
         
         # 면접 완료 여부 확인
         if session.is_complete():
+            print(f"DEBUG: 면접 완료 - {session.current_question_count}/{len(session.question_plan)}")
             return {
                 "status": "interview_complete",
                 "message": "면접이 완료되었습니다. 평가를 진행합니다.",
@@ -294,14 +350,17 @@ class FinalInterviewSystem:
             }
         
         # 다음 질문 생성
+        print(f"DEBUG: 다음 질문 생성 시도...")
         next_question = self.get_next_question(session_id)
         if next_question:
+            print(f"DEBUG: 다음 질문 생성 성공: {next_question.get('question_content', '')[:50]}...")
             return {
                 "status": "next_question",
                 "question": next_question,
                 "answered_count": session.current_question_count
             }
         else:
+            print(f"DEBUG: 다음 질문 생성 실패 - 면접 완료")
             return {
                 "status": "interview_complete",
                 "message": "면접이 완료되었습니다. 평가를 진행합니다.",
@@ -309,25 +368,30 @@ class FinalInterviewSystem:
             }
     
     def evaluate_interview(self, session_id: str) -> Dict[str, Any]:
-        """면접 전체 평가 (개별 답변 평가 포함)"""
+        """면접 전체 평가 (배치 처리로 최적화)"""
         session = self.sessions.get(session_id)
         if not session:
             return {"error": "세션을 찾을 수 없습니다"}
         
         company_data = self.get_company_data(session.company_id)
         
-        # 1. 먼저 각 답변을 개별적으로 평가
+        # 1. 배치 평가로 모든 답변을 한 번에 평가
+        batch_evaluation = self._evaluate_batch_answers(session, company_data)
+        
         individual_feedbacks = []
         total_score = 0
         category_scores = {}
         
-        for qa in session.conversation_history:
-            # 개별 답변 평가
-            individual_evaluation = self._evaluate_single_answer(qa, company_data)
-            
-            # 평가 결과를 qa_pair에 저장
-            qa.individual_score = individual_evaluation["score"]
-            qa.individual_feedback = individual_evaluation["feedback"]
+        for i, qa in enumerate(session.conversation_history):
+            # 배치 평가 결과에서 개별 평가 추출
+            if i < len(batch_evaluation.get('individual_scores', [])):
+                individual_eval = batch_evaluation['individual_scores'][i]
+                qa.individual_score = individual_eval.get('score', 50)
+                qa.individual_feedback = individual_eval.get('feedback', '평가를 생성할 수 없습니다.')
+            else:
+                # 폴백: 기본 평가
+                qa.individual_score = 50
+                qa.individual_feedback = "기본 평가가 적용되었습니다."
             
             individual_feedbacks.append({
                 "question_number": len(individual_feedbacks) + 1,
@@ -355,8 +419,14 @@ class FinalInterviewSystem:
         for category in category_scores:
             category_scores[category] = int(sum(category_scores[category]) / len(category_scores[category]))
         
-        # 2. 종합 평가 생성
-        overall_evaluation = self._generate_overall_evaluation(session, company_data, overall_score)
+        # 2. 배치 평가에서 종합 평가 추출
+        overall_evaluation = batch_evaluation.get('overall_evaluation', {
+            "strengths": ["기본 강점"],
+            "improvements": ["기본 개선사항"],
+            "recommendation": "보완 후 재검토",
+            "next_steps": "추가 면접 진행",
+            "overall_assessment": f"전체 {overall_score}점 수준의 면접 결과입니다."
+        })
         
         return {
             "session_id": session_id,
@@ -555,14 +625,90 @@ JSON 형식으로 응답:
             "next_steps": next_steps,
             "overall_assessment": f"전체 {overall_score}점 수준의 면접 결과입니다."
         }
+    
+    def _evaluate_batch_answers(self, session: InterviewSession, company_data: Dict[str, Any]) -> Dict[str, Any]:
+        """배치 처리로 모든 답변을 한 번에 평가 (속도 최적화)"""
+        
+        # 모든 질문과 답변을 하나의 텍스트로 구성
+        qa_summary = ""
+        for i, qa in enumerate(session.conversation_history, 1):
+            qa_summary += f"""
+질문 {i}: [{qa.question_type.value}] {qa.question_content}
+의도: {qa.question_intent}
+답변: {qa.answer_content}
+---
+"""
+        
+        # 배치 평가 프롬프트 (간소화)
+        batch_prompt = f"""
+다음은 {company_data['name']} {session.position} 면접의 전체 질문과 답변입니다.
+
+=== 면접 내용 ===
+{qa_summary}
+
+=== 평가 요구사항 ===
+각 답변을 0-100점으로 평가하고 간단한 피드백을 제공하세요.
+전체 종합 평가도 함께 제공하세요.
+
+JSON 형식으로 응답:
+{{
+  "individual_scores": [
+    {{"score": 점수, "feedback": "간단한 피드백"}},
+    ...
+  ],
+  "overall_evaluation": {{
+    "strengths": ["강점1", "강점2", "강점3"],
+    "improvements": ["개선점1", "개선점2", "개선점3"],
+    "recommendation": "최종 추천",
+    "next_steps": "다음 단계",
+    "overall_assessment": "전체 평가 요약"
+  }}
+}}
+"""
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": f"당신은 {company_data['name']}의 면접 평가 전문가입니다. 빠르고 정확하게 평가하세요."},
+                    {"role": "user", "content": batch_prompt}
+                ],
+                max_tokens=1500,
+                temperature=0.3
+            )
+            
+            result = response.choices[0].message.content.strip()
+            
+            # JSON 파싱
+            start_idx = result.find('{')
+            end_idx = result.rfind('}') + 1
+            
+            if start_idx != -1 and end_idx != -1:
+                json_str = result[start_idx:end_idx]
+                return json.loads(json_str)
+            else:
+                raise ValueError("JSON 형식을 찾을 수 없습니다")
+                
+        except Exception as e:
+            print(f"배치 평가 중 오류: {str(e)}")
+            # 폴백: 기본 평가 생성
+            return {
+                "individual_scores": [{"score": 50, "feedback": "기본 평가가 적용되었습니다."} for _ in session.conversation_history],
+                "overall_evaluation": {
+                    "strengths": ["면접 참여", "기본 소통"],
+                    "improvements": ["구체적 사례 제시", "답변 깊이"],
+                    "recommendation": "보완 후 재검토",
+                    "next_steps": "추가 면접 진행",
+                    "overall_assessment": "시스템 오류로 기본 평가가 적용되었습니다."
+                }
+            }
 
 if __name__ == "__main__":
     print("🎯 최종 면접 시스템")
     print("=" * 50)
     
-    api_key = input("OpenAI API 키를 입력하세요: ")
-    
-    system = FinalInterviewSystem(api_key)
+    # 자동으로 .env에서 API 키 로드
+    system = FinalInterviewSystem()
     
     companies = system.list_companies()
     print("\n📋 선택 가능한 회사:")

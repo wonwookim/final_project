@@ -1,0 +1,12 @@
+{"timestamp": "2025-07-24T09:49:10.879532", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-24T09:49:10.912534", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-24T09:49:15.322489", "level": "ERROR", "logger": "interview_system", "message": "사용자 턴 제출 오류: 잘못된 답변 타입: user", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-24T09:49:15.322975", "level": "ERROR", "logger": "interview_system", "message": "사용자 턴 제출 오류: 답변 제출 중 오류가 발생했습니다: 잘못된 답변 타입: user", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-24T09:51:30.169336", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-24T09:51:30.193309", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-24T09:51:35.106979", "level": "ERROR", "logger": "interview_system", "message": "사용자 턴 제출 오류: 잘못된 답변 타입: user", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-24T09:51:35.107485", "level": "ERROR", "logger": "interview_system", "message": "사용자 턴 제출 오류: 답변 제출 중 오류가 발생했습니다: 잘못된 답변 타입: user", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-24T10:00:28.674934", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-24T10:00:28.714285", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-24T10:00:38.672650", "level": "ERROR", "logger": "interview_system", "message": "사용자 턴 제출 오류: 잘못된 답변 타입: user", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-24T10:00:38.673056", "level": "ERROR", "logger": "interview_system", "message": "사용자 턴 제출 오류: 답변 제출 중 오류가 발생했습니다: 잘못된 답변 타입: user", "module": "", "function": null, "line": 0}

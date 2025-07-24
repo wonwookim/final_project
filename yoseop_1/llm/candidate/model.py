@@ -15,10 +15,11 @@ from dotenv import load_dotenv
 # .env 파일에서 환경변수 로드
 load_dotenv()
 
-from .llm_manager import LLMManager, LLMProvider, LLMResponse
-from .answer_quality_controller import AnswerQualityController, QualityLevel
-from .interview_system import QuestionType, InterviewSession, QuestionAnswer
-from .utils import safe_json_load
+from ..core.llm_manager import LLMManager, LLMProvider, LLMResponse
+from .quality_controller import AnswerQualityController, QualityLevel
+from ..shared.models import QuestionType, QuestionAnswer, CandidatePersona, AnswerRequest, AnswerResponse
+from ..session.models import InterviewSession
+from ..shared.utils import safe_json_load
 
 # 모델별 AI 지원자 이름 매핑
 AI_CANDIDATE_NAMES = {
@@ -30,46 +31,8 @@ AI_CANDIDATE_NAMES = {
     LLMProvider.KT_BELIEF: "믿음이"               # 향후 추가
 }
 
-@dataclass
-class CandidatePersona:
-    """지원자 페르소나 데이터 클래스"""
-    company_id: str
-    name: str
-    background: Dict[str, Any]
-    technical_skills: List[str]
-    projects: List[Dict[str, Any]]
-    experiences: List[Dict[str, Any]]
-    strengths: List[str]
-    achievements: List[str]
-    career_goal: str
-    personality_traits: List[str]
-    interview_style: str
-    success_factors: List[str]
-
-@dataclass
-class AnswerRequest:
-    """답변 생성 요청"""
-    question_content: str
-    question_type: QuestionType
-    question_intent: str
-    company_id: str
-    position: str
-    quality_level: QualityLevel
-    llm_provider: LLMProvider
-    additional_context: Optional[str] = None
-
-@dataclass
-class AnswerResponse:
-    """답변 생성 응답"""
-    answer_content: str
-    quality_level: QualityLevel
-    llm_provider: LLMProvider
-    persona_name: str
-    confidence_score: float
-    response_time: float
-    reasoning: str = ""
-    error: Optional[str] = None
-    metadata: Dict[str, Any] = None
+# ↓ 아래 클래스들은 llm.shared.models에서 import하여 사용
+# CandidatePersona, AnswerRequest, AnswerResponse는 이미 shared/models.py에 정의됨
 
 class AICandidateSession(InterviewSession):
     """AI 지원자 전용 면접 세션 - 면접자와 동일한 플로우"""
@@ -140,7 +103,7 @@ class AICandidateModel:
         self.companies_data = self._load_companies_data()
         
         # AI 지원자 세션 관리
-        self.ai_sessions: Dict[str, AICandidateSession] = {}
+        self.ai_sessions: Dict[str, 'AICandidateSession'] = {}
         self.fixed_questions = self._load_fixed_questions()
         
         # API 키 자동 로드 (.env 파일에서)
@@ -158,7 +121,7 @@ class AICandidateModel:
     def _load_candidate_personas(self) -> Dict[str, CandidatePersona]:
         """합격자 페르소나 데이터 로드"""
         # 실제 페르소나 파일 로드 시도
-        personas_data = safe_json_load("data/candidate_personas.json", {"personas": {}})
+        personas_data = safe_json_load("llm/data/candidate_personas.json", {"personas": {}})
         
         if personas_data.get("personas"):
             # 실제 데이터가 있으면 파싱
@@ -240,11 +203,11 @@ class AICandidateModel:
     
     def _load_companies_data(self) -> Dict[str, Any]:
         """회사 데이터 로드"""
-        return safe_json_load("data/companies_data.json", {"companies": []})
+        return safe_json_load("llm/shared/data/companies_data.json", {"companies": []})
     
     def _load_fixed_questions(self) -> Dict[str, List[Dict]]:
         """고정 질문 데이터 로드"""
-        return safe_json_load("data/fixed_questions.json", {
+        return safe_json_load("llm/interviewer/data/fixed_questions.json", {
             "hr_questions": [], 
             "technical_questions": [], 
             "collaboration_questions": []
@@ -294,10 +257,10 @@ class AICandidateModel:
         # AI 이름 가져오기 (춘식이)
         ai_name = self.get_ai_name(LLMProvider.OPENAI_GPT35)
         
-        # 첫 두 질문은 완전히 고정 (면접자와 동일)
+        # 첫 두 질문은 완전히 고정 (AI 전용 - honorific 포함)
         if question_type == QuestionType.INTRO:
             return (
-                f"{ai_name}님, 안녕하세요. 간단한 자기소개 부탁드립니다.",
+                f"{ai_name}님, 자기소개를 부탁드립니다.",
                 "지원자의 기본 배경, 경력, 성격을 파악하여 면접 분위기를 조성"
             )
         elif question_type == QuestionType.MOTIVATION:
@@ -334,7 +297,10 @@ class AICandidateModel:
             else:
                 selected_question = available_questions[0]
             
-            return selected_question["content"], selected_question["intent"]
+            # 질문에 AI 이름 호칭 추가
+            ai_name = self.get_ai_name(LLMProvider.OPENAI_GPT35)
+            question_content = self._add_honorific_to_question(selected_question["content"], ai_name)
+            return question_content, selected_question["intent"]
         
         # 폴백 질문
         ai_name = self.get_ai_name(LLMProvider.OPENAI_GPT35)
@@ -368,6 +334,15 @@ class AICandidateModel:
             QuestionType.FOLLOWUP: (f"{persona_name}님이 가장 자신 있는 경험을 더 자세히 설명해 주세요.", "심화 탐구")
         }
         return fallback_questions.get(question_type, (f"{persona_name}님, 본인에 대해 말씀해 주세요.", "일반적인 질문"))
+    
+    def _add_honorific_to_question(self, question_content: str, ai_name: str) -> str:
+        """질문에 AI 이름 호칭 추가"""
+        # 이미 호칭이 포함된 경우 그대로 반환
+        if "님" in question_content or ai_name in question_content:
+            return question_content
+        
+        # 질문 앞에 호칭 추가
+        return f"{ai_name}님, {question_content}"
 
     def generate_ai_answer_for_question(self, ai_session_id: str, question_data: Dict[str, Any]) -> AnswerResponse:
         """특정 질문에 대한 AI 답변 생성 (일관성 유지)"""
@@ -622,11 +597,16 @@ class AICandidateModel:
         base_info = f"""당신은 {company_data.get('name', '회사')} 면접에 참여한 우수한 지원자입니다.
 
 === 중요: 당신의 이름은 "{ai_name}"입니다 ===
-- 자기소개 질문(INTRO)에서만 "{ai_name}"라고 이름을 언급하세요
-- 다른 질문에서는 이름을 반복하지 마세요
+- **자기소개 질문(INTRO)에서만** "{ai_name}"라고 이름을 언급하세요
+- **다른 모든 질문에서는 절대 이름을 언급하지 마세요**
+- "안녕하세요" 같은 인사말도 자기소개가 아닌 경우 사용하지 마세요
 - 다른 이름(김네이버, 박카카오 등)을 절대 사용하지 마세요
-- 자기소개 예시: "안녕하세요, 저는 {ai_name}라고 합니다"
-- 일반 답변 예시: "제 경험을 말씀드리면..." (이름 언급 안함)
+
+예시:
+- 자기소개: "안녕하세요, 저는 {ai_name}라고 합니다. 5년의 백엔드 개발 경험을..."
+- 지원동기: "제가 네이버에 지원하게 된 이유는..." (이름/인사 없이 바로 시작)
+- 기술질문: "그 부분에 대해서는 제 경험을 말씀드리면..." (이름/인사 없이)
+- 기타질문: "제 생각에는..." 또는 "저의 경험으로는..." (이름/인사 없이)
 
 === 당신의 배경 ===
 - 경력: {persona.background.get('career_years', '0')}년
@@ -650,17 +630,19 @@ class AICandidateModel:
 - 면접에 대한 감사 인사를 포함하세요
 - 예: "안녕하세요, 저는 {ai_name}라고 합니다. 5년의 백엔드 개발 경험을 가지고 있으며..."
 
-기타 모든 질문: 이름을 다시 언급하지 마세요."""
+**중요**: 자기소개 질문에서만 이름을 언급하세요. 다른 모든 질문에서는 이름을 절대 언급하지 마세요."""
         
         elif question_type == QuestionType.HR:
             return f"""{base_info}
 
 === 인성 질문 답변 스타일 ===
-- **이름을 언급하지 마세요** (이미 자기소개에서 했음)
+- **절대 이름을 언급하지 마세요** (이미 자기소개에서 했음)
+- **"안녕하세요" 같은 인사말 사용 금지**
+- 바로 답변 내용으로 시작하세요
 - **개인적이고 진정성 있게** 답변하세요
 - 기술적/프로젝트 경험보다는 **개인적 경험과 감정**을 중심으로 답변
 - 당신의 **가치관, 성격, 인생 철학**을 드러내세요
-- "제 경험을 말씀드리면..." 같은 표현 사용
+- "제 경험을 말씀드리면..." "저는 개인적으로..." 같은 표현 사용
 - **솔직하고 인간적인** 면모를 보여주세요
 - 구체적인 개인 경험과 그때의 **감정, 생각의 변화**를 포함하세요"""
         
@@ -688,11 +670,20 @@ class AICandidateModel:
             return f"""{base_info}
 
 === 면접 태도 ===
-- **이름을 언급하지 마세요** (자기소개가 아닌 경우)
+- **절대 이름을 언급하지 마세요** (자기소개가 아닌 경우)
+- **"안녕하세요" 같은 인사말 사용 금지**
+- 바로 답변 내용으로 시작하세요
 - 자신감 있고 성실하게 답변하세요
 - 구체적인 경험을 바탕으로 답변하세요
 - {company_data.get('name', '회사')}에 대한 진정성 있는 관심을 보여주세요
-- 전문적이면서도 자연스러운 톤을 유지하세요"""
+- 전문적이면서도 자연스러운 톤을 유지하세요
+
+답변 시작 예시:
+- 지원동기: "제가 네이버에 지원하게 된 이유는..."
+- 일반질문: "그 부분에 대해서는..." "제 경험으로는..." "저는 항상..."
+- 기술질문: "해당 기술에 대한 제 경험을 말씀드리면..."
+- 협업질문: "팀워크 관련해서는 제가 겪었던 사례가..."
+"""
     
     def _build_answer_prompt(self, request: AnswerRequest, persona: CandidatePersona, company_data: Dict) -> str:
         """답변 생성 프롬프트 구성"""
@@ -1192,5 +1183,3 @@ if __name__ == "__main__":
         
         if response.error:
             print(f"오류: {response.error}")
-            
-            
