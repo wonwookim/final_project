@@ -123,6 +123,11 @@ class InterviewSession:
         """세션 완료 여부 확인"""
         return self.current_question_count >= len(self.question_plan)
         
+    @property
+    def question_answers(self) -> List[QuestionAnswer]:
+        """FeedbackService 호환성을 위한 question_answers property"""
+        return self.conversation_history
+    
     def get_conversation_context(self) -> str:
         """대화 컨텍스트 생성"""
         context = f"면접 진행 상황: {self.current_question_count}/{len(self.question_plan)}\n"

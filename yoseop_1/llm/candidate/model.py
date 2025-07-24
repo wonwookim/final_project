@@ -4,11 +4,8 @@ AI 지원자 모델
 각 회사별 합격 수준의 지원자 페르소나를 기반으로 면접 답변을 생성
 """
 
-import json
-import random
 import os
 from typing import Dict, List, Any, Optional, Tuple
-from dataclasses import dataclass
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -48,7 +45,13 @@ class AICandidateSession(InterviewSession):
     def add_ai_answer(self, qa_pair: QuestionAnswer):
         """AI 답변 추가"""
         self.ai_answers.append(qa_pair)
-        self.current_question_count += 1
+        # 부모 클래스의 add_qa_pair 메서드를 사용하여 일관성 유지
+        super().add_qa_pair(qa_pair)
+    
+    @property
+    def question_answers(self) -> List[QuestionAnswer]:
+        """FeedbackService 호환성을 위한 question_answers property - conversation_history 반환"""
+        return super().question_answers
         
     def get_persona_context(self) -> str:
         """페르소나 컨텍스트 구성"""
@@ -920,207 +923,6 @@ class AICandidateModel:
         """사용 가능한 회사 목록"""
         return list(self.candidate_personas.keys())
     
-    def evaluate_ai_interview(self, ai_session_id: str) -> Dict[str, Any]:
-        """AI 지원자 면접 평가 (면접자와 동일한 구조)"""
-        ai_session = self.ai_sessions.get(ai_session_id)
-        if not ai_session:
-            return {"error": "AI 세션을 찾을 수 없습니다"}
-        
-        company_data = self._get_company_data(ai_session.company_id)
-        
-        # 1. 각 답변을 개별적으로 평가
-        individual_feedbacks = []
-        total_score = 0
-        category_scores = {}
-        
-        for qa in ai_session.ai_answers:
-            # 개별 답변 평가 (면접자와 동일한 로직)
-            individual_evaluation = self._evaluate_ai_single_answer(qa, company_data)
-            
-            # 평가 결과를 qa_pair에 저장
-            qa.individual_score = individual_evaluation["score"]
-            qa.individual_feedback = individual_evaluation["feedback"]
-            
-            individual_feedbacks.append({
-                "question_number": len(individual_feedbacks) + 1,
-                "question_type": qa.question_type.value,
-                "question": qa.question_content,
-                "question_intent": qa.question_intent,
-                "answer": qa.answer_content,
-                "score": qa.individual_score,
-                "feedback": qa.individual_feedback,
-                "personalized": False  # AI는 표준 질문 사용
-            })
-            
-            total_score += qa.individual_score
-            
-            # 카테고리별 점수 계산
-            category = qa.question_type.value
-            if category not in category_scores:
-                category_scores[category] = []
-            category_scores[category].append(qa.individual_score)
-        
-        # 전체 평균 계산
-        overall_score = int(total_score / len(ai_session.ai_answers))
-        
-        # 카테고리별 평균
-        for category in category_scores:
-            category_scores[category] = int(sum(category_scores[category]) / len(category_scores[category]))
-        
-        # 2. 종합 평가 생성
-        overall_evaluation = self._generate_ai_overall_evaluation(ai_session, company_data, overall_score)
-        
-        return {
-            "session_id": ai_session_id,
-            "company": company_data.get("name", ""),
-            "position": ai_session.position,
-            "candidate": ai_session.persona.name,
-            "candidate_type": "AI",
-            "individual_feedbacks": individual_feedbacks,
-            "evaluation": {
-                "overall_score": overall_score,
-                "category_scores": category_scores,
-                **overall_evaluation
-            },
-            "completed_at": datetime.now().isoformat()
-        }
-    
-    def _evaluate_ai_single_answer(self, qa: QuestionAnswer, company_data: Dict[str, Any]) -> Dict[str, Any]:
-        """AI 답변 개별 평가 (면접자와 동일한 엄격한 기준)"""
-        
-        answer = qa.answer_content.strip()
-        
-        # 기본 검증
-        if len(answer) < 10:
-            return {
-                "score": 20,
-                "feedback": f"📝 질문 의도: {qa.question_intent}\n\n💬 평가: AI 답변이 너무 짧습니다.\n\n🔧 개선 방법: 더 구체적이고 상세한 답변이 필요합니다."
-            }
-        
-        prompt = f"""
-다음 AI 지원자의 면접 답변을 평가해주세요.
-
-=== 질문 정보 ===
-질문 유형: {qa.question_type.value}
-질문: {qa.question_content}
-질문 의도: {qa.question_intent}
-
-=== AI 지원자 답변 ===
-{answer}
-
-=== 평가 기준 ===
-- 65-75점: AI 답변의 기본 품질 범위
-- 75-85점: 구체적이고 인상적인 답변
-- 85-95점: 매우 우수한 답변
-- 95-100점: 완벽에 가까운 답변
-
-평가 요소:
-1. 질문 의도 이해도
-2. 답변의 구체성과 사실성
-3. 논리적 구성
-4. 전문성과 깊이
-5. 일관성
-
-JSON 형식으로 응답:
-{{
-  "score": 점수,
-  "feedback": "📝 질문 의도: {qa.question_intent}\\n\\n💬 평가: 구체적인 평가 내용\\n\\n🔧 개선 방법: 실질적인 개선 제안"
-}}
-"""
-        
-        try:
-            response = self.llm_manager.generate_response(
-                LLMProvider.OPENAI_GPT4O_MINI,
-                prompt,
-                "당신은 AI 지원자 답변을 평가하는 면접 평가 전문가입니다."
-            )
-            
-            result = response.content.strip()
-            
-            # JSON 파싱
-            start_idx = result.find('{')
-            end_idx = result.rfind('}') + 1
-            
-            if start_idx != -1 and end_idx != -1:
-                json_str = result[start_idx:end_idx]
-                evaluation = json.loads(json_str)
-                
-                # AI 답변은 일반적으로 높은 품질이므로 기본 점수 조정
-                score = max(evaluation["score"], 65)  # 최소 65점
-                evaluation["score"] = score
-                
-                return evaluation
-            else:
-                raise ValueError("JSON 형식을 찾을 수 없습니다")
-                
-        except Exception as e:
-            print(f"AI 답변 평가 중 오류: {str(e)}")
-            # 기본 점수 (AI는 일반적으로 좋은 답변을 생성)
-            return {
-                "score": 75,
-                "feedback": f"📝 질문 의도: {qa.question_intent}\n\n💬 평가: AI 답변이 적절합니다.\n\n🔧 개선 방법: 더 구체적인 경험과 사례를 포함할 수 있습니다."
-            }
-    
-    def _generate_ai_overall_evaluation(self, ai_session: AICandidateSession, company_data: Dict[str, Any], overall_score: int) -> Dict[str, Any]:
-        """AI 지원자 종합 평가 생성"""
-        
-        conversation_summary = ""
-        for qa in ai_session.ai_answers:
-            conversation_summary += f"[{qa.question_type.value}] {qa.question_content}\n답변: {qa.answer_content}\n개별 점수: {qa.individual_score}점\n\n"
-        
-        prompt = f"""
-{company_data.get('name', '')} {ai_session.position} AI 지원자 종합 평가를 수행해주세요.
-
-=== AI 지원자 정보 ===
-- 이름: {ai_session.persona.name}
-- 지원 직군: {ai_session.position}
-- 전체 평균 점수: {overall_score}점
-- 페르소나 유형: AI 지원자
-
-=== 면접 내용 ===
-{conversation_summary}
-
-=== 기업 요구사항 ===
-- 인재상: {company_data.get('talent_profile', '')}
-- 핵심 역량: {', '.join(company_data.get('core_competencies', []))}
-
-AI 지원자의 답변 품질과 일관성을 평가하여 JSON 형식으로 응답:
-{{
-  "strengths": ["구체적인 강점1", "구체적인 강점2", "구체적인 강점3"],
-  "improvements": ["구체적인 개선점1", "구체적인 개선점2", "구체적인 개선점3"],
-  "recommendation": "AI 지원자 성능 평가",
-  "next_steps": "실제 면접 준비 단계 제안",
-  "overall_assessment": "AI 지원자의 전체적인 성능 평가"
-}}
-"""
-        
-        try:
-            response = self.llm_manager.generate_response(
-                LLMProvider.OPENAI_GPT4O_MINI,
-                prompt,
-                f"{company_data.get('name', '')} AI 지원자 면접 평가 전문가입니다."
-            )
-            
-            result = response.content.strip()
-            
-            start_idx = result.find('{')
-            end_idx = result.rfind('}') + 1
-            
-            if start_idx != -1 and end_idx != -1:
-                json_str = result[start_idx:end_idx]
-                return json.loads(json_str)
-            
-        except Exception as e:
-            print(f"AI 종합 평가 중 오류: {str(e)}")
-        
-        # 기본 평가 (AI는 일반적으로 좋은 성능)
-        return {
-            "strengths": ["일관된 답변", "논리적 구성", "전문적 표현"],
-            "improvements": ["개인 경험 구체화", "감정적 표현", "창의성 향상"],
-            "recommendation": f"AI 지원자 성능: {overall_score}점 수준",
-            "next_steps": "실제 면접 준비 시 참고 자료로 활용",
-            "overall_assessment": f"AI 지원자가 {overall_score}점 수준의 답변을 제공했습니다."
-        }
 
     def get_persona_summary(self, company_id: str) -> Dict[str, Any]:
         """페르소나 요약 정보"""
