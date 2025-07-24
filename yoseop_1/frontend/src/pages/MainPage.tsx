@@ -180,7 +180,13 @@ const MainPage: React.FC = () => {
           <h2 className="text-3xl font-bold text-slate-900 text-center mb-8">
             다양한 기업 면접을 연습하세요
           </h2>
-          
+
+          <div className="mb-8">
+            <p className="text-slate-600 text-center">
+              다양한 기업의 면접 질문을 연습하고, AI가 제공하는 피드백을 통해
+              면접 준비를 완벽하게 할 수 있습니다.
+            </p>
+          </div>
           <div className="flex flex-wrap justify-center gap-4">
             {recentCompanies.map((company, index) => (
               <div
