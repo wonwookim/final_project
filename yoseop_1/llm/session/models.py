@@ -151,7 +151,7 @@ class ComparisonSession:
     position: str
     current_question_index: int = 0
     current_phase: str = "user_turn"  # "user_turn" or "ai_turn"
-    total_questions: int = 20
+    total_questions: int = 5
     user_name: str = ""
     ai_name: str = "춘식이"
     user_answers: List[AnswerData] = field(default_factory=list)

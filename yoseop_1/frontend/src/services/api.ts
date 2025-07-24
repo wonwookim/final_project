@@ -211,6 +211,7 @@ export const interviewApi = {
     next_phase: string;
     submission_result: any;
     next_user_question?: Question;
+    next_question?: Question;
   }> {
     const response = await apiClient.post('/interview/comparison/user-turn', {
       comparison_session_id: comparisonSessionId,
@@ -222,6 +223,7 @@ export const interviewApi = {
       next_phase: string;
       submission_result: any;
       next_user_question?: Question;
+      next_question?: Question;
     };
   },
 

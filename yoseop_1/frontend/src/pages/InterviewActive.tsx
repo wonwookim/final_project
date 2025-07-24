@@ -234,37 +234,49 @@ const InterviewActive: React.FC = () => {
             
             // 다음 사용자 턴으로 전환 - 사용자 답변 제출 시 저장된 질문 사용
             const pendingQuestion = (window as any).pendingUserQuestion || answerResponse.next_user_question;
+            
+            console.log('🔍 AI 답변 후 상태:', {
+              pendingQuestion,
+              next_phase: answerResponse.next_phase,
+              interview_status: answerResponse.interview_status
+            });
+            
             if (pendingQuestion) {
               console.log('📝 다음 사용자 질문 데이터:', pendingQuestion);
-              setTimeout(() => {
-                setCurrentPhase('user_turn');
-                
-                // 다음 사용자 질문을 타임라인에 추가
-                const nextQuestionData = pendingQuestion as any;
-                const nextUserTurn = {
-                  id: `user_${Date.now()}`,
-                  type: 'user' as const,
-                  question: nextQuestionData.question_content || nextQuestionData.question || '질문을 불러올 수 없습니다',
-                  questionType: nextQuestionData.question_type || nextQuestionData.category || '일반'
-                };
-                
-                // 서버 응답을 프론트엔드 형식으로 변환
-                const normalizedNextQuestion = {
-                  id: nextQuestionData.question_id || `q_${Date.now()}`,
-                  question: nextQuestionData.question_content || nextQuestionData.question || '질문을 불러올 수 없습니다',
-                  category: nextQuestionData.question_type || nextQuestionData.category || '일반',
-                  time_limit: nextQuestionData.time_limit || 120,
-                  keywords: nextQuestionData.keywords || []
-                };
-                
-                setTimeline(prev => [...prev, nextUserTurn]);
-                dispatch({ type: 'ADD_QUESTION', payload: normalizedNextQuestion });
-                setTimeLeft(pendingQuestion.time_limit || 120);
-                setInterviewState('active');  // 타이머 시작을 위해 active로 설정
-                
-                // 사용된 질문 삭제
-                delete (window as any).pendingUserQuestion;
-              }, 2000);
+              
+              setCurrentPhase('user_turn');
+              
+              // 다음 사용자 질문을 타임라인에 추가
+              const nextQuestionData = pendingQuestion as any;
+              const nextUserTurn = {
+                id: `user_${Date.now()}`,
+                type: 'user' as const,
+                question: nextQuestionData.question_content || nextQuestionData.question || '질문을 불러올 수 없습니다',
+                questionType: nextQuestionData.question_type || nextQuestionData.category || '일반'
+              };
+              
+              // 서버 응답을 프론트엔드 형식으로 변환
+              const normalizedNextQuestion = {
+                id: nextQuestionData.question_id || `q_${Date.now()}`,
+                question: nextQuestionData.question_content || nextQuestionData.question || '질문을 불러올 수 없습니다',
+                category: nextQuestionData.question_type || nextQuestionData.category || '일반',
+                time_limit: nextQuestionData.time_limit || 120,
+                keywords: nextQuestionData.keywords || []
+              };
+              
+              setTimeline(prev => [...prev, nextUserTurn]);
+              dispatch({ type: 'ADD_QUESTION', payload: normalizedNextQuestion });
+              setTimeLeft(pendingQuestion.time_limit || 120);
+              setInterviewState('active');  // 타이머 시작을 위해 active로 설정
+              
+              // 사용된 질문 삭제
+              delete (window as any).pendingUserQuestion;
+            } else if (answerResponse.next_phase === 'user_turn') {
+              // 백엔드에서 user_turn이라고 했지만 질문이 없는 경우 - 면접 완료 처리
+              console.log('⚠️ 질문이 없지만 user_turn으로 전환 요청됨 - 면접 완료 처리');
+              setInterviewState('completed');
+            } else {
+              console.log('❌ 다음 질문 없음 - AI 턴 유지');
             }
             
           } catch (error) {
@@ -379,21 +391,50 @@ const InterviewActive: React.FC = () => {
         const response = await interviewApi.submitComparisonUserTurn(comparisonSessionId, currentAnswer);
         
         console.log('✅ 사용자 답변 제출 완료:', response);
-        console.log('🔍 다음 사용자 질문 데이터:', response.next_user_question);
-        
-        // 다음 사용자 질문이 있으면 미리 저장 (AI 턴 후 사용)
-        if (response.next_user_question) {
-          (window as any).pendingUserQuestion = response.next_user_question;
-          console.log('📝 다음 사용자 질문 저장됨');
-        }
+        console.log('🔍 응답 데이터:', response);
         
         setCurrentAnswer('');
         
-        // AI 턴으로 전환
-        setTimeout(() => {
-          setCurrentPhase('ai_turn');
-          processAITurn();
-        }, 1500);
+        // 둘 다 답변했으면 next_question이 있을 것임
+        if (response.next_question) {
+          console.log('🎯 둘 다 답변 완료 - 다음 질문으로 이동:', response.next_question);
+          
+          // 다음 질문을 바로 타임라인에 추가
+          const nextQuestionData = response.next_question as any;
+          const nextUserTurn = {
+            id: `user_${Date.now()}`,
+            type: 'user' as const,
+            question: nextQuestionData.question_content || nextQuestionData.question || '질문을 불러올 수 없습니다',
+            questionType: nextQuestionData.question_type || nextQuestionData.category || '일반'
+          };
+          
+          // 서버 응답을 프론트엔드 형식으로 변환
+          const normalizedNextQuestion = {
+            id: nextQuestionData.question_id || `q_${Date.now()}`,
+            question: nextQuestionData.question_content || nextQuestionData.question || '질문을 불러올 수 없습니다',
+            category: nextQuestionData.question_type || nextQuestionData.category || '일반',
+            time_limit: nextQuestionData.time_limit || 120,
+            keywords: nextQuestionData.keywords || []
+          };
+          
+          setTimeline(prev => [...prev, nextUserTurn]);
+          dispatch({ type: 'ADD_QUESTION', payload: normalizedNextQuestion });
+          setTimeLeft(nextQuestionData.time_limit || 120);
+          setCurrentPhase('user_turn');
+          setInterviewState('active');
+        } else {
+          // 다음 사용자 질문이 있으면 미리 저장 (AI 턴 후 사용)
+          if (response.next_user_question) {
+            (window as any).pendingUserQuestion = response.next_user_question;
+            console.log('📝 다음 사용자 질문 저장됨');
+          }
+          
+          // AI 턴으로 전환
+          setTimeout(() => {
+            setCurrentPhase('ai_turn');
+            processAITurn();
+          }, 1500);
+        }
       }
       
     } catch (error) {
@@ -1171,7 +1212,17 @@ const InterviewActive: React.FC = () => {
                 </button>
                 
                 <button
-                  onClick={submitAnswer}
+                  onClick={() => {
+                    console.log('🔍 버튼 클릭 시 상태:', {
+                      currentAnswer: currentAnswer,
+                      currentAnswerTrim: currentAnswer.trim(),
+                      isLoading,
+                      comparisonMode,
+                      currentPhase,
+                      disabled: !currentAnswer.trim() || isLoading || (comparisonMode && currentPhase !== 'user_turn')
+                    });
+                    submitAnswer();
+                  }}
                   disabled={!currentAnswer.trim() || isLoading || (comparisonMode && currentPhase !== 'user_turn')}
                   className={`px-8 py-3 text-white rounded-lg font-medium transition-colors ${
                     comparisonMode 
