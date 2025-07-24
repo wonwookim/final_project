@@ -77,10 +77,14 @@ class ComparisonSessionManager:
             raise ValueError(f"잘못된 답변 타입: {answer_type}")
         
         # 턴 전환 또는 다음 질문으로 이동
+        next_question = None
         if len(session.user_answers) == len(session.ai_answers):
             # 둘 다 답변했으면 다음 질문으로
             session.next_question()
             session.current_phase = "user_turn"  # 기본적으로 사용자부터 시작
+            # 다음 질문 가져오기
+            if not session.is_complete():
+                next_question = self.get_next_question(comparison_id)
         else:
             # 한쪽만 답변했으면 턴 전환
             session.switch_phase()
@@ -90,7 +94,8 @@ class ComparisonSessionManager:
             "answer_type": answer_type,
             "current_phase": session.current_phase,
             "progress": session.get_progress(),
-            "is_complete": session.is_complete()
+            "is_complete": session.is_complete(),
+            "next_question": next_question
         }
     
     def get_next_question(self, comparison_id: str) -> Optional[Dict[str, Any]]:

@@ -336,7 +336,7 @@ class InterviewService:
             
             # 🆕 SessionManager를 통한 비교 세션 답변 제출
             result = self.session_manager.submit_comparison_answer(
-                comparison_session_id, answer, "user"
+                comparison_session_id, answer, "human"
             )
             
             # 턴 전환
@@ -347,7 +347,8 @@ class InterviewService:
                 "message": "사용자 답변이 제출되었습니다",
                 "next_phase": "ai_turn",
                 "submission_result": result,
-                "next_user_question": turn_result.get("next_question")
+                "next_user_question": turn_result.get("next_question"),
+                "next_question": result.get("next_question")  # 둘 다 답변했을 때의 다음 질문
             }
             
         except Exception as e:
