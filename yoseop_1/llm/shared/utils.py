@@ -9,10 +9,15 @@ import json
 import logging
 import os
 import sys
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional, Union, List
 from datetime import datetime
+from pathlib import Path
 
 from .constants import CAREER_LEVELS, QUESTION_DIFFICULTIES
+
+# Supabase 클라이언트 임포트
+sys.path.append(str(Path(__file__).parent.parent.parent))
+from database.supabase_client import get_supabase_client
 
 # 세션 매니저 임포트 (레거시 코드 제거)
 create_session_manager = None
@@ -61,7 +66,7 @@ def get_difficulty_level(career_years: int) -> int:
 
 
 def safe_json_load(file_path: str, default: Any = None) -> Any:
-    """안전한 JSON 파일 로드"""
+    """안전한 JSON 파일 로드 (레거시 지원)"""
     try:
         # 상대 경로를 절대 경로로 변환
         if not os.path.isabs(file_path):
@@ -77,6 +82,81 @@ def safe_json_load(file_path: str, default: Any = None) -> Any:
     except json.JSONDecodeError:
         logger.error(f"JSON 파싱 오류: {file_path}")
         return default or {}
+
+
+def load_fixed_questions_from_supabase() -> Dict[str, Any]:
+    """Supabase에서 고정 질문을 로드합니다"""
+    try:
+        client = get_supabase_client()
+        result = client.table('fix_question').select('*').execute()
+        questions_raw = result.data if result.data else []
+        
+        # JSON 구조로 변환 (기존 JSON 파일 형식과 호환)
+        hr_questions = []
+        for question in questions_raw:
+            hr_question = {
+                "question_id": question['question_id'],
+                "position_id": 1,  # 기본값 (모든 직무 공통)
+                "question_section": "hr",
+                "content": question['question_content'],
+                "intent": question['question_intent'],
+                "level": int(question['question_level']) if question['question_level'] else 1
+            }
+            hr_questions.append(hr_question)
+        
+        return {"hr_questions": hr_questions}
+        
+    except Exception as e:
+        logger.error(f"Supabase에서 고정 질문 로드 실패: {str(e)}")
+        return {"hr_questions": []}
+
+
+def get_fixed_questions() -> Dict[str, Any]:
+    """고정 질문 데이터를 가져옵니다 (Supabase 우선, 실패시 JSON 파일)"""
+    # 먼저 Supabase에서 시도
+    supabase_data = load_fixed_questions_from_supabase()
+    if supabase_data.get("hr_questions"):
+        logger.info("Supabase에서 고정 질문 로드 완료")
+        return supabase_data
+    
+    # Supabase 실패시 기존 JSON 파일 로드
+    logger.info("Supabase 실패, JSON 파일에서 고정 질문 로드 시도")
+    return safe_json_load("llm/data/fixed_questions.json", {"hr_questions": []})
+
+
+def load_ai_resumes_from_supabase() -> Dict[str, Any]:
+    """Supabase에서 AI 후보자 이력서를 로드합니다"""
+    try:
+        client = get_supabase_client()
+        result = client.table('ai_resume').select('*, position(position_name)').execute()
+        resumes_raw = result.data if result.data else []
+        
+        # JSON 구조로 변환 (기존 JSON 파일 형식과 호환)
+        personas = {}
+        for resume in resumes_raw:
+            position_name = resume['position']['position_name'] if resume.get('position') else 'unknown'
+            company_key = f"{position_name}_{resume['ai_resume_id']}"
+            
+            persona = {
+                "name": f"AI후보자{resume['ai_resume_id']}",
+                "background": {
+                    "career_years": "5",  # 기본값
+                    "current_position": position_name,
+                    "education": resume.get('academic_record', ''),
+                    "total_experience": resume.get('career', '')
+                },
+                "technical_skills": resume.get('tech', '').split(', ') if resume.get('tech') else [],
+                "activities": resume.get('activities', ''),
+                "certificate": resume.get('certificate', ''),
+                "awards": resume.get('awards', '')
+            }
+            personas[company_key] = persona
+        
+        return {"personas": personas}
+        
+    except Exception as e:
+        logger.error(f"Supabase에서 AI 이력서 로드 실패: {str(e)}")
+        return {"personas": {}}
 
 
 def sanitize_filename(filename: str) -> str:
