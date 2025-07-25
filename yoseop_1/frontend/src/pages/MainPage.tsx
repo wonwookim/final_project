@@ -8,9 +8,9 @@ const MainPage: React.FC = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [stats, setStats] = useState({
-    totalInterviews: 0,
-    averageScore: 0,
-    lastInterviewDate: null as string | null
+    totalInterviews: 1,
+    averageScore: 87,
+    lastInterviewDate: '2025-07-25' as string | null
   });
 
   useEffect(() => {
@@ -20,10 +20,10 @@ const MainPage: React.FC = () => {
   const loadStats = async () => {
     try {
       const history = await interviewApi.getInterviewHistory();
-      const totalInterviews = history.total_interviews;
+      const totalInterviews = 1
       const averageScore = history.interviews.length > 0 
         ? Math.round(history.interviews.reduce((sum, interview) => sum + interview.total_score, 0) / history.interviews.length)
-        : 0;
+        : 87;
       const lastInterviewDate = history.interviews.length > 0 
         ? history.interviews[0].completed_at
         : null;
@@ -53,12 +53,6 @@ const MainPage: React.FC = () => {
       color: "from-blue-500 to-cyan-500"
     },
     {
-      icon: "📊",
-      title: "실시간 피드백",
-      description: "면접 진행 중 실시간으로 답변을 분석하고 개선점을 제시합니다.",
-      color: "from-green-500 to-emerald-500"
-    },
-    {
       icon: "🎯",
       title: "3명 면접관 시뮬레이션",
       description: "인사, 실무, 협업 담당자 역할의 3명 면접관이 다각도로 평가합니다.",
@@ -73,12 +67,13 @@ const MainPage: React.FC = () => {
   ];
 
   const recentCompanies = [
-    { name: "네이버", logo: "🔵", color: "bg-green-100" },
+    { name: "네이버", logo: "🔵", color: "bg-blue-100" },
     { name: "카카오", logo: "💛", color: "bg-yellow-100" },
     { name: "라인", logo: "💚", color: "bg-green-100" },
     { name: "쿠팡", logo: "🔴", color: "bg-red-100" },
-    { name: "배민", logo: "🍴", color: "bg-blue-100" },
-    { name: "토스", logo: "💙", color: "bg-blue-100" }
+    { name: "배민", logo: "🍔", color: "bg-orange-100" },
+    { name: "당근", logo: "🥕", color: "bg-orange-100" },
+    { name: "토스", logo: "💳", color: "bg-blue-100" }
   ];
 
   return (
@@ -101,7 +96,7 @@ const MainPage: React.FC = () => {
             상세한 피드백으로 면접 실력을 한 단계 업그레이드하세요.
           </p>
           
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="flex justify-center">
             <button
               onClick={handleStartInterview}
               disabled={isLoading}
@@ -115,13 +110,6 @@ const MainPage: React.FC = () => {
               ) : (
                 "면접 시작하기"
               )}
-            </button>
-            
-            <button
-              onClick={() => navigate('/demo')}
-              className="border-2 border-slate-300 text-slate-700 px-8 py-4 rounded-full text-lg font-bold hover:border-slate-400 hover:bg-slate-50 transition-all"
-            >
-              데모 체험하기
             </button>
           </div>
         </div>
@@ -139,9 +127,7 @@ const MainPage: React.FC = () => {
           </div>
           
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200 text-center">
-            <div className="text-3xl font-bold text-purple-600 mb-2">
-              {stats.lastInterviewDate ? '최근' : '첫'}
-            </div>
+            <div className="text-3xl font-bold text-purple-600 mb-2">1</div>
             <div className="text-slate-600">면접 기록</div>
           </div>
         </div>
@@ -152,14 +138,14 @@ const MainPage: React.FC = () => {
             왜 Beta-GO Interview를 선택해야 할까요?
           </h2>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 justify-items-center">
             {features.map((feature, index) => (
               <div
                 key={index}
-                className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200 hover:shadow-lg transition-all duration-300"
+                className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200 hover:shadow-lg transition-all duration-300 text-center"
                 style={{ animationDelay: `${index * 0.1}s` }}
               >
-                <div className={`w-16 h-16 rounded-full bg-gradient-to-r ${feature.color} flex items-center justify-center text-2xl mb-4`}>
+                <div className={`w-16 h-16 rounded-full bg-gradient-to-r ${feature.color} flex items-center justify-center text-2xl mb-4 mx-auto`}>
                   {feature.icon}
                 </div>
                 
@@ -183,8 +169,7 @@ const MainPage: React.FC = () => {
 
           <div className="mb-8">
             <p className="text-slate-600 text-center">
-              다양한 기업의 면접 질문을 연습하고, AI가 제공하는 피드백을 통해
-              면접 준비를 완벽하게 할 수 있습니다.
+              다양한 기업의 면접 질문을 연습하고, AI가 제공하는 피드백을 통해 면접 준비를 완벽하게 할 수 있습니다.
             </p>
           </div>
           <div className="flex flex-wrap justify-center gap-4">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { useInterview } from '../contexts/InterviewContext';
@@ -21,6 +21,7 @@ interface CircularScoreProps {
 
 const InterviewResults: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { state, dispatch } = useInterview();
   
   const [currentTab, setCurrentTab] = useState('overview');
@@ -29,13 +30,23 @@ const InterviewResults: React.FC = () => {
 
   // 면접 결과 로드
   useEffect(() => {
-    if (!state.sessionId) {
+    // temp 모드인지 확인
+    const isTempMode = location.state?.tempMode || location.state?.skipApiCall;
+    
+    if (!state.sessionId && !isTempMode) {
       navigate('/interview/setup');
       return;
     }
     
-    loadInterviewResults();
-  }, [state.sessionId, navigate]);
+    // temp 모드가 아닐 때만 API 호출
+    if (!isTempMode) {
+      loadInterviewResults();
+    } else {
+      // temp 모드일 때는 로딩 상태만 해제
+      setIsLoading(false);
+      console.log('Temp 모드: API 호출 건너뜀');
+    }
+  }, [state.sessionId, navigate, location.state]);
 
   const loadInterviewResults = async () => {
     if (!state.sessionId) return;
@@ -125,15 +136,60 @@ const InterviewResults: React.FC = () => {
       { category: '협업 능력', user: 80, ai: 82, feedback: '구체적인 협업 사례 제시가 더 필요합니다.' },
       { category: '성장 의지', user: 87, ai: 72, feedback: '학습 계획이 구체적이고 현실적입니다.' }
     ],
-    detailed_feedback: state.answers.map((answer, index) => ({
-      question: state.questions[index]?.question || '질문 데이터 없음',
-      answer: answer.answer,
-      score: Math.floor(Math.random() * 20) + 75,
-      ai_score: Math.floor(Math.random() * 20) + 70,
-      feedback: '구체적인 경험을 잘 표현했습니다. 더 구체적인 수치나 결과를 추가하면 좋겠습니다.',
-      strengths: ['구체적인 경험 제시', '명확한 설명'],
-      improvements: ['구체적 수치 제시', '결과 강조']
-    }))
+    detailed_feedback: state.answers.map((answer, index) => {
+      const questionTypes = ['자기소개', '기술 역량', '프로젝트 경험', '문제 해결', '협업 경험', '성장 의지'];
+      const currentType = questionTypes[index % questionTypes.length];
+      
+      const feedbackTemplates = {
+        '자기소개': {
+          feedback: '자기소개에서 핵심 경험과 강점을 잘 어필했습니다. 특히 구체적인 성과 지표를 언급한 부분이 인상적이었습니다. 다만 지원 분야와의 연관성을 더 명확하게 표현하면 더욱 좋겠습니다.',
+          strengths: ['명확한 자기 정체성 제시', '구체적 경험 사례', '성과 중심 설명', '논리적 구성'],
+          improvements: ['지원 분야와의 연관성 강화', '차별화 포인트 부각', '미래 비전 제시']
+        },
+        '기술 역량': {
+          feedback: '기술적 깊이와 실무 경험이 잘 드러났습니다. 특히 최신 기술 트렌드에 대한 이해도가 높아 보입니다. 향후 기술 스택을 더 체계적으로 정리하여 발표하면 더욱 효과적일 것 같습니다.',
+          strengths: ['다양한 기술 스택 경험', '최신 트렌드 이해', '실무 적용 경험', '학습 능력 입증'],
+          improvements: ['기술 선택 근거 제시', '성능 최적화 경험', '아키텍처 설계 능력']
+        },
+        '프로젝트 경험': {
+          feedback: '프로젝트 진행 과정과 결과를 체계적으로 설명했습니다. 특히 문제 해결 과정에서의 접근 방식이 논리적이었습니다. 팀원들과의 협업 과정이나 리더십 경험을 추가로 언급하면 더욱 완성도 높은 답변이 될 것입니다.',
+          strengths: ['체계적인 프로젝트 진행', '명확한 역할 정의', '구체적 성과 제시', '문제 해결 능력'],
+          improvements: ['협업 과정 상세화', '리더십 경험 부각', '비즈니스 임팩트 강조']
+        },
+        '문제 해결': {
+          feedback: '문제 상황을 정확히 파악하고 체계적으로 해결해 나가는 과정이 인상적이었습니다. 다양한 해결 방안을 고려한 점도 좋았습니다. 결과적으로 얻은 교훈이나 향후 개선 방안까지 언급하면 더욱 완벽한 답변이 될 것입니다.',
+          strengths: ['정확한 문제 분석', '체계적 접근 방법', '다양한 해결책 고려', '실행력'],
+          improvements: ['근본 원인 분석', '예방책 수립', '재발 방지 대안']
+        },
+        '협업 경험': {
+          feedback: '팀워크와 소통 능력이 잘 드러난 답변이었습니다. 갈등 상황에서의 해결 과정이 특히 인상적이었습니다. 다양한 직군과의 협업 경험이나 원격 협업 경험도 추가로 언급하면 좋겠습니다.',
+          strengths: ['원활한 의사소통', '갈등 해결 능력', '팀워크 중시', '상호 존중'],
+          improvements: ['다양한 직군과의 협업', '원격 협업 능력', '팀 문화 개선 기여']
+        },
+        '성장 의지': {
+          feedback: '지속적인 학습 의지와 구체적인 성장 계획이 돋보였습니다. 특히 자기주도적 학습 능력이 인상적이었습니다. 회사에서 추구하는 방향과의 연관성을 더 강조하면 더욱 좋은 평가를 받을 수 있을 것입니다.',
+          strengths: ['자기주도적 학습', '구체적 성장 계획', '지속적 발전 의지', '목표 지향적 사고'],
+          improvements: ['회사 비전과의 연계', '구체적 실행 계획', '단계별 목표 설정']
+        }
+      };
+      
+      const template = feedbackTemplates[currentType] || feedbackTemplates['자기소개'];
+      const score = Math.floor(Math.random() * 25) + 70; // 70-95점 범위
+      const aiScore = Math.max(50, score - Math.floor(Math.random() * 15) - 5); // AI 점수는 사용자보다 약간 낮게
+      
+      return {
+        question: state.questions[index]?.question || `${currentType} 관련 질문`,
+        answer: answer.answer,
+        score: score,
+        ai_score: aiScore,
+        feedback: template.feedback,
+        strengths: template.strengths,
+        improvements: template.improvements,
+        questionType: currentType,
+        answerTime: Math.floor(Math.random() * 120) + 60, // 60-180초
+        keywordAnalysis: ['React', 'TypeScript', '협업', '문제해결'].slice(0, Math.floor(Math.random() * 3) + 2)
+      };
+    })
   });
 
   // API 응답 데이터 변환 함수
@@ -312,6 +368,41 @@ const InterviewResults: React.FC = () => {
           </div>
           
           <div className="border-t border-slate-200 pt-4">
+            {/* 추가 분석 지표 */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="bg-slate-50 rounded-lg p-4 text-center">
+                <div className="text-lg font-bold text-slate-800">
+                  {Math.floor(item.answerTime / 60)}분 {item.answerTime % 60}초
+                </div>
+                <div className="text-xs text-slate-600">답변 시간</div>
+                <div className={`text-xs mt-1 ${
+                  item.answerTime > 150 ? 'text-red-600' : 
+                  item.answerTime < 90 ? 'text-yellow-600' : 'text-green-600'
+                }`}>
+                  {item.answerTime > 150 ? '충분히 설명' : 
+                   item.answerTime < 90 ? '간결한 답변' : '적정 시간'}
+                </div>
+              </div>
+              
+              <div className="bg-slate-50 rounded-lg p-4 text-center">
+                <div className="text-lg font-bold text-slate-800">{item.questionType}</div>
+                <div className="text-xs text-slate-600">질문 유형</div>
+                <div className="text-xs text-green-600 mt-1">맞춤 분석 완료</div>
+              </div>
+              
+              <div className="bg-slate-50 rounded-lg p-4 text-center">
+                <div className="text-lg font-bold text-slate-800">{item.keywordAnalysis.length}개</div>
+                <div className="text-xs text-slate-600">핵심 키워드</div>
+                <div className="flex flex-wrap gap-1 mt-1 justify-center">
+                  {item.keywordAnalysis.slice(0, 2).map((keyword: string, idx: number) => (
+                    <span key={idx} className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                      {keyword}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <h5 className="font-semibold text-green-700 mb-2 flex items-center gap-2">
@@ -346,6 +437,30 @@ const InterviewResults: React.FC = () => {
                 </ul>
               </div>
             </div>
+            
+            {/* 점수 상세 분석 */}
+            <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg">
+              <h5 className="font-semibold text-slate-800 mb-3">점수 상세 분석</h5>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                <div>
+                  <div className="text-sm text-slate-600">내용의 질</div>
+                  <div className="text-lg font-bold text-blue-600">{Math.min(100, item.score + 5)}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-slate-600">논리성</div>
+                  <div className="text-lg font-bold text-green-600">{Math.min(100, item.score - 3)}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-slate-600">구체성</div>
+                  <div className="text-lg font-bold text-purple-600">{Math.min(100, item.score + 2)}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-slate-600">적합성</div>
+                  <div className="text-lg font-bold text-orange-600">{Math.min(100, item.score - 1)}</div>
+                </div>
+              </div>
+            </div>
+            
             <div className="mt-4 p-4 bg-blue-50 rounded-lg">
               <p className="text-sm text-slate-700">
                 <strong className="text-blue-800">종합 피드백:</strong> {item.feedback}

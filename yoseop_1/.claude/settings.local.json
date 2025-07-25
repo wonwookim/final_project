@@ -9,6 +9,7 @@
   },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
+    "sequential-thinking",
     "supabase"
   ]
 }

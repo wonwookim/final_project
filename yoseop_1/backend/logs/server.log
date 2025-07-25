@@ -23,3 +23,23 @@
 2025-07-24 11:50:12,144 - interview_system - INFO - None:0 - 면접 시작 - 세션 ID: naver_백엔드_개발_1753325412
 2025-07-24 11:50:27,360 - interview_system - INFO - None:0 - AI 비교 면접 시작
 2025-07-24 11:50:27,375 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-25 10:47:09,347 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-25 10:47:09,372 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-25 11:09:33,290 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-25 11:09:33,326 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-25 11:30:06,007 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-25 11:31:14,862 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-25 12:23:30,446 - interview_system - INFO - None:0 - 면접 시작 - 세션 ID: daangn_프론트엔드_개발_1753413810
+2025-07-25 13:49:21,847 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-25 13:54:42,510 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-25 14:09:32,172 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-25 14:09:44,002 - interview_system - ERROR - None:0 - 결과 조회 오류: 세션을 찾을 수 없습니다
+2025-07-25 14:09:44,005 - interview_system - ERROR - None:0 - 결과 조회 오류: 결과를 조회하는 중 오류가 발생했습니다: 세션을 찾을 수 없습니다
+2025-07-25 14:09:44,009 - interview_system - ERROR - None:0 - 결과 조회 오류: 세션을 찾을 수 없습니다
+2025-07-25 14:09:44,011 - interview_system - ERROR - None:0 - 결과 조회 오류: 결과를 조회하는 중 오류가 발생했습니다: 세션을 찾을 수 없습니다
+2025-07-25 14:12:08,192 - interview_system - ERROR - None:0 - 결과 조회 오류: 세션을 찾을 수 없습니다
+2025-07-25 14:12:08,193 - interview_system - ERROR - None:0 - 결과 조회 오류: 결과를 조회하는 중 오류가 발생했습니다: 세션을 찾을 수 없습니다
+2025-07-25 14:12:09,246 - interview_system - ERROR - None:0 - 결과 조회 오류: 세션을 찾을 수 없습니다
+2025-07-25 14:12:09,247 - interview_system - ERROR - None:0 - 결과 조회 오류: 결과를 조회하는 중 오류가 발생했습니다: 세션을 찾을 수 없습니다
+2025-07-25 16:14:20,714 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-25 16:16:33,365 - interview_system - INFO - None:0 - AI 비교 면접 시작

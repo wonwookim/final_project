@@ -176,8 +176,8 @@ const InterviewSetup: React.FC = () => {
       dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
       dispatch({ type: 'SET_INTERVIEW_STATUS', payload: 'setup' });
 
-      // 면접 진행 페이지로 이동
-      navigate('/interview/active');
+      // 새로운 면접 페이지로 이동
+      navigate('/interview/active-temp');
       
     } catch (error) {
       console.error('면접 시작 실패:', error);
@@ -194,7 +194,6 @@ const InterviewSetup: React.FC = () => {
       <Header 
         title="면접 설정"
         subtitle="맞춤형 AI 면접을 위한 정보를 설정해주세요"
-        showBackButton
       />
       
       <main className="container mx-auto px-6 py-12">

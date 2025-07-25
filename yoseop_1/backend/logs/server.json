@@ -23,3 +23,23 @@
 {"timestamp": "2025-07-24T11:50:12.144511", "level": "INFO", "logger": "interview_system", "message": "면접 시작 - 세션 ID: naver_백엔드_개발_1753325412", "module": "", "function": null, "line": 0}
 {"timestamp": "2025-07-24T11:50:27.360989", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
 {"timestamp": "2025-07-24T11:50:27.375224", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T10:47:09.347229", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T10:47:09.372646", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T11:09:33.290826", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T11:09:33.326950", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T11:30:06.007394", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T11:31:14.862484", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T12:23:30.446544", "level": "INFO", "logger": "interview_system", "message": "면접 시작 - 세션 ID: daangn_프론트엔드_개발_1753413810", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T13:49:21.847287", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T13:54:42.510116", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T14:09:32.172086", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T14:09:44.002020", "level": "ERROR", "logger": "interview_system", "message": "결과 조회 오류: 세션을 찾을 수 없습니다", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T14:09:44.005052", "level": "ERROR", "logger": "interview_system", "message": "결과 조회 오류: 결과를 조회하는 중 오류가 발생했습니다: 세션을 찾을 수 없습니다", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T14:09:44.009820", "level": "ERROR", "logger": "interview_system", "message": "결과 조회 오류: 세션을 찾을 수 없습니다", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T14:09:44.011819", "level": "ERROR", "logger": "interview_system", "message": "결과 조회 오류: 결과를 조회하는 중 오류가 발생했습니다: 세션을 찾을 수 없습니다", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T14:12:08.192486", "level": "ERROR", "logger": "interview_system", "message": "결과 조회 오류: 세션을 찾을 수 없습니다", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T14:12:08.193991", "level": "ERROR", "logger": "interview_system", "message": "결과 조회 오류: 결과를 조회하는 중 오류가 발생했습니다: 세션을 찾을 수 없습니다", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T14:12:09.246027", "level": "ERROR", "logger": "interview_system", "message": "결과 조회 오류: 세션을 찾을 수 없습니다", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T14:12:09.247010", "level": "ERROR", "logger": "interview_system", "message": "결과 조회 오류: 결과를 조회하는 중 오류가 발생했습니다: 세션을 찾을 수 없습니다", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T16:14:20.714738", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-25T16:16:33.365425", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}

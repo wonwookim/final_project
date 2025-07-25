@@ -7,9 +7,11 @@ import ErrorBoundary from './components/common/ErrorBoundary';
 import MainPage from './pages/MainPage';
 import InterviewSetup from './pages/InterviewSetup';
 import InterviewActive from './pages/InterviewActive';
+import InterviewActiveTemp from './pages/InterviewActive_temp';
 import InterviewResults from './pages/InterviewResults';
 import InterviewHistory from './pages/InterviewHistory';
-// import ProfilePage from './pages/ProfilePage';
+import LoginPage from './pages/LoginPage';
+import ProfilePage from './pages/ProfilePage';
 
 function App() {
   return (
@@ -22,8 +24,11 @@ function App() {
               <Route path="/" element={<MainPage />} />
               <Route path="/interview/setup" element={<InterviewSetup />} />
               <Route path="/interview/active" element={<InterviewActive />} />
+              <Route path="/interview/active-temp" element={<InterviewActiveTemp />} />
               <Route path="/interview/results" element={<InterviewResults />} />
               <Route path="/history" element={<InterviewHistory />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
               
               {/* Redirect legacy routes */}
               <Route path="/interview" element={<Navigate to="/interview/setup" replace />} />
