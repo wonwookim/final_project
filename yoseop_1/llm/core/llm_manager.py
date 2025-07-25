@@ -18,6 +18,7 @@ class LLMProvider(Enum):
     OPENAI_GPT4 = "openai_gpt4"
     OPENAI_GPT35 = "openai_gpt35"
     OPENAI_GPT4O_MINI = "openai_gpt4o_mini"
+    OPENAI_GPT4O = "openai_gpt4o"
     GOOGLE_GEMINI_PRO = "google_gemini_pro"
     GOOGLE_GEMINI_FLASH = "google_gemini_flash"
     KT_BELIEF = "kt_belief"
@@ -234,8 +235,8 @@ class LLMManager:
         return {
             LLMProvider.OPENAI_GPT4: LLMConfig(
                 provider=LLMProvider.OPENAI_GPT4,
-                model_name="gpt-4",
-                max_tokens=400,  # 토큰 제한 강화
+                model_name="gpt-4o",
+                max_tokens=1000,  # gpt-4o용 토큰 증가
                 temperature=0.6  # 안정성 향상
             ),
             LLMProvider.OPENAI_GPT35: LLMConfig(
@@ -248,6 +249,12 @@ class LLMManager:
                 provider=LLMProvider.OPENAI_GPT4O_MINI,
                 model_name="gpt-4o-mini",
                 max_tokens=350,  # 토큰 제한 강화
+                temperature=0.6
+            ),
+            LLMProvider.OPENAI_GPT4O: LLMConfig(
+                provider=LLMProvider.OPENAI_GPT4O,
+                model_name="gpt-4o",
+                max_tokens=1000,
                 temperature=0.6
             ),
             LLMProvider.GOOGLE_GEMINI_PRO: LLMConfig(
@@ -279,7 +286,7 @@ class LLMManager:
             config.api_key = api_key
         
         # 클라이언트 생성
-        if provider in [LLMProvider.OPENAI_GPT4, LLMProvider.OPENAI_GPT35, LLMProvider.OPENAI_GPT4O_MINI]:
+        if provider in [LLMProvider.OPENAI_GPT4, LLMProvider.OPENAI_GPT35, LLMProvider.OPENAI_GPT4O_MINI, LLMProvider.OPENAI_GPT4O]:
             self.clients[provider] = OpenAIClient(config)
         elif provider in [LLMProvider.GOOGLE_GEMINI_PRO, LLMProvider.GOOGLE_GEMINI_FLASH]:
             self.clients[provider] = GoogleGeminiClient(config)

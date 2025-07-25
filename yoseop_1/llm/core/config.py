@@ -16,8 +16,8 @@ class Config:
     
     # OpenAI API 설정
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
-    GPT_MODEL: str = os.getenv("GPT_MODEL", "gpt-4o-mini")
-    MAX_TOKENS: int = int(os.getenv("MAX_TOKENS", "400"))
+    GPT_MODEL: str = os.getenv("GPT_MODEL", "gpt-4o")
+    MAX_TOKENS: int = int(os.getenv("MAX_TOKENS", "800"))
     TEMPERATURE: float = float(os.getenv("TEMPERATURE", "0.7"))
     
     # 서버 설정
