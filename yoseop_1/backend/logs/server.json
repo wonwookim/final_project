@@ -43,3 +43,5 @@
 {"timestamp": "2025-07-25T14:12:09.247010", "level": "ERROR", "logger": "interview_system", "message": "결과 조회 오류: 결과를 조회하는 중 오류가 발생했습니다: 세션을 찾을 수 없습니다", "module": "", "function": null, "line": 0}
 {"timestamp": "2025-07-25T16:14:20.714738", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
 {"timestamp": "2025-07-25T16:16:33.365425", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-26T00:33:34.247490", "level": "INFO", "logger": "interview_system", "message": "턴제 면접 시작 - 세션 ID: turn_naver_백엔드 개발자_67f1d0a0", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-26T00:36:55.234687", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}

@@ -14,6 +14,8 @@ import time
 
 # 통합 세션 관리 모듈 (FinalInterviewSystem 대체)
 from llm.session import SessionManager, InterviewSession, ComparisonSession
+# 새로운 턴제 면접관 시스템
+from llm.interviewer.service import InterviewerService
 
 # 문서 처리 및 AI 모델
 from llm.interviewer.document_processor import DocumentProcessor, UserProfile
@@ -30,6 +32,9 @@ class InterviewService:
         """서비스 초기화"""
         # 🆕 통합 세션 관리자 (FinalInterviewSystem + PersonalizedInterviewSystem 통합)
         self.session_manager = SessionManager()
+        
+        # 🚀 새로운 턴제 면접관 시스템
+        self.interviewer_service = InterviewerService()
         
         # 보조 서비스들
         self.document_processor = DocumentProcessor()
@@ -477,6 +482,139 @@ class InterviewService:
         except Exception as e:
             interview_logger.error(f"기록 조회 오류: {str(e)}")
             raise Exception(f"기록을 조회하는 중 오류가 발생했습니다: {str(e)}")
+    
+    # 🚀 새로운 턴제 면접 시스템 메서드들
+    
+    async def start_turn_based_interview(self, settings: Dict[str, Any]) -> Dict[str, Any]:
+        """턴제 면접 시작 - 새로운 InterviewerService 사용"""
+        try:
+            company_id = self.get_company_id(settings['company'])
+            
+            # 세션 ID 생성
+            session_id = f"turn_{company_id}_{settings['position']}_{uuid.uuid4().hex[:8]}"
+            
+            # 사용자 이력서 정보 (임시)
+            user_resume = {
+                'name': settings['candidate_name'],
+                'career_years': '3',
+                'technical_skills': ['Python', 'Django', 'PostgreSQL', 'AWS']
+            }
+            
+            # AI 지원자 페르소나 생성
+            from llm.candidate.model import CandidatePersona
+            ai_persona = CandidatePersona(
+                name='춘식이', summary='3년차 Python 백엔드 개발자',
+                background={'career_years': '3', 'current_position': '백엔드 개발자'},
+                technical_skills=['Python', 'Django', 'PostgreSQL', 'AWS'],
+                projects=[{'name': '이커머스 플랫폼', 'description': '대용량 트래픽 처리'}],
+                experiences=[{'company': '스타트업', 'position': '개발자', 'period': '3년'}],
+                strengths=['문제 해결', '학습 능력'], weaknesses=['완벽주의'],
+                motivation='좋은 서비스를 만들고 싶어서',
+                inferred_personal_experiences=[{'experience': '성장', 'lesson': '끊임없는 학습'}],
+                career_goal='시니어 개발자로 성장', personality_traits=['친근함', '전문성'],
+                interview_style='상호작용적', resume_id=1
+            )
+            
+            # 세션 상태 저장 (간단한 메모리 저장)
+            if not hasattr(self, 'turn_based_sessions'):
+                self.turn_based_sessions = {}
+            
+            self.turn_based_sessions[session_id] = {
+                'user_resume': user_resume,
+                'ai_persona': ai_persona,
+                'company_id': company_id,
+                'qa_history': [],
+                'user_answers': [],
+                'ai_answers': [],
+                'created_at': time.time()
+            }
+            
+            # 첫 질문 생성
+            first_question = self.interviewer_service.generate_next_question(
+                user_resume, ai_persona, company_id
+            )
+            
+            interview_logger.info(f"턴제 면접 시작 - 세션 ID: {session_id}")
+            
+            return {
+                "session_id": session_id,
+                "question": first_question,
+                "total_question_limit": self.interviewer_service.total_question_limit,
+                "current_interviewer": self.interviewer_service._get_current_interviewer(),
+                "questions_asked": self.interviewer_service.questions_asked_count,
+                "message": "턴제 면접이 시작되었습니다."
+            }
+            
+        except Exception as e:
+            interview_logger.error(f"턴제 면접 시작 오류: {str(e)}")
+            raise Exception(f"턴제 면접 시작 중 오류가 발생했습니다: {str(e)}")
+    
+    async def get_turn_based_question(self, session_id: str, user_answer: str = None) -> Dict[str, Any]:
+        """턴제 면접 다음 질문 가져오기"""
+        try:
+            if not hasattr(self, 'turn_based_sessions') or session_id not in self.turn_based_sessions:
+                raise ValueError("세션을 찾을 수 없습니다")
+            
+            session_data = self.turn_based_sessions[session_id]
+            
+            # 사용자 답변 저장
+            if user_answer:
+                session_data['user_answers'].append(user_answer)
+                
+                # AI 답변 생성 (간단한 구현)
+                ai_answer = "저는 기술적 완성도를 중시하며, 코드 리뷰와 테스트를 통해 안정적인 서비스를 만들려고 노력합니다."
+                session_data['ai_answers'].append(ai_answer)
+            
+            # 다음 질문 생성
+            next_question = self.interviewer_service.generate_next_question(
+                session_data['user_resume'],
+                session_data['ai_persona'], 
+                session_data['company_id'],
+                session_data['qa_history'],
+                user_answer,
+                session_data['ai_answers'][-1] if session_data['ai_answers'] else None
+            )
+            
+            # 면접 종료 확인
+            if next_question.get('is_final'):
+                return {
+                    "completed": True,
+                    "message": next_question['question'],
+                    "final_stats": {
+                        "total_questions": self.interviewer_service.questions_asked_count,
+                        "interviewer_stats": self.interviewer_service.interviewer_turn_state
+                    }
+                }
+            
+            # 턴 전환 확인
+            if next_question.get('force_turn_switch'):
+                # 다시 질문 생성 시도
+                next_question = self.interviewer_service.generate_next_question(
+                    session_data['user_resume'],
+                    session_data['ai_persona'], 
+                    session_data['company_id'],
+                    session_data['qa_history']
+                )
+            
+            # QA 히스토리 업데이트
+            session_data['qa_history'].append({
+                'question': next_question['question'],
+                'interviewer_type': next_question['interviewer_type']
+            })
+            
+            return {
+                "question": next_question,
+                "session_stats": {
+                    "questions_asked": self.interviewer_service.questions_asked_count,
+                    "remaining_questions": self.interviewer_service.total_question_limit - self.interviewer_service.questions_asked_count,
+                    "current_interviewer": self.interviewer_service._get_current_interviewer(),
+                    "turn_states": self.interviewer_service.interviewer_turn_state
+                }
+            }
+            
+        except Exception as e:
+            interview_logger.error(f"턴제 질문 가져오기 오류: {str(e)}")
+            raise Exception(f"질문을 가져오는 중 오류가 발생했습니다: {str(e)}")
     
     # 헬퍼 메소드들
     

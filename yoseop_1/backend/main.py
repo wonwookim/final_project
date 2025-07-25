@@ -313,6 +313,43 @@ async def get_interview_history(
         interview_logger.error(f"기록 조회 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# 🚀 새로운 턴제 면접 엔드포인트
+
+@app.post("/api/interview/turn-based/start")
+async def start_turn_based_interview(
+    settings: InterviewSettings,
+    service: InterviewService = Depends(get_interview_service)
+):
+    """턴제 면접 시작 - 새로운 InterviewerService 사용"""
+    try:
+        settings_dict = {
+            "company": settings.company,
+            "position": settings.position,
+            "candidate_name": settings.candidate_name
+        }
+        
+        result = await service.start_turn_based_interview(settings_dict)
+        return result
+        
+    except Exception as e:
+        interview_logger.error(f"턴제 면접 시작 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/interview/turn-based/question/{session_id}")
+async def get_turn_based_question(
+    session_id: str,
+    user_answer: Optional[str] = None,
+    service: InterviewService = Depends(get_interview_service)
+):
+    """턴제 면접 다음 질문 가져오기"""
+    try:
+        result = await service.get_turn_based_question(session_id, user_answer)
+        return result
+        
+    except Exception as e:
+        interview_logger.error(f"턴제 질문 가져오기 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     

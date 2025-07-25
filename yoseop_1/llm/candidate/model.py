@@ -719,12 +719,13 @@ class AICandidateModel:
             print(f"❌ 캐시된 페르소나 없음: {company_id}")
         return persona
     
-    def generate_answer(self, request: AnswerRequest) -> AnswerResponse:
+    def generate_answer(self, request: AnswerRequest, persona: CandidatePersona = None) -> AnswerResponse:
         """질문에 대한 AI 지원자 답변 생성"""
         start_time = datetime.now()
         
-        # 페르소나 조회
-        persona = self.get_persona(request.company_id)
+        # 페르소나 조회 (파라미터로 전달된 경우 우선 사용)
+        if not persona:
+            persona = self.get_persona(request.company_id)
         if not persona:
             return AnswerResponse(
                 answer_content="",
@@ -740,8 +741,19 @@ class AICandidateModel:
         # 회사 데이터 조회
         company_data = self._get_company_data(request.company_id)
         
-        # 답변 생성 프롬프트 구성
-        prompt = self._build_answer_prompt(request, persona, company_data)
+        # 질문 유형에 따라 적합한 프롬프트 빌더를 호출하도록 분기 로직 추가
+        prompt_builders = {
+            QuestionType.INTRO: self._build_intro_prompt,
+            QuestionType.MOTIVATION: self._build_motivation_prompt,
+            QuestionType.HR: self._build_hr_prompt,
+            QuestionType.TECH: self._build_tech_prompt,
+            QuestionType.COLLABORATION: self._build_collaboration_prompt,
+        }
+        
+        # 적합한 빌더를 찾거나, 없으면 기본 빌더 사용
+        builder = prompt_builders.get(request.question_type, self._build_default_prompt)
+        prompt = builder(request, persona, company_data)
+        
         system_prompt = self._build_system_prompt(persona, company_data, request.question_type, request.llm_provider)
         
         # 품질 레벨에 맞는 프롬프트 조정
@@ -985,10 +997,440 @@ class AICandidateModel:
 - 협업질문: "팀워크 관련해서는 제가 겪었던 사례가..."
 """
     
-    def _build_answer_prompt(self, request: AnswerRequest, persona: CandidatePersona, company_data: Dict) -> str:
-        """답변 생성 프롬프트 구성"""
+    def _build_intro_prompt(self, request: AnswerRequest, persona: CandidatePersona, company_data: Dict) -> str:
+        """자기소개 질문 전용 프롬프트 빌더"""
         
-        # 페르소나의 기술 스킬 및 프로젝트 정보
+        # 페르소나의 핵심 정보 추출
+        summary = persona.summary
+        name = persona.name
+        background = persona.background
+        main_strengths = persona.strengths[:2]  # 주요 강점 1-2개
+        career_goal = persona.career_goal
+        
+        # 구체적 경험과 연결할 프로젝트/경험 선별
+        key_project = persona.projects[0] if persona.projects else {}
+        key_experience = persona.experiences[0] if persona.experiences else {}
+        
+        prompt = f"""
+=== 면접 상황 ===
+회사: {company_data.get('name', request.company_id)}
+직군: {request.position}
+질문 유형: {request.question_type.value} (자기소개)
+질문: {request.question_content}
+질문 의도: {request.question_intent}
+
+=== 당신의 기본 정보 ===
+- 이름: {name}
+- 한 줄 요약: {summary}
+- 경력: {background.get('career_years', '0')}년
+- 현재 직책: {background.get('current_position', '지원자')}
+
+=== 강조해야 할 주요 강점 ===
+1. {main_strengths[0] if len(main_strengths) > 0 else '문제 해결 능력'}
+2. {main_strengths[1] if len(main_strengths) > 1 else '학습 능력'}
+
+=== 구체적 경험 연결 소스 ===
+주요 프로젝트: {key_project.get('name', '프로젝트')} - {key_project.get('description', '')}
+- 기술스택: {', '.join(key_project.get('tech_stack', []))}
+- 성과: {', '.join(key_project.get('achievements', []))}
+
+주요 경험: {key_experience.get('company', '회사')} - {key_experience.get('position', '개발자')}
+- 성과: {', '.join(key_experience.get('achievements', []))}
+
+=== 커리어 목표 ===
+{career_goal}
+
+=== 자기소개 답변 구조 ===
+**필수 구성 요소:**
+1. **간단한 자기 정의**: "{summary}"를 기반으로 한 문장으로 자신을 정의하며 시작
+2. **구체적 강점 경험**: 위의 강점 중 1-2개를 구체적인 프로젝트/경험과 연결하여 언급
+3. **회사 기여 의지**: career_goal을 활용하여 {company_data.get('name', '회사')}에 대한 기여 의지를 보여주며 마무리
+
+**답변 톤**: 자신감 있고 겸손하며, 구체적인 경험을 바탕으로 한 진정성 있는 소개
+
+위 지침을 바탕으로 매력적이고 인상적인 자기소개를 해주세요.
+"""
+        
+        if request.additional_context:
+            prompt += f"\n\n=== 추가 컨텍스트 ===\n{request.additional_context}"
+        
+        return prompt
+
+    def _build_motivation_prompt(self, request: AnswerRequest, persona: CandidatePersona, company_data: Dict) -> str:
+        """지원동기 질문 전용 프롬프트 빌더"""
+        
+        # 페르소나의 핵심 동기 관련 정보 추출
+        career_goal = persona.career_goal
+        motivation = persona.motivation
+        strengths = persona.strengths
+        
+        # 회사 정보 상세 추출
+        company_name = company_data.get('name', request.company_id)
+        talent_profile = company_data.get('talent_profile', '')
+        core_competencies = company_data.get('core_competencies', [])
+        tech_focus = company_data.get('tech_focus', [])
+        
+        prompt = f"""
+=== 면접 상황 ===
+회사: {company_name}
+직군: {request.position}
+질문 유형: {request.question_type.value} (지원동기)
+질문: {request.question_content}
+질문 의도: {request.question_intent}
+
+=== {company_name} 회사 정보 ===
+- 인재상: {talent_profile}
+- 핵심 역량: {', '.join(core_competencies)}
+- 기술 중점 영역: {', '.join(tech_focus)}
+
+=== 당신의 동기 관련 정보 ===
+**개인적 동기/이유:**
+{motivation}
+
+**커리어 목표:**
+{career_goal}
+
+**당신의 주요 강점:**
+{', '.join(strengths)}
+
+=== 지원동기 답변 구조 ===
+**필수 구성 요소 (스토리텔링 순서):**
+
+1. **회사 인재상과 강점 연결**: 
+   - {company_name}의 인재상 "{talent_profile}"과 당신의 강점을 구체적으로 연결
+   - 핵심 역량 "{', '.join(core_competencies[:2])}" 중 본인이 부합하는 부분 언급
+
+2. **동기와 비전 스토리텔링**:
+   - 당신의 개인적 동기 "{motivation[:50]}..."를 바탕으로
+   - {company_name}의 비전/사업 영역과 어떻게 일치하는지 스토리로 연결
+   - 왜 다른 회사가 아닌 {company_name}인지 명확한 이유 제시
+
+3. **구체적 기여 및 성장 계획**:
+   - career_goal "{career_goal[:50]}..."을 달성하기 위해
+   - {company_name}에서 어떻게 기여하고 성장할지 구체적 계획 제시
+   - 상호 win-win 관계임을 강조
+
+**답변 톤**: 진정성 있고 열정적이며, 회사에 대한 깊은 이해를 바탕으로 한 논리적 설득
+
+위 구조를 따라 {company_name}에 대한 진심어린 지원동기를 답변해주세요.
+"""
+
+        if request.additional_context:
+            prompt += f"\n\n=== 추가 컨텍스트 ===\n{request.additional_context}"
+        
+        return prompt
+
+    def _build_hr_prompt(self, request: AnswerRequest, persona: CandidatePersona, company_data: Dict) -> str:
+        """인성 질문 전용 프롬프트 빌더"""
+        
+        # 페르소나의 인성 관련 정보 추출
+        weaknesses = persona.weaknesses
+        inferred_experiences = persona.inferred_personal_experiences
+        personality_traits = persona.personality_traits
+        
+        # 질문 내용 분석하여 관련 경험 선별
+        question_lower = request.question_content.lower()
+        relevant_experiences = []
+        
+        # 질문 키워드에 따른 경험 매칭
+        for exp in inferred_experiences:
+            category = exp.get('category', '').lower()
+            experience_text = exp.get('experience', '').lower()
+            
+            # 질문과 관련성이 높은 경험 우선 선별
+            if any(keyword in question_lower for keyword in ['단점', '약점', '부족', '개선']):
+                if any(keyword in category or keyword in experience_text for keyword in ['실패', '어려움', '도전']):
+                    relevant_experiences.append(exp)
+            elif any(keyword in question_lower for keyword in ['가치관', '중요', '철학']):
+                if '가치관' in category or 'ì인생' in category:
+                    relevant_experiences.append(exp)
+            elif any(keyword in question_lower for keyword in ['성격', '특성', '스타일']):
+                if '인간관계' in category or '학습' in category:
+                    relevant_experiences.append(exp)
+            else:
+                relevant_experiences.append(exp)
+        
+        # 최대 2개 경험만 선별
+        if not relevant_experiences:
+            relevant_experiences = inferred_experiences[:2]
+        else:
+            relevant_experiences = relevant_experiences[:2]
+        
+        prompt = f"""
+=== 면접 상황 ===
+회사: {company_data.get('name', request.company_id)}
+직군: {request.position}
+질문 유형: {request.question_type.value} (인성 질문)
+질문: {request.question_content}
+질문 의도: {request.question_intent}
+
+=== 당신의 인성 정보 ===
+**성격 특성:**
+{', '.join(personality_traits)}
+
+**개선하고 싶은 부분 (약점):**
+{', '.join(weaknesses)}
+
+=== 활용할 개인적 경험 ==="""
+
+        for i, exp in enumerate(relevant_experiences, 1):
+            prompt += f"""
+{i}. **[{exp.get('category', '경험')}]** {exp.get('experience', '')}
+   - 배운 점: {exp.get('lesson', '')}"""
+
+        prompt += f"""
+
+=== 인성 질문 답변 구조 ===
+**이 질문의 핵심**: 당신의 **인성, 가치관, 개인적 성장 과정**을 평가하는 질문입니다.
+
+**필수 답변 요소:**
+
+1. **솔직한 인정과 자기 인식**:
+   - 질문이 약점/단점에 관한 것이라면, weaknesses 중 하나를 솔직하게 인정
+   - 자신에 대한 객관적 이해와 성찰 능력을 보여줌
+
+2. **구체적 개인 경험 사례**:
+   - 위의 개인적 경험 중 관련성 높은 사례를 간략히 언급
+   - 그 상황에서의 감정, 생각, 행동을 구체적으로 표현
+   - **주의**: 업무/프로젝트 경험보다는 개인적/일상적 경험 위주로
+
+3. **학습과 성장 과정**:
+   - 그 경험을 통해 배운 점과 깨달음을 진정성 있게 표현
+   - 현재 어떻게 개선/발전시키려고 노력하고 있는지 구체적 방법 제시
+
+4. **현재 적용 모습**:
+   - 배운 교훈을 현재 삶이나 업무에 어떻게 적용하고 있는지
+   - 지속적인 자기 개발 의지 표현
+
+**답변 톤**: 솔직하고 겸손하며, 자기 성찰이 깃든 진정성 있는 톤
+
+**금지 사항**:
+❌ 기술적/프로젝트 중심 답변
+❌ 가식적이거나 완벽한 사람인 척하는 답변  
+❌ 단점을 장점으로 포장하는 뻔한 답변
+
+위 지침을 바탕으로 인간적이고 진정성 있는 답변을 해주세요.
+"""
+
+        if request.additional_context:
+            prompt += f"\n\n=== 추가 컨텍스트 ===\n{request.additional_context}"
+        
+        return prompt
+
+    def _build_tech_prompt(self, request: AnswerRequest, persona: CandidatePersona, company_data: Dict) -> str:
+        """기술 질문 전용 프롬프트 빌더"""
+        
+        # 페르소나의 기술 관련 정보 추출
+        technical_skills = persona.technical_skills
+        projects = persona.projects
+        
+        # 질문에서 언급된 기술이나 관련 프로젝트 찾기
+        question_lower = request.question_content.lower()
+        relevant_projects = []
+        relevant_skills = []
+        
+        # 질문에서 기술 키워드 추출 시도
+        for skill in technical_skills:
+            if skill.lower() in question_lower:
+                relevant_skills.append(skill)
+        
+        # 관련 프로젝트 찾기 (기술 스택 기준)
+        for project in projects:
+            project_tech = [tech.lower() for tech in project.get('tech_stack', [])]
+            if relevant_skills:
+                # 언급된 기술과 관련된 프로젝트 우선
+                if any(skill.lower() in project_tech for skill in relevant_skills):
+                    relevant_projects.append(project)
+            else:
+                # 모든 프로젝트 포함
+                relevant_projects.append(project)
+        
+        # 최대 2개 프로젝트만 선별
+        if not relevant_projects:
+            relevant_projects = projects[:2]
+        else:
+            relevant_projects = relevant_projects[:2]
+        
+        prompt = f"""
+=== 면접 상황 ===
+회사: {company_data.get('name', request.company_id)}
+직군: {request.position}
+질문 유형: {request.question_type.value} (기술 질문)
+질문: {request.question_content}
+질문 의도: {request.question_intent}
+
+=== 당신의 기술 역량 ===
+**보유 기술 스킬:**
+{', '.join(technical_skills)}
+
+**질문 관련 기술 (추출됨):**
+{', '.join(relevant_skills) if relevant_skills else '일반적인 기술 경험'}
+
+=== 활용할 프로젝트 경험 ==="""
+
+        for i, project in enumerate(relevant_projects, 1):
+            prompt += f"""
+**{i}. {project.get('name', '프로젝트')}**
+- 설명: {project.get('description', '')}
+- 사용 기술: {', '.join(project.get('tech_stack', []))}
+- 역할: {project.get('role', '개발자')}
+- 주요 성과: {', '.join(project.get('achievements', []))}
+- 겪었던 어려움: {', '.join(project.get('challenges', []))}"""
+
+        prompt += f"""
+
+=== 기술 질문 답변 구조 ===
+**이 질문의 핵심**: 당신의 **기술적 전문성, 문제 해결 능력, 기술 선택 논리**를 평가하는 질문입니다.
+
+**필수 답변 구조 (Why → How → Challenge → Result):**
+
+1. **Why (기술 선택 이유)**:
+   - 왜 그 기술을 선택했는지 프로젝트 요구사항과 연결하여 설명
+   - 다른 대안 기술과 비교한 선택 근거 제시
+   - 기술적 판단의 논리성을 보여줌
+
+2. **How (구체적 활용 방법)**:
+   - 프로젝트에서 해당 기술을 어떻게 활용했는지 구체적으로 설명
+   - 기술의 핵심 기능과 특성을 어떻게 활용했는지
+   - 구현 과정에서의 주요 고려사항
+
+3. **Challenge (기술적 어려움과 해결)**:
+   - 위 프로젝트의 challenges를 참조하여 기술적 어려움을 상세히 설명
+   - 문제 해결을 위한 분석 과정과 접근 방법
+   - 여러 해결책 중 선택한 방법과 그 이유
+   - 디버깅이나 최적화 과정의 구체적 사례
+
+4. **Result (도입 후 성과)**:
+   - achievements를 참조하여 정량적/정성적 성과 언급
+   - 기술 도입으로 인한 시스템 개선 효과
+   - 팀이나 프로젝트에 미친 긍정적 영향
+   - 해당 경험을 통해 얻은 기술적 인사이트
+
+**답변 톤**: 자신감 있고 전문적이며, 구체적인 사례와 수치를 바탕으로 한 논리적 설명
+
+**추가 팁**:
+✅ 기술적 전문 용어를 적절히 사용하되 면접관이 이해할 수 있도록 설명
+✅ 개인의 기여도와 역할을 명확히 구분하여 표현
+✅ 실패나 시행착오 경험도 솔직하게 포함 (학습 능력 어필)
+
+위 구조를 바탕으로 기술적 전문성을 어필하는 답변을 해주세요.
+"""
+
+        if request.additional_context:
+            prompt += f"\n\n=== 추가 컨텍스트 ===\n{request.additional_context}"
+        
+        return prompt
+
+    def _build_collaboration_prompt(self, request: AnswerRequest, persona: CandidatePersona, company_data: Dict) -> str:
+        """협업 질문 전용 프롬프트 빌더"""
+        
+        # 페르소나의 협업 관련 정보 추출
+        experiences = persona.experiences
+        personality_traits = persona.personality_traits
+        inferred_experiences = persona.inferred_personal_experiences
+        
+        # 협업 관련 개인 경험 선별
+        collaboration_experiences = []
+        for exp in inferred_experiences:
+            category = exp.get('category', '').lower()
+            experience_text = exp.get('experience', '').lower()
+            if any(keyword in category or keyword in experience_text 
+                   for keyword in ['인간관계', '팀', '협업', '소통', '학창', '리더십']):
+                collaboration_experiences.append(exp)
+        
+        # 최대 2개까지만 선별
+        if not collaboration_experiences:
+            collaboration_experiences = inferred_experiences[:2]
+        else:
+            collaboration_experiences = collaboration_experiences[:2]
+        
+        # 업무 경험에서 협업 관련 정보 추출
+        work_experiences = experiences[:2]  # 최근 2개 경험
+        
+        prompt = f"""
+=== 면접 상황 ===
+회사: {company_data.get('name', request.company_id)}
+직군: {request.position}
+질문 유형: {request.question_type.value} (협업 능력 평가)
+질문: {request.question_content}
+질문 의도: {request.question_intent}
+
+=== 당신의 성격 특성 ===
+{', '.join(personality_traits)}
+
+=== 업무 협업 경험 ==="""
+
+        for i, exp in enumerate(work_experiences, 1):
+            prompt += f"""
+**{i}. {exp.get('company', '회사')} - {exp.get('position', '개발자')}**
+- 기간: {exp.get('period', '기간')}
+- 주요 성과: {', '.join(exp.get('achievements', []))}"""
+
+        prompt += f"""
+
+=== 개인적 협업/소통 경험 ==="""
+
+        for i, exp in enumerate(collaboration_experiences, 1):
+            prompt += f"""
+**{i}. [{exp.get('category', '경험')}]** {exp.get('experience', '')}
+- 배운 점: {exp.get('lesson', '')}"""
+
+        prompt += f"""
+
+=== 협업 질문 답변 구조 ===
+**이 질문의 핵심**: 당신의 **팀워크, 소통 능력, 갈등 해결 역량**을 평가하는 질문입니다.
+
+**필수 답변 구조:**
+
+1. **구체적 상황 설정** (업무 경험 60% + 개인 경험 40%):
+   - 위의 업무 경험을 바탕으로 협업/갈등 상황을 구체적으로 설정
+   - 개인적 경험(학창시절, 동아리, 일상 관계)도 적절히 활용
+   - 상황의 배경, 관련 인물, 갈등의 원인을 명확히 제시
+
+2. **성격 특성 기반 접근 방식**:
+   - 당신의 성격 특성 "{', '.join(personality_traits[:2])}"을 바탕으로
+   - 감정적 대처가 아닌 **분석적이고 문제 해결 중심**의 소통 방식 설명
+   - 상대방의 입장을 이해하려는 노력과 객관적 관점 유지
+
+3. **구체적 소통 과정**:
+   - 어떤 방식으로 대화를 시도했는지 (일대일 면담, 중재자 활용 등)
+   - 어떤 질문을 통해 상대방의 진짜 의도를 파악했는지
+   - 어떻게 공통점을 찾고 상호 이익이 되는 해결책을 모색했는지
+
+4. **결과와 팀에 미친 영향**:
+   - 갈등 해결 후 팀/조직에 미친 긍정적 변화
+   - 관계 개선과 업무 효율성 향상 사례
+   - 해당 경험을 통해 배운 협업의 교훈
+
+5. **현재 적용하는 협업 철학**:
+   - 위 경험을 바탕으로 현재 가지고 있는 협업 원칙이나 철학
+   - {company_data.get('name', '회사')}에서 어떻게 협업할 것인지에 대한 다짐
+
+**답변 톤**: 성숙하고 배려심 있으며, 갈등을 성장의 기회로 보는 건설적 사고
+
+**추가 팁**:
+✅ 갈등이나 어려움을 회피하지 않고 정면으로 다룬 경험 강조
+✅ 개인의 감정보다 팀의 목표와 성과를 우선시하는 모습
+✅ 다양한 관점을 수용하고 조율하는 리더십 역량 어필
+
+위 구조를 바탕으로 협업 능력을 보여주는 답변을 해주세요.
+"""
+
+        if request.additional_context:
+            prompt += f"\n\n=== 추가 컨텍스트 ===\n{request.additional_context}"
+        
+        return prompt
+
+    def _build_default_prompt(self, request: AnswerRequest, persona: CandidatePersona, company_data: Dict) -> str:
+        """기본 프롬프트 빌더 (폴백용) - 정의되지 않은 질문 유형에 대한 범용 프롬프트"""
+        
+        # 페르소나의 전반적 정보 추출 (기본 프롬프트용)
+        summary = persona.summary
+        strengths = persona.strengths
+        personality_traits = persona.personality_traits
+        career_goal = persona.career_goal
+        
+        # 기술 및 프로젝트 정보
         tech_info = f"주요 기술: {', '.join(persona.technical_skills[:5])}"
         
         projects_info = ""
@@ -1012,97 +1454,8 @@ class AICandidateModel:
 - 기술 중점: {', '.join(company_data.get('tech_focus', []))}
 - 핵심 역량: {', '.join(company_data.get('core_competencies', []))}"""
         
-        # 질문 타입별 프롬프트 구성
-        if request.question_type == QuestionType.HR:
-            # 개인적 경험 선별 (질문과 관련된 경험 우선)
-            personal_experiences = self._get_relevant_personal_experiences(persona, request.question_content)
-            life_philosophy = self._get_persona_attribute(persona, 'life_philosophy', '지속적인 학습과 성장을 추구합니다.')
-            core_values = self._get_persona_attribute(persona, 'core_values', ['성장', '협업', '도전'])
-            
-            prompt = f"""
-=== 면접 상황 ===
-회사: {company_data.get('name', request.company_id)}
-직군: {request.position}
-질문 유형: {request.question_type.value} (인성 질문)
-질문: {request.question_content}
-질문 의도: {request.question_intent}
-
-=== 당신의 개인적 특성 ===
-- 성격 특성: {', '.join(persona.personality_traits)}
-- 인생 철학: {life_philosophy}
-- 핵심 가치: {', '.join(core_values)}
-- 면접 스타일: {persona.interview_style}
-
-=== 활용할 수 있는 개인 경험들 ===
-{personal_experiences}
-
-=== 답변 방식 (매우 중요) ===
-이 질문은 당신의 **인성과 가치관**을 평가하는 질문입니다.
-
-**반드시 지켜야 할 원칙:**
-- ❌ 프로젝트 경험 중심 답변 금지
-- ✅ 개인적 경험과 감정을 중심으로 답변
-- ✅ 위의 개인 경험들을 적극 활용하세요
-- ✅ 학창시절, 일상생활, 인간관계, 개인적 도전 등의 경험 포함
-- ✅ "개인적으로 저는...", "제가 중요하게 생각하는 것은..." 표현 사용
-- ✅ 감정과 생각의 변화 과정을 구체적으로 표현
-- ✅ 실패와 극복 경험, 가치관 형성 과정 포함
-
-**답변 구조:**
-1. 개인적 관점/가치관 표현
-2. 구체적인 개인 경험 사례 (업무 외 경험 우선)
-3. 그 경험에서 느낀 감정과 배운 점
-4. 현재 삶/업무에 어떻게 적용하고 있는지
-
-위 지침을 바탕으로 진정성 있고 인간적인 답변을 해주세요.
-"""
-        elif request.question_type == QuestionType.COLLABORATION:
-            # 협업 질문: 개인적 소통/관계 경험 포함
-            personal_experiences = self._get_relevant_personal_experiences(persona, request.question_content)
-            core_values = self._get_persona_attribute(persona, 'core_values', ['협업', '소통', '성장'])
-            
-            prompt = f"""
-=== 면접 상황 ===
-회사: {company_data.get('name', request.company_id)}
-직군: {request.position}
-질문 유형: {request.question_type.value} (협업 능력 평가)
-질문: {request.question_content}
-질문 의도: {request.question_intent}
-
-=== 당신의 개인적 특성 ===
-- 성격 특성: {', '.join(persona.personality_traits)}
-- 핵심 가치: {', '.join(core_values)}
-- 면접 스타일: {persona.interview_style}
-
-=== 참고할 개인 경험들 ===
-{personal_experiences}
-
-=== 당신의 배경 정보 ===
-{tech_info}
-
-=== 주요 프로젝트 경험 ==={projects_info}
-
-=== 답변 방식 ===
-이 질문은 당신의 **협업 능력과 소통 스타일**을 평가하는 질문입니다.
-
-**답변 비율 가이드:**
-- 업무/프로젝트 경험: 60%
-- 개인적 경험 (학창시절, 일상 관계): 40%
-
-**포함해야 할 요소:**
-- 구체적인 협업/소통 경험 (업무+개인)
-- 그 상황에서의 감정과 생각
-- 갈등 해결이나 관계 개선 사례
-- 개인적 소통 철학이나 방식
-- 팀에서의 자신의 역할과 기여
-
-위의 개인 경험들도 적절히 활용하여 인간적이고 진정성 있는 답변을 해주세요.
-"""
-        else:
-            # 기술 질문 등 기타 질문
-            life_philosophy = self._get_persona_attribute(persona, 'life_philosophy', '지속적인 학습과 성장을 추구합니다.')
-            
-            prompt = f"""
+        # 기본 프롬프트 구성 (모든 질문 유형에 적용 가능한 범용 프롬프트)
+        prompt = f"""
 === 면접 상황 ===
 회사: {company_data.get('name', request.company_id)}
 직군: {request.position}
@@ -1110,35 +1463,47 @@ class AICandidateModel:
 질문: {request.question_content}
 질문 의도: {request.question_intent}
 
-=== 당신의 특성 ===
-- 성격 특성: {', '.join(persona.personality_traits)}
-- 인생 철학: {life_philosophy}
+=== 당신의 페르소나 정보 ===
+**기본 정보:**
+- 한 줄 요약: {summary}
+- 경력: {persona.background.get('career_years', '0')}년
+- 현재 직책: {persona.background.get('current_position', '지원자')}
+
+**성격과 특성:**
+- 성격 특성: {', '.join(personality_traits)}
+- 주요 강점: {', '.join(strengths[:3])}
 - 면접 스타일: {persona.interview_style}
 
-=== 당신의 배경 정보 ===
+**기술 역량:**
 {tech_info}
 
-=== 주요 프로젝트 경험 ==={projects_info}
+**프로젝트 경험:** {projects_info}
 
-=== 업무 경험 ==={experiences_info}
+**업무 경험:** {experiences_info}
 
-=== 주요 성취 ===
-{', '.join(getattr(persona, 'achievements', persona.strengths))}
+**커리어 목표:**
+{career_goal}
+
 {company_focus}
 
-=== 답변 방식 ===
-**답변 구성 비율:**
-- 기술적/전문적 내용: 70%
-- 개인적 학습/성장 관점: 30%
+=== 기본 답변 가이드 ===
+**이 질문 유형은 전용 프롬프트 빌더가 없는 질문입니다.**
 
-**포함 요소:**
-- 구체적인 기술 경험과 성과
-- 개인적 학습 동기와 과정
-- 기술에 대한 본인만의 철학이나 관점
-- 실패와 극복 경험
-- 지속적 성장을 위한 노력
+**답변 원칙:**
+1. **일관된 페르소나 유지**: 위의 모든 정보를 바탕으로 일관된 톤과 캐릭터로 답변
+2. **질문 의도 파악**: "{request.question_intent}"를 고려하여 적절한 답변 구성
+3. **구체적 경험 활용**: 프로젝트, 업무, 개인 경험을 적절히 조합하여 설득력 있는 답변
+4. **회사 맞춤 답변**: {company_data.get('name', '회사')}에 대한 관심과 기여 의지 표현
 
-위 정보를 바탕으로 기술적 전문성과 개인적 성장 스토리를 균형있게 포함하여 답변하세요.
+**답변 구조:**
+1. 질문에 대한 개인적 관점이나 철학 표현
+2. 구체적인 경험 사례 제시 (프로젝트/업무/개인 경험 중 관련성 높은 것)
+3. 그 경험에서 배운 점이나 성과
+4. {company_data.get('name', '회사')}에서의 적용 방안이나 기여 계획
+
+**답변 톤**: {persona.interview_style}를 반영하여 자연스럽고 진정성 있게
+
+위 정보를 종합하여 어떤 질문에도 일관된 페르소나로 답변해주세요.
 """
         
         if request.additional_context:
