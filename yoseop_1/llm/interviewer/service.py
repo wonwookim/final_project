@@ -21,7 +21,7 @@ from ..shared.models import QuestionType, QuestionAnswer
 from ..session.models import InterviewSession
 from .document_processor import DocumentProcessor, UserProfile
 from ..shared.constants import GPT_MODEL, MAX_TOKENS, TEMPERATURE, QUESTION_SECTIONS
-from ..shared.utils import parse_career_years, get_difficulty_level, safe_json_load, extract_question_and_intent
+from ..shared.utils import parse_career_years, get_difficulty_level, safe_json_load, extract_question_and_intent, get_fixed_questions
 from .prompt_templates import InterviewPromptTemplates
 from .conversation_context import ConversationContext
 # 🔄 FinalInterviewSystem 대신 SessionManager 사용
@@ -162,12 +162,7 @@ class PersonalizedInterviewSystem(SessionManager):
     
     def _load_fixed_questions(self) -> Dict[str, List[Dict]]:
         """고정 질문 데이터 로드"""
-        default_structure = {
-            "hr_questions": [], 
-            "technical_questions": [], 
-            "collaboration_questions": []
-        }
-        return safe_json_load("llm/interviewer/data/fixed_questions.json", default_structure)
+        return get_fixed_questions()
     
     def _get_fixed_question(self, section: str, difficulty_level: int = None) -> Optional[Dict]:
         """섹션별 고정 질문 캐시된 선택"""

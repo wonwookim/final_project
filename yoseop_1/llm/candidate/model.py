@@ -16,7 +16,7 @@ from ..core.llm_manager import LLMManager, LLMProvider, LLMResponse
 from .quality_controller import AnswerQualityController, QualityLevel
 from ..shared.models import QuestionType, QuestionAnswer, CandidatePersona, AnswerRequest, AnswerResponse
 from ..session.models import InterviewSession
-from ..shared.utils import safe_json_load
+from ..shared.utils import safe_json_load, get_fixed_questions
 
 # 모델별 AI 지원자 이름 매핑
 AI_CANDIDATE_NAMES = {
@@ -210,11 +210,7 @@ class AICandidateModel:
     
     def _load_fixed_questions(self) -> Dict[str, List[Dict]]:
         """고정 질문 데이터 로드"""
-        return safe_json_load("llm/interviewer/data/fixed_questions.json", {
-            "hr_questions": [], 
-            "technical_questions": [], 
-            "collaboration_questions": []
-        })
+        return get_fixed_questions()
     
     def start_ai_interview(self, company_id: str, position: str) -> str:
         """AI 지원자 면접 시작 (면접자와 동일한 플로우)"""
