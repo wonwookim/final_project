@@ -80,13 +80,13 @@ class Config:
         
         if not os.path.exists(cls.UPLOAD_FOLDER):
             os.makedirs(cls.UPLOAD_FOLDER, exist_ok=True)
-            print(f"📁 업로드 폴더 생성: {cls.UPLOAD_FOLDER}")
+            print(f"업로드 폴더 생성: {cls.UPLOAD_FOLDER}")
         
         # 로그 디렉토리 생성
         log_dir = os.path.dirname(cls.LOG_FILE)
         if log_dir and not os.path.exists(log_dir):
             os.makedirs(log_dir, exist_ok=True)
-            print(f"📁 로그 폴더 생성: {log_dir}")
+            print(f"로그 폴더 생성: {log_dir}")
         
         return True
     
