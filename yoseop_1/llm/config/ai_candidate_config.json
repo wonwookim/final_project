@@ -1,7 +1,7 @@
 {
   "model_settings": {
     "openai_gpt4o_mini": {
-      "enabled": true,
+      "enabled": false,
       "api_key": null,
       "max_tokens": 600,
       "temperature": 0.7,
@@ -9,9 +9,9 @@
       "custom_params": null
     },
     "openai_gpt4": {
-      "enabled": false,
+      "enabled": true,
       "api_key": null,
-      "max_tokens": 800,
+      "max_tokens": 1000,
       "temperature": 0.6,
       "timeout": 45.0,
       "custom_params": null
