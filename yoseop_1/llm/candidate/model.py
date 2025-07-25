@@ -1,35 +1,90 @@
 #!/usr/bin/env python3
 """
-AI 지원자 모델
-각 회사별 합격 수준의 지원자 페르소나를 기반으로 면접 답변을 생성
+AI 지원자 모델 - LLM 기반 실시간 페르소나 생성
+실제 이력서 데이터를 기반으로 LLM이 인간미 넘치는 페르소나를 실시간 생성
 """
 
 import os
+import json
+import sys
+import random
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 # .env 파일에서 환경변수 로드
 load_dotenv()
 
+# 상위 디렉토리의 database 모듈 접근을 위한 경로 추가
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+try:
+    from database.supabase_client import get_supabase_client
+except ImportError:
+    print("⚠️ Supabase 클라이언트를 가져올 수 없습니다. 파일 기반 fallback만 사용됩니다.")
+    get_supabase_client = None
+
 from ..core.llm_manager import LLMManager, LLMProvider, LLMResponse
 from .quality_controller import AnswerQualityController, QualityLevel
-from ..shared.models import QuestionType, QuestionAnswer, CandidatePersona, AnswerRequest, AnswerResponse
+from ..shared.models import QuestionType, QuestionAnswer, AnswerRequest, AnswerResponse
 from ..session.models import InterviewSession
 from ..shared.utils import safe_json_load, get_fixed_questions
 
-# 모델별 AI 지원자 이름 매핑
+# 직군 매핑 (position_name -> position_id)
+POSITION_MAPPING = {
+    "프론트엔드": 1,
+    "프론트": 1,
+    "frontend": 1,
+    "백엔드": 2,
+    "백엔드개발자": 2,
+    "backend": 2,
+    "기획": 3,
+    "기획자": 3,
+    "pm": 3,
+    "product manager": 3,
+    "AI": 4,
+    "ai": 4,
+    "인공지능": 4,
+    "머신러닝": 4,
+    "ml": 4,
+    "데이터사이언스": 5,
+    "데이터": 5,
+    "data science": 5,
+    "data scientist": 5,
+    "ds": 5
+}
+
+# 새로운 CandidatePersona 모델 (LLM 생성용)
+class CandidatePersona(BaseModel):
+    """LLM이 생성하는 인간미 넘치는 페르소나 모델"""
+    # --- LLM 생성 정보 ---
+    name: str
+    summary: str  # 예: "5년차 Java 백엔드 개발자로, 대용량 트래픽 처리와 MSA 설계에 강점이 있습니다."
+    background: Dict[str, Any]
+    technical_skills: List[str]
+    projects: List[Dict[str, Any]]  # 각 프로젝트에 'achievements'와 'challenges' 포함
+    experiences: List[Dict[str, Any]]
+    strengths: List[str]
+    weaknesses: List[str]  # 개선하고 싶은 점
+    motivation: str  # 개발자/기술에 대한 개인적 동기나 스토리
+    inferred_personal_experiences: List[Dict[str, str]]  # 이력서 기반으로 추론된 개인적 교훈
+    career_goal: str
+    personality_traits: List[str]
+    interview_style: str
+    
+    # --- 메타데이터 ---
+    generated_by: str = "gpt-4o-mini"
+    resume_id: int  # 원본 이력서 ID
+
+# 모델별 AI 지원자 이름 매핑 (호환성을 위해 유지)
 AI_CANDIDATE_NAMES = {
     LLMProvider.OPENAI_GPT4: "춘식이",
     LLMProvider.OPENAI_GPT35: "춘식이", 
     LLMProvider.OPENAI_GPT4O_MINI: "춘식이",
-    LLMProvider.GOOGLE_GEMINI_PRO: "제미니",      # 향후 추가
-    LLMProvider.GOOGLE_GEMINI_FLASH: "제미니",    # 향후 추가
-    LLMProvider.KT_BELIEF: "믿음이"               # 향후 추가
+    LLMProvider.GOOGLE_GEMINI_PRO: "제미니",
+    LLMProvider.GOOGLE_GEMINI_FLASH: "제미니",
+    LLMProvider.KT_BELIEF: "믿음이"
 }
-
-# ↓ 아래 클래스들은 llm.shared.models에서 import하여 사용
-# CandidatePersona, AnswerRequest, AnswerResponse는 이미 shared/models.py에 정의됨
 
 class AICandidateSession(InterviewSession):
     """AI 지원자 전용 면접 세션 - 면접자와 동일한 플로우"""
@@ -102,12 +157,15 @@ class AICandidateModel:
     def __init__(self, api_key: str = None):
         self.llm_manager = LLMManager()
         self.quality_controller = AnswerQualityController()
-        self.candidate_personas = self._load_candidate_personas()
         self.companies_data = self._load_companies_data()
         
         # AI 지원자 세션 관리
         self.ai_sessions: Dict[str, 'AICandidateSession'] = {}
         self.fixed_questions = self._load_fixed_questions()
+        
+        # 새로운 LLM 기반 시스템에서는 페르소나를 동적으로 생성하므로 빈 딕셔너리로 초기화
+        self.candidate_personas: Dict[str, CandidatePersona] = {}
+        self.personas_data = {"personas": {}}
         
         # API 키 자동 로드 (.env 파일에서)
         if not api_key:
@@ -121,92 +179,334 @@ class AICandidateModel:
         else:
             print("⚠️ OpenAI API 키가 설정되지 않았습니다. .env 파일에 OPENAI_API_KEY를 추가하거나 직접 전달하세요.")
     
-    def _load_candidate_personas(self) -> Dict[str, CandidatePersona]:
-        """합격자 페르소나 데이터 로드"""
-        # 실제 페르소나 파일 로드 시도
-        personas_data = safe_json_load("llm/data/candidate_personas.json", {"personas": {}})
+    def create_persona_for_interview(self, company_name: str, position_name: str) -> Optional[CandidatePersona]:
+        """
+        주어진 회사와 직군에 맞는 AI 지원자 페르소나를 LLM으로 실시간 생성
         
-        if personas_data.get("personas"):
-            # 실제 데이터가 있으면 파싱
-            print(f"✅ 페르소나 데이터 로드 성공: {list(personas_data['personas'].keys())}")
-            return self._parse_personas_data(personas_data["personas"])
-        
-        # 파일이 없는 경우 기본 구조 반환
-        print("⚠️ 페르소나 파일 없음, 기본 데이터 사용")
-        default_personas = {
-            "naver": CandidatePersona(
-                company_id="naver",
-                name="김네이버",
-                background={
-                    "career_years": "5",
-                    "current_position": "시니어 백엔드 개발자",
-                    "education": ["컴퓨터공학과 졸업", "관련 자격증"]
-                },
-                technical_skills=["Java", "Spring", "MySQL", "Redis", "Kafka", "Elasticsearch"],
-                projects=[
-                    {
-                        "name": "대용량 검색 시스템 최적화",
-                        "description": "일일 10억건 검색 쿼리 처리 성능 개선",
-                        "tech_stack": ["Java", "Elasticsearch", "Redis"],
-                        "role": "백엔드 리드",
-                        "achievements": ["응답시간 40% 개선", "서버 비용 30% 절감"]
-                    }
-                ],
-                experiences=[
-                    {
-                        "company": "스타트업 A",
-                        "position": "백엔드 개발자",
-                        "period": "2019-2024",
-                        "achievements": ["검색엔진 성능 개선", "마이크로서비스 아키텍처 구축"]
-                    }
-                ],
-                strengths=["대용량 시스템 설계", "성능 최적화", "기술 리더십"],
-                achievements=["검색 시스템 특허 출원", "사내 기술 세미나 발표"],
-                career_goal="글로벌 검색 플랫폼의 기술 아키텍트로 성장",
-                personality_traits=["분석적", "완벽주의", "협업 중시"],
-                interview_style="논리적이고 데이터 중심적",
-                success_factors=["기술적 깊이", "대규모 시스템 경험", "성능 최적화 능력"]
-            ),
-            "kakao": CandidatePersona(
-                company_id="kakao",
-                name="박카카오",
-                background={
-                    "career_years": "4",
-                    "current_position": "플랫폼 개발자",
-                    "education": ["컴퓨터공학과 졸업"]
-                },
-                technical_skills=["Node.js", "React", "MongoDB", "Docker", "Kubernetes"],
-                projects=[
-                    {
-                        "name": "메시징 플랫폼 MSA 전환",
-                        "description": "모놀리식에서 마이크로서비스로 아키텍처 전환",
-                        "tech_stack": ["Node.js", "Docker", "Kubernetes"],
-                        "role": "플랫폼 개발자",
-                        "achievements": ["배포 시간 80% 단축", "장애 복구 시간 50% 개선"]
-                    }
-                ],
-                experiences=[
-                    {
-                        "company": "IT 스타트업",
-                        "position": "풀스택 개발자",
-                        "period": "2020-2024",
-                        "achievements": ["플랫폼 아키텍처 설계", "개발 문화 개선"]
-                    }
-                ],
-                strengths=["플랫폼 설계", "MSA 아키텍처", "사회적 가치 추구"],
-                achievements=["사내 해커톤 우승", "오픈소스 기여"],
-                career_goal="사회적 가치를 창출하는 플랫폼 아키텍트",
-                personality_traits=["개방적", "창의적", "사회적 가치 중시"],
-                interview_style="협력적이고 가치 중심적",
-                success_factors=["플랫폼 경험", "협업 능력", "사회적 가치 인식"]
+        Args:
+            company_name: 회사명 (예: "네이버", "카카오")
+            position_name: 직군명 (예: "백엔드", "프론트엔드")
+            
+        Returns:
+            생성된 CandidatePersona 객체 또는 None (실패 시)
+        """
+        try:
+            print(f"🎯 {company_name} {position_name} 직군 페르소나 생성 시작...")
+            
+            # 1단계: 직군 ID 매핑
+            position_id = self._get_position_id(position_name)
+            if not position_id:
+                print(f"❌ 지원하지 않는 직군: {position_name}")
+                return None
+            
+            print(f"📊 직군 매핑: {position_name} -> {position_id}")
+            
+            # 2단계: 데이터베이스에서 이력서 조회
+            resume_data = self._get_random_resume_from_db(position_id)
+            if not resume_data:
+                print(f"❌ position_id {position_id}에 해당하는 이력서가 없습니다")
+                return None
+            
+            print(f"📋 이력서 로드 성공: ID {resume_data.get('ai_resume_id', 'unknown')}")
+            
+            # 3단계: 회사 정보 가져오기
+            company_info = self._get_company_info(company_name)
+            
+            # 4단계: LLM 프롬프트 생성
+            prompt = self._build_persona_generation_prompt(resume_data, company_name, position_name, company_info)
+            
+            # 5단계: LLM 호출로 페르소나 생성 (max_tokens 늘림)
+            print(f"🤖 LLM으로 페르소나 생성 중...")
+            llm_response = self._generate_persona_with_extended_tokens(
+                prompt,
+                self._build_system_prompt_for_persona_generation()
             )
-        }
+            
+            if llm_response.error:
+                print(f"❌ LLM 응답 오류: {llm_response.error}")
+                return None
+            
+            # 6단계: JSON 응답을 CandidatePersona 객체로 변환
+            persona = self._parse_llm_response_to_persona(llm_response.content, resume_data.get('ai_resume_id', 0))
+            
+            if persona:
+                print(f"✅ 페르소나 생성 완료: {persona.name} ({company_name} {position_name})")
+                return persona
+            else:
+                print(f"❌ 페르소나 파싱 실패")
+                return None
+                
+        except Exception as e:
+            print(f"❌ 페르소나 생성 중 오류 발생: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    def _get_position_id(self, position_name: str) -> Optional[int]:
+        """직군명을 position_id로 변환"""
+        position_lower = position_name.lower().replace(" ", "")
+        return POSITION_MAPPING.get(position_lower)
+    
+    def _get_random_resume_from_db(self, position_id: int) -> Optional[Dict[str, Any]]:
+        """데이터베이스에서 해당 직군의 이력서를 무작위로 선택"""
+        if get_supabase_client is None:
+            print("⚠️ Supabase 클라이언트를 사용할 수 없습니다")
+            return None
         
-        return default_personas
+        try:
+            supabase = get_supabase_client()
+            
+            # 해당 position_id의 이력서들 조회
+            response = supabase.table('ai_resume').select('*').eq('position_id', position_id).execute()
+            
+            if not response.data:
+                print(f"📄 position_id {position_id}에 해당하는 이력서가 없습니다")
+                return None
+            
+            # 무작위로 하나 선택
+            selected_resume = random.choice(response.data)
+            print(f"🎲 {len(response.data)}개 이력서 중 ID {selected_resume.get('ai_resume_id', 'unknown')} 선택")
+            
+            return selected_resume
+            
+        except Exception as e:
+            print(f"❌ 이력서 조회 오류: {str(e)}")
+            return None
+    
+    def _get_company_info(self, company_name: str) -> Dict[str, Any]:
+        """회사 정보 가져오기"""
+        # companies_data.json에서 회사 정보 찾기
+        for company in self.companies_data.get("companies", []):
+            if company.get("name", "").lower() == company_name.lower() or company.get("id", "").lower() == company_name.lower():
+                return company
+        
+        # 찾지 못한 경우 기본값 반환
+        return {
+            "name": company_name,
+            "core_competencies": [],
+            "tech_focus": [],
+            "talent_profile": ""
+        }
+    
+    def _build_persona_generation_prompt(self, resume_data: Dict[str, Any], company_name: str, position_name: str, company_info: Dict[str, Any]) -> str:
+        """데이터베이스 이력서를 기반으로 LLM 페르소나 생성 프롬프트 구성"""
+        
+        # 이력서 데이터 정리
+        career = resume_data.get('career', '')
+        academic = resume_data.get('academic_record', '')
+        tech_skills = resume_data.get('tech', '')
+        activities = resume_data.get('activities', '')
+        certificates = resume_data.get('certificate', '')
+        awards = resume_data.get('awards', '')
+        resume_id = resume_data.get('ai_resume_id', 0)
+        
+        # 회사 정보 정리
+        company_profile = company_info.get('talent_profile', '')
+        core_competencies = ', '.join(company_info.get('core_competencies', []))
+        tech_focus = ', '.join(company_info.get('tech_focus', []))
+        
+        prompt = f"""
+다음 이력서 데이터를 분석하여 {company_name} {position_name} 직군에 지원하는 인간미 넘치는 AI 지원자 페르소나를 생성하세요.
+
+=== 이력서 데이터 ===
+- 경력: {career}
+- 학력: {academic}
+- 기술 스탉: {tech_skills}
+- 활동: {activities}
+- 자격증: {certificates}
+- 수상: {awards}
+
+=== {company_name} 회사 정보 ===
+- 인재상: {company_profile}
+- 핵심 역량: {core_competencies}
+- 기술 중점: {tech_focus}
+
+=== 인간미 또는 생성 지시사항 ===
+1. **이름 생성**: 한국 이름으로 자연스럽게 생성하세요.
+
+2. **인간적 약점 포함**: 이력서의 강점과 함께 개선이 필요한 약점을 한 가지 포함시켜라. (예: "너무 완벽주의적인 성향", "대인관계에서 소극적인 모습")
+
+3. **프로젝트 성과와 어려움**: 각 프로젝트에는 성공적인 성과(achievements)와 함께 겪었던 어려움(challenges)을 포함시켜라.
+
+4. **개인적 동기**: 이 지원자가 왜 이 직업을 선택했는지에 대한 개인적인 동기(motivation)를 이력서 데이터를 바탕으로 추론해라.
+
+5. **개인적 교훈**: 이력서의 활동(블로그, 오픈소스, 프로젝트 등)을 바탕으로 개인적인 교훈(inferred_personal_experiences)을 추론해라. **절대 없는 사실을 지어내지 마라.**
+
+6. **JSON 스키마 준수**: 반드시 아래 지정된 JSON 스키마에 맞춰서 응답해야 한다.
+
+=== 출력 JSON 스키마 ===
+{{
+  "name": "춘식이",
+  "summary": "예: 5년차 Java 백엔드 개발자로, 대용량 트래픽 처리와 MSA 설계에 강점이 있습니다.",
+  "background": {{
+    "career_years": "예: 5",
+    "current_position": "예: 시니어 백엔드 개발자",
+    "education": ["예: OO대학교 컴퓨터공학과 졸업"]
+  }},
+  "technical_skills": ["예: Java", "예: Spring Boot"],
+  "projects": [
+    {{
+      "name": "예: 대용량 결제 시스템 개발",
+      "description": "예: 일일 100만건 결제 처리를 위한 고가용성 시스템 구축",
+      "tech_stack": ["예: Java", "예: Redis"],
+      "role": "예: 백엔드 리드 개발자",
+      "achievements": ["예: 처리 속도 40% 향상", "예: 시스템 안정성 99.9% 달성"],
+      "challenges": ["예: 대량 트래픽 발생 시 데이터베이스 병목 현상", "예: 레거시 시스템과의 호환성 문제"]
+    }}
+  ],
+  "experiences": [
+    {{
+      "company": "예: ABC 테크",
+      "position": "예: 시니어 개발자",
+      "period": "예: 2020.03 - 2024.12",
+      "achievements": ["예: 결제 시스템 성능 최적화", "예: 신입 개발자 3명 멘토링"]
+    }}
+  ],
+  "strengths": ["예: 대용량 시스템 설계", "예: 성능 최적화"],
+  "weaknesses": ["예: 완벽주의적 성향으로 때로 일정 지연"],
+  "motivation": "예: 대학 시절 처음 코딩을 배웠을 때의 성취감과 문제 해결의 즉시에 매력을 느껴 개발자의 길을 선택하게 되었습니다.",
+  "inferred_personal_experiences": [
+    {{
+      "category": "예: 학습경험",
+      "experience": "예: 개발 블로그를 운영하며 지식을 정리하고 공유하는 활동을 지속해옴",
+      "lesson": "예: 지식을 남과 공유할 때 더 깊이 이해하게 되고, 다른 사람들의 피드백으로 성장할 수 있다는 것을 배웠습니다."
+    }}
+  ],
+  "career_goal": "예: {company_name}의 고가용성 시스템을 책임지는 기술 리더로 성장하여, 전 세계 사용자들에게 안정적이고 빠른 서비스를 제공하고 싶습니다.",
+  "personality_traits": ["예: 분석적", "예: 추진력 있는"],
+  "interview_style": "예: 구체적인 경험과 수치를 바탕으로 체계적으로 설명하는 스타일",
+  "generated_by": "gpt-4o-mini",
+  "resume_id": {resume_id}
+}}
+
+**중요**: 
+1. 이름은 반드시 "춘식이"로 설정하세요.
+2. 오직 JSON 형식으로만 응답하고, 다른 설명이나 주석은 절대 추가하지 마세요.
+"""
+        return prompt.strip()
+    
+    def _build_system_prompt_for_persona_generation(self) -> str:
+        """페르소나 생성용 시스템 프롬프트"""
+        return """당신은 전문적인 AI 페르소나 생성 에이전트입니다.
+이력서 데이터를 바탕으로 인간적이고 현실적인 AI 지원자 페르소나를 생성하는 전문가입니다.
+
+핀수 지시사항:
+1. 이력서에 있는 사실만 기반으로 추론하고, 없는 사실은 절대 지어내지 마세요.
+2. 인간적인 매력과 약점을 모두 포함하여 현실적인 인물로 만드세요.
+3. 회사와 직군의 특성에 맞는 페르소나를 생성하세요.
+4. 반드시 지정된 JSON 스키마에 맞춰 응답하세요.
+5. JSON 외의 다른 내용은 절대 출력하지 마세요."""
+    
+    def _generate_persona_with_extended_tokens(self, prompt: str, system_prompt: str) -> LLMResponse:
+        """페르소나 생성용 확장된 토큰으로 LLM 호출"""
+        import openai
+        import os
+        import time
+        
+        try:
+            # OpenAI 클라이언트 직접 생성
+            api_key = os.getenv('OPENAI_API_KEY')
+            if not api_key:
+                return LLMResponse(
+                    content="",
+                    provider=LLMProvider.OPENAI_GPT4O_MINI,
+                    model_name="gpt-4o-mini",
+                    error="OpenAI API 키가 설정되지 않았습니다."
+                )
+            
+            client = openai.OpenAI(api_key=api_key)
+            start_time = time.time()
+            
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+            
+            # 페르소나 생성용 확장 파라미터
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                max_tokens=1500,  # 페르소나 생성을 위해 충분한 토큰 할당
+                temperature=0.7,
+                timeout=60.0
+            )
+            
+            response_time = time.time() - start_time
+            
+            return LLMResponse(
+                content=response.choices[0].message.content.strip(),
+                provider=LLMProvider.OPENAI_GPT4O_MINI,
+                model_name="gpt-4o-mini",
+                token_count=response.usage.total_tokens if response.usage else None,
+                response_time=response_time
+            )
+            
+        except Exception as e:
+            return LLMResponse(
+                content="",
+                provider=LLMProvider.OPENAI_GPT4O_MINI,
+                model_name="gpt-4o-mini",
+                error=f"페르소나 생성 LLM 호출 실패: {str(e)}"
+            )
+    
+    def _parse_llm_response_to_persona(self, llm_response: str, resume_id: int) -> Optional[CandidatePersona]:
+        """LLM JSON 응답을 CandidatePersona 객체로 파싱"""
+        try:
+            # JSON 영역만 추출 (전후 설명 제거)
+            response_clean = llm_response.strip()
+            
+            # JSON 블록 찾기
+            if response_clean.startswith('```json'):
+                response_clean = response_clean.replace('```json', '').replace('```', '').strip()
+            elif response_clean.startswith('```'):
+                response_clean = response_clean.replace('```', '').strip()
+            
+            # JSON 파싱
+            persona_data = json.loads(response_clean)
+            
+            # 필수 필드 검증
+            required_fields = ['name', 'summary', 'background', 'technical_skills', 'projects', 'experiences', 
+                              'strengths', 'weaknesses', 'motivation', 'inferred_personal_experiences', 
+                              'career_goal', 'personality_traits', 'interview_style']
+            
+            for field in required_fields:
+                if field not in persona_data:
+                    print(f"❌ 필수 필드 누락: {field}")
+                    return None
+            
+            # CandidatePersona 객체 생성
+            persona = CandidatePersona(
+                name=persona_data['name'],
+                summary=persona_data['summary'],
+                background=persona_data['background'],
+                technical_skills=persona_data['technical_skills'],
+                projects=persona_data['projects'],
+                experiences=persona_data['experiences'],
+                strengths=persona_data['strengths'],
+                weaknesses=persona_data['weaknesses'],
+                motivation=persona_data['motivation'],
+                inferred_personal_experiences=persona_data['inferred_personal_experiences'],
+                career_goal=persona_data['career_goal'],
+                personality_traits=persona_data['personality_traits'],
+                interview_style=persona_data['interview_style'],
+                generated_by=persona_data.get('generated_by', 'gpt-4o-mini'),
+                resume_id=resume_id
+            )
+            
+            return persona
+            
+        except json.JSONDecodeError as e:
+            print(f"❌ JSON 파싱 오류: {str(e)}")
+            print(f"LLM 응답 길이: {len(llm_response)} 문자")
+            print(f"응답 마지막 100자: ...{llm_response[-100:]}")
+            return None
+        except Exception as e:
+            print(f"❌ 페르소나 객체 생성 오류: {str(e)}")
+            return None
     
     def _load_companies_data(self) -> Dict[str, Any]:
         """회사 데이터 로드"""
-        return safe_json_load("llm/shared/data/companies_data.json", {"companies": []})
+        return safe_json_load("llm/data/companies_data.json", {"companies": []})
     
     def _load_fixed_questions(self) -> Dict[str, List[Dict]]:
         """고정 질문 데이터 로드"""
@@ -408,14 +708,15 @@ class AICandidateModel:
         return personas
     
     def get_persona(self, company_id: str) -> Optional[CandidatePersona]:
-        """회사별 페르소나 조회"""
+        """회사별 페르소나 조회 (동적 생성 시스템에서는 deprecated)"""
+        print(f"⚠️ get_persona() 메서드는 deprecated입니다. create_persona_for_interview()를 사용하세요.")
         print(f"🔍 페르소나 조회 요청: {company_id}")
-        print(f"🔍 사용 가능한 페르소나: {list(self.candidate_personas.keys())}")
+        print(f"🔍 캐시된 페르소나: {list(self.candidate_personas.keys())}")
         persona = self.candidate_personas.get(company_id)
         if persona:
-            print(f"✅ 페르소나 찾음: {persona.name}")
+            print(f"✅ 캐시된 페르소나 찾음: {persona.name}")
         else:
-            print(f"❌ 페르소나 없음: {company_id}")
+            print(f"❌ 캐시된 페르소나 없음: {company_id}")
         return persona
     
     def generate_answer(self, request: AnswerRequest) -> AnswerResponse:
@@ -822,7 +1123,7 @@ class AICandidateModel:
 === 업무 경험 ==={experiences_info}
 
 === 주요 성취 ===
-{', '.join(persona.achievements)}
+{', '.join(getattr(persona, 'achievements', persona.strengths))}
 {company_focus}
 
 === 답변 방식 ===
@@ -916,15 +1217,25 @@ class AICandidateModel:
         return results
     
     def get_available_companies(self) -> List[str]:
-        """사용 가능한 회사 목록"""
-        return list(self.candidate_personas.keys())
+        """사용 가능한 회사 목록 (companies_data.json 기반)"""
+        companies = []
+        for company in self.companies_data.get("companies", []):
+            companies.append(company.get("id", ""))
+        return [c for c in companies if c]  # 빈 문자열 제거
     
 
     def get_persona_summary(self, company_id: str) -> Dict[str, Any]:
-        """페르소나 요약 정보"""
+        """페르소나 요약 정보 (동적 생성 시스템용)"""
         persona = self.get_persona(company_id)
         if not persona:
-            return {}
+            # 동적 생성 시스템에서는 회사 정보만 반환
+            company_info = self._get_company_info(company_id)
+            return {
+                "company": company_id,
+                "company_name": company_info.get("name", company_id),
+                "available_positions": ["프론트엔드", "백엔드", "기획", "AI", "데이터사이언스"],
+                "note": "실시간 LLM 생성 페르소나 사용"
+            }
         
         return {
             "name": persona.name,
@@ -935,12 +1246,12 @@ class AICandidateModel:
             "main_skills": persona.technical_skills[:5],
             "key_strengths": persona.strengths[:3],
             "interview_style": persona.interview_style,
-            "success_factors": persona.success_factors
+            "success_factors": getattr(persona, 'success_factors', [])
         }
 
 if __name__ == "__main__":
     # AI 지원자 모델 테스트
-    print("🤖 AI 지원자 모델 테스트")
+    print("🤖 AI 지원자 모델 테스트 - LLM 기반 실시간 페르소나 생성")
     
     # 모델 초기화 (자동으로 .env에서 API 키 로드)
     ai_candidate = AICandidateModel()
@@ -949,35 +1260,122 @@ if __name__ == "__main__":
     companies = ai_candidate.get_available_companies()
     print(f"\n🏢 사용 가능한 회사: {companies}")
     
-    # 페르소나 정보 확인
-    for company in companies[:2]:
-        summary = ai_candidate.get_persona_summary(company)
-        print(f"\n👤 {company} 페르소나:")
-        print(f"  이름: {summary.get('name')}")
-        print(f"  경력: {summary.get('career_years')}년")
-        print(f"  주요 기술: {summary.get('main_skills')}")
-        print(f"  면접 스타일: {summary.get('interview_style')}")
+    # === 새로운 LLM 기반 페르소나 생성 테스트 ===
+    print("\n" + "="*60)
+    print("🎯 LLM 기반 실시간 페르소나 생성 테스트")
+    print("="*60)
     
-    # 답변 생성 테스트
     if companies:
-        test_request = AnswerRequest(
-            question_content="간단한 자기소개를 해주세요.",
-            question_type=QuestionType.INTRO,
-            question_intent="지원자의 기본 배경과 역량 파악",
-            company_id=companies[0],
-            position="백엔드 개발자",
-            quality_level=QualityLevel.GOOD,
-            llm_provider=LLMProvider.OPENAI_GPT4O_MINI
-        )
+        # 네이버 백엔드 개발자 페르소나 생성 테스트
+        print("\n🔥 네이버 백엔드 개발자 페르소나 생성 테스트")
+        naver_persona = ai_candidate.create_persona_for_interview("네이버", "백엔드")
         
-        print(f"\n📝 답변 생성 테스트 ({companies[0]}):")
-        response = ai_candidate.generate_answer(test_request)
-        
-        print(f"페르소나: {response.persona_name}")
-        print(f"품질 레벨: {response.quality_level.value}점")
-        print(f"신뢰도: {response.confidence_score}")
-        print(f"응답 시간: {response.response_time:.2f}초")
-        print(f"답변: {response.answer_content[:200]}...")
-        
-        if response.error:
-            print(f"오류: {response.error}")
+        if naver_persona:
+            print(f"\n" + "="*80)
+            print(f"🎯 생성된 페르소나 전체 정보")
+            print(f"="*80)
+            print(f"📛 이름: {naver_persona.name}")
+            print(f"📝 요약: {naver_persona.summary}")
+            print(f"🏢 이력서 ID: {naver_persona.resume_id}")
+            print(f"🤖 생성 모델: {naver_persona.generated_by}")
+            
+            print(f"\n📋 배경 정보:")
+            print(f"  • 경력: {naver_persona.background.get('career_years', '0')}년")
+            print(f"  • 현재 직책: {naver_persona.background.get('current_position', '지원자')}")
+            print(f"  • 학력: {', '.join(naver_persona.background.get('education', ['정보 없음']))}")
+            
+            print(f"\n💻 기술 스킬:")
+            for i, skill in enumerate(naver_persona.technical_skills, 1):
+                print(f"  {i}. {skill}")
+            
+            print(f"\n🚀 프로젝트 경험:")
+            for i, project in enumerate(naver_persona.projects, 1):
+                print(f"  {i}. {project.get('name', '프로젝트')}")
+                print(f"     설명: {project.get('description', '')}")
+                print(f"     기술: {', '.join(project.get('tech_stack', []))}")
+                print(f"     역할: {project.get('role', '')}")
+                if project.get('achievements'):
+                    print(f"     성과: {', '.join(project['achievements'])}")
+                if project.get('challenges'):
+                    print(f"     어려움: {', '.join(project['challenges'])}")
+                print()
+            
+            print(f"💼 업무 경험:")
+            for i, exp in enumerate(naver_persona.experiences, 1):
+                print(f"  {i}. {exp.get('company', '회사')}")
+                print(f"     직책: {exp.get('position', '개발자')}")
+                print(f"     기간: {exp.get('period', '기간')}")
+                if exp.get('achievements'):
+                    print(f"     성과: {', '.join(exp['achievements'])}")
+                print()
+            
+            print(f"💪 강점:")
+            for i, strength in enumerate(naver_persona.strengths, 1):
+                print(f"  {i}. {strength}")
+            
+            print(f"\n🤔 약점 (개선점):")
+            for i, weakness in enumerate(naver_persona.weaknesses, 1):
+                print(f"  {i}. {weakness}")
+            
+            print(f"\n❤️ 개인적 동기:")
+            print(f"  {naver_persona.motivation}")
+            
+            print(f"\n🎯 커리어 목표:")
+            print(f"  {naver_persona.career_goal}")
+            
+            print(f"\n🧠 개인적 교훈/경험:")
+            for i, exp in enumerate(naver_persona.inferred_personal_experiences, 1):
+                print(f"  {i}. [{exp.get('category', '경험')}] {exp.get('experience', '')}")
+                print(f"     교훈: {exp.get('lesson', '')}")
+                print()
+            
+            print(f"🎭 성격 특성:")
+            print(f"  {', '.join(naver_persona.personality_traits)}")
+            
+            print(f"\n🗣️ 면접 스타일:")
+            print(f"  {naver_persona.interview_style}")
+            
+            print(f"="*80)
+            
+            # 임시로 페르소나를 캐시에 저장 (기존 코드 호환성을 위해)
+            ai_candidate.candidate_personas["naver"] = naver_persona
+            
+            # 생성된 페르소나로 답변 생성 테스트
+            print(f"\n📝 생성된 페르소나로 답변 생성 테스트:")
+            test_request = AnswerRequest(
+                question_content="간단한 자기소개를 해주세요.",
+                question_type=QuestionType.INTRO,
+                question_intent="지원자의 기본 배경과 역량 파악",
+                company_id="naver",
+                position="백엔드 개발자",
+                quality_level=QualityLevel(8),
+                llm_provider=LLMProvider.OPENAI_GPT4O_MINI
+            )
+            
+            response = ai_candidate.generate_answer(test_request)
+            
+            print(f"페르소나: {response.persona_name}")
+            print(f"품질 레벨: {response.quality_level.value}점")
+            print(f"신뢰도: {response.confidence_score}")
+            print(f"응답 시간: {response.response_time:.2f}초")
+            print(f"답변: {response.answer_content[:300]}...")
+            
+            if response.error:
+                print(f"오류: {response.error}")
+        else:
+            print("❌ 페르소나 생성 실패")
+    
+    # 페르소나 요약 정보 확인 (동적 생성 시스템)
+    print(f"\n📊 회사별 정보 확인:")
+    for company in companies[:3]:
+        summary = ai_candidate.get_persona_summary(company)
+        print(f"\n👤 {company}:")
+        if summary.get('note'):
+            print(f"  타입: {summary.get('note')}")
+            print(f"  회사명: {summary.get('company_name')}")
+            print(f"  지원 가능 직군: {', '.join(summary.get('available_positions', []))}")
+        else:
+            print(f"  이름: {summary.get('name', 'N/A')}")
+            print(f"  경력: {summary.get('career_years', 'N/A')}년")
+    
+    print("\n🎉 테스트 완료! LLM 기반 페르소나 생성 시스템이 성공적으로 구현되었습니다.")
