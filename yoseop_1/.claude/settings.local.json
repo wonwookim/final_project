@@ -4,12 +4,15 @@
       "mcp__supabase__execute_sql",
       "Bash(conda activate:*)",
       "Bash(python:*)",
-      "Bash(call conda activate final)"
+      "WebFetch(domain:docs.anthropic.com)",
+      "Bash(dir:*)",
+      "Bash(ls:*)",
+      "Bash(npx @modelcontextprotocol/server-sequential-thinking:*)",
+      "mcp__smithery-ai-server-sequential-thinking__sequentialthinking"
     ]
   },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
-    "sequential-thinking",
     "supabase"
   ]
 }
