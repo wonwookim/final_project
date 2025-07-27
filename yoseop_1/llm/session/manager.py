@@ -76,9 +76,9 @@ class SessionManager:
         return self.base_session_manager.get_next_question(session_id)
     
     # 비교 세션 관리 (새로운 기능)
-    def start_comparison_interview(self, company_id: str, position: str, user_name: str, ai_name: str = "춘식이") -> str:
-        """AI 비교 면접 시작"""
-        comparison_id = self.comparison_session_manager.start_comparison_session(
+    async def start_comparison_interview(self, company_id: str, position: str, user_name: str, ai_name: str = "춘식이") -> str:
+        """AI 비교 면접 시작 (새로운 질문 생성 시스템 사용)"""
+        comparison_id = await self.comparison_session_manager.start_comparison_session(
             company_id, position, user_name, ai_name
         )
         self.all_sessions[comparison_id] = {
@@ -97,8 +97,35 @@ class SessionManager:
         return self.comparison_session_manager.submit_answer(comparison_id, answer_content, answer_type)
     
     def get_comparison_next_question(self, comparison_id: str) -> Optional[Dict[str, Any]]:
-        """비교 세션 다음 질문"""
-        return self.comparison_session_manager.get_next_question(comparison_id)
+        """비교 세션 다음 질문 (동적 질문 생성 포함)"""
+        question_data = self.comparison_session_manager.get_next_question(comparison_id)
+        
+        if not question_data:
+            return None
+        
+        # 동적 질문이고 내용이 비어있으면 LLM으로 생성
+        if (not question_data.get("is_fixed", True) and 
+            (not question_data.get("question_content") or 
+             question_data.get("question_content", "").startswith("["))):
+            
+            try:
+                session = self.get_comparison_session(comparison_id)
+                if session:
+                    # LLM으로 실시간 질문 생성
+                    generated_content = self._generate_dynamic_question_for_comparison(
+                        session, question_data
+                    )
+                    if generated_content:
+                        question_data["question_content"] = generated_content
+                        question_data["question_intent"] = f"{question_data['question_type']} 역량 평가"
+            except Exception as e:
+                print(f"동적 질문 생성 실패: {str(e)}")
+                # 폴백: 기본 질문 사용
+                question_data["question_content"] = self._get_fallback_dynamic_question(
+                    question_data.get("question_type", "HR")
+                )
+        
+        return question_data
     
     def switch_comparison_turn(self, comparison_id: str) -> Dict[str, Any]:
         """비교 세션 턴 전환"""
@@ -392,6 +419,59 @@ class SessionManager:
             QuestionType.FOLLOWUP: f"{candidate_name}님이 가장 자신 있는 경험을 더 자세히 설명해 주세요."
         }
         return fallback_questions.get(question_type, f"{candidate_name}님, 본인에 대해 말씀해 주세요.")
+    
+    def _generate_dynamic_question_for_comparison(self, session: ComparisonSession, question_data: Dict[str, Any]) -> Optional[str]:
+        """비교 면접용 동적 질문 생성"""
+        try:
+            company_data = self.get_company_data(session.company_id)
+            if not company_data:
+                return None
+            
+            question_type_str = question_data.get("question_type", "HR")
+            
+            # 질문 타입에 따른 프롬프트 생성
+            if question_type_str == "HR":
+                prompt = self._create_hr_question_prompt(company_data, "", session.user_name)
+            elif question_type_str == "TECH":
+                prompt = self._create_tech_question_prompt(company_data, "", session.position, session.user_name)
+            elif question_type_str == "COLLABORATION":
+                prompt = self._create_collaboration_question_prompt(company_data, "", session.user_name)
+            else:
+                return None
+            
+            # OpenAI API 호출
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": f"당신은 {company_data['name']}의 면접관입니다. AI 지원자와 인간 지원자가 경쟁하는 면접에서 공정한 질문을 만드세요."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=200,
+                temperature=0.7
+            )
+            
+            result = response.choices[0].message.content.strip()
+            
+            # "의도:" 부분 제거하고 질문만 추출
+            if "의도:" in result:
+                question_content = result.split("의도:")[0].strip()
+            else:
+                question_content = result
+            
+            return question_content
+            
+        except Exception as e:
+            print(f"LLM 동적 질문 생성 오류: {str(e)}")
+            return None
+    
+    def _get_fallback_dynamic_question(self, question_type: str) -> str:
+        """동적 질문 생성 실패 시 폴백 질문"""
+        fallback_questions = {
+            "HR": "본인의 강점과 약점에 대해 말씀해 주세요.",
+            "TECH": "최근에 사용해본 기술 중 가장 인상 깊었던 것은 무엇인가요?",
+            "COLLABORATION": "팀 프로젝트에서 발생한 어려움을 어떻게 해결하셨나요?",
+        }
+        return fallback_questions.get(question_type, "본인에 대해 더 자세히 말씀해 주세요.")
     
     def submit_answer(self, session_id: str, answer_content: str, current_question_data: Dict[str, str] = None) -> Dict[str, Any]:
         """답변 제출 (FinalInterviewSystem 호환)"""

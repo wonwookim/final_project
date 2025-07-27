@@ -156,7 +156,7 @@ class ComparisonSession:
     position: str
     current_question_index: int = 0
     current_phase: str = "user_turn"  # "user_turn" or "ai_turn"
-    total_questions: int = 5
+    total_questions: int = 20
     user_name: str = ""
     ai_name: str = "춘식이"
     user_answers: List[AnswerData] = field(default_factory=list)
@@ -170,10 +170,34 @@ class ComparisonSession:
         self.current_phase = "ai_turn" if self.current_phase == "user_turn" else "user_turn"
     
     def next_question(self):
-        """다음 질문으로 이동"""
+        """다음 질문으로 이동 - 사용자와 AI 모두 답변한 후에만 호출되어야 함"""
         self.current_question_index += 1
         if self.current_question_index >= self.total_questions:
             self.state = SessionState.COMPLETED
+    
+    def both_answered_current_question(self) -> bool:
+        """현재 질문에 대해 사용자와 AI 모두 답변했는지 확인"""
+        current_q_id = f"q_{self.current_question_index + 1}"
+        
+        user_answered = any(answer.question_id == current_q_id for answer in self.user_answers)
+        ai_answered = any(answer.question_id == current_q_id for answer in self.ai_answers)
+        
+        # 디버깅 로그 추가
+        from ..shared.logging_config import interview_logger
+        interview_logger.info(f"🔍 both_answered_current_question 디버깅:")
+        interview_logger.info(f"  - current_q_id: {current_q_id}")
+        interview_logger.info(f"  - current_question_index: {self.current_question_index}")
+        interview_logger.info(f"  - user_answers: {[a.question_id for a in self.user_answers]}")
+        interview_logger.info(f"  - ai_answers: {[a.question_id for a in self.ai_answers]}")
+        interview_logger.info(f"  - user_answered: {user_answered}")
+        interview_logger.info(f"  - ai_answered: {ai_answered}")
+        interview_logger.info(f"  - result: {user_answered and ai_answered}")
+        
+        return user_answered and ai_answered
+    
+    def should_advance_question(self) -> bool:
+        """질문을 다음으로 넘어가야 하는지 확인"""
+        return self.both_answered_current_question() and not self.is_complete()
     
     def is_complete(self) -> bool:
         """비교 세션 완료 여부"""

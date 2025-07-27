@@ -9,7 +9,9 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 from .models import ComparisonSession, SessionState, AnswerData
+from .question_generator import question_generator_service, QuestionPlan
 from ..shared.company_data_loader import get_company_loader
+from ..shared.logging_config import interview_logger
 
 
 class ComparisonSessionManager:
@@ -21,8 +23,11 @@ class ComparisonSessionManager:
     def __init__(self):
         self.sessions: Dict[str, ComparisonSession] = {}
         self.company_loader = get_company_loader()
+        self.question_generator = question_generator_service
+        # 각 세션별 질문 계획 저장
+        self.session_question_plans: Dict[str, List[QuestionPlan]] = {}
         
-    def start_comparison_session(self, company_id: str, position: str, user_name: str, ai_name: str = "춘식이") -> str:
+    async def start_comparison_session(self, company_id: str, position: str, user_name: str, ai_name: str = "춘식이") -> str:
         """비교 세션 시작"""
         company_data = self.company_loader.get_company_data(company_id)
         if not company_data:
@@ -43,7 +48,26 @@ class ComparisonSessionManager:
             state=SessionState.ACTIVE
         )
         
+        interview_logger.info(f"🚀 비교 세션 생성: {comparison_id} - {user_name} vs {ai_name}")
+        
+        # 🆕 질문 계획 생성 (고정 + 동적 질문 20개)
+        try:
+            interview_logger.info(f"🎯 비교 면접 질문 계획 생성 시작: {company_id} - {position}")
+            question_plan = await self.question_generator.generate_question_plan(
+                company_id=company_id,
+                position=position,
+                difficulty="중간"
+            )
+            self.session_question_plans[comparison_id] = question_plan
+            interview_logger.info(f"✅ 질문 계획 생성 완료: {len(question_plan)}개 질문")
+        except Exception as e:
+            interview_logger.error(f"❌ 질문 계획 생성 실패: {str(e)}")
+            # 폴백: 기본 질문 계획 사용
+            fallback_plan = await self.question_generator._get_fallback_question_plan(company_id, position)
+            self.session_question_plans[comparison_id] = fallback_plan
+        
         self.sessions[comparison_id] = session
+        interview_logger.info(f"📊 세션 등록 완료: 총 {len(self.session_question_plans[comparison_id])}개 질문으로 시작")
         return comparison_id
     
     def get_session(self, comparison_id: str) -> Optional[ComparisonSession]:
@@ -51,7 +75,7 @@ class ComparisonSessionManager:
         return self.sessions.get(comparison_id)
     
     def submit_answer(self, comparison_id: str, answer_content: str, answer_type: str) -> Dict[str, Any]:
-        """답변 제출 (user 또는 ai)"""
+        """답변 제출 (user 또는 ai) - 새로운 면접관 주도 방식"""
         session = self.get_session(comparison_id)
         if not session:
             raise ValueError(f"세션을 찾을 수 없습니다: {comparison_id}")
@@ -60,73 +84,178 @@ class ComparisonSessionManager:
             raise ValueError(f"활성화된 세션이 아닙니다: {session.state}")
         
         # 답변 데이터 생성
+        current_q_id = f"q_{session.current_question_index + 1}"
         answer_data = AnswerData(
-            question_id=f"q_{session.current_question_index + 1}",
+            question_id=current_q_id,
             content=answer_content,
             time_spent=0,  # TODO: 실제 시간 측정
             timestamp=datetime.now(),
             answer_type=answer_type
         )
         
-        # 답변 타입에 따라 저장
+        # 중복 답변 방지: 이미 해당 질문에 답변이 있으면 덮어쓰지 않음
         if answer_type == "human":
-            session.user_answers.append(answer_data)
+            if not any(a.question_id == current_q_id for a in session.user_answers):
+                session.user_answers.append(answer_data)
         elif answer_type == "ai":
-            session.ai_answers.append(answer_data)
+            if not any(a.question_id == current_q_id for a in session.ai_answers):
+                session.ai_answers.append(answer_data)
         else:
             raise ValueError(f"잘못된 답변 타입: {answer_type}")
         
-        # 턴 전환 또는 다음 질문으로 이동
+        # 🆕 새로운 로직: 면접관 주도 방식
         next_question = None
-        if len(session.user_answers) == len(session.ai_answers):
-            # 둘 다 답변했으면 다음 질문으로
+        interview_logger.info(f"📝 답변 제출 후 상태: current_question_index={session.current_question_index}, user_answers={len(session.user_answers)}, ai_answers={len(session.ai_answers)}")
+        
+        # 현재 질문에 대한 답변 카운트
+        user_answer_count = sum(1 for a in session.user_answers if a.question_id == current_q_id)
+        ai_answer_count = sum(1 for a in session.ai_answers if a.question_id == current_q_id)
+        
+        interview_logger.info(f"🔍 답변 카운트: user={user_answer_count}, ai={ai_answer_count}, current_q_id={current_q_id}")
+        
+        # 🆕 면접관 주도 방식: 둘 다 답변했으면 다음 질문으로 이동
+        if user_answer_count >= 1 and ai_answer_count >= 1:
+            interview_logger.info(f"✅ 현재 질문({session.current_question_index + 1}) 완료 - 다음 질문으로 이동")
             session.next_question()
-            session.current_phase = "user_turn"  # 기본적으로 사용자부터 시작
+            
             # 다음 질문 가져오기
             if not session.is_complete():
                 next_question = self.get_next_question(comparison_id)
+                interview_logger.info(f"📋 다음 질문 준비: {session.current_question_index + 1}/{session.total_questions}")
+            else:
+                interview_logger.info(f"🎉 모든 질문 완료: {session.current_question_index}/{session.total_questions}")
         else:
-            # 한쪽만 답변했으면 턴 전환
-            session.switch_phase()
+            # 아직 한쪽만 답변한 경우 - 현재 질문 정보 반환
+            interview_logger.info(f"⏳ 아직 답변 대기 중: user={user_answer_count}, ai={ai_answer_count}")
+            question_plans = self.session_question_plans.get(comparison_id, [])
+            current_index = session.current_question_index
+            
+            if 0 <= current_index < len(question_plans):
+                current_plan = question_plans[current_index]
+                company_data = self.company_loader.get_company_data(session.company_id)
+                next_question = {
+                    "question_id": current_plan.question_id,
+                    "question_number": current_index + 1,
+                    "question_content": current_plan.question_content,
+                    "question_type": current_plan.question_type,
+                    "question_intent": current_plan.question_intent,
+                    "question_level": current_plan.question_level,
+                    "is_fixed": current_plan.is_fixed,
+                    "source": current_plan.source,
+                    "current_phase": "waiting",  # 답변 대기 중
+                    "progress": session.get_progress(),
+                    "company_name": company_data.get('name', '회사') if company_data else '회사',
+                    "time_limit": 120
+                }
         
         return {
             "comparison_id": comparison_id,
             "answer_type": answer_type,
-            "current_phase": session.current_phase,
+            "current_phase": "waiting",  # 항상 대기 상태
             "progress": session.get_progress(),
             "is_complete": session.is_complete(),
             "next_question": next_question
         }
     
     def get_next_question(self, comparison_id: str) -> Optional[Dict[str, Any]]:
-        """다음 질문 가져오기"""
+        """다음 질문 가져오기 (새로운 질문 계획 시스템 사용)"""
         session = self.get_session(comparison_id)
         if not session or session.is_complete():
+            interview_logger.info(f"🚫 세션 완료 또는 없음: {comparison_id}")
             return None
         
-        # 현재 질문 번호 기반으로 질문 생성
-        # (실제 질문 생성은 interviewer 모듈에서 담당)
-        question_number = session.current_question_index + 1
+        # 질문 계획에서 현재 질문 가져오기
+        question_plans = self.session_question_plans.get(comparison_id, [])
+        if not question_plans:
+            interview_logger.error(f"❌ 질문 계획이 없습니다: {comparison_id}")
+            return None
         
-        # 간단한 질문 템플릿
-        question_templates = [
-            "자기소개를 부탁드립니다.",
-            f"저희 회사에 지원하신 동기를 말씀해 주세요.",
-            "본인의 장점과 단점은 무엇인가요?",
-            "지금까지의 경력에 대해 말씀해 주세요.",
-            "기술적으로 도전적이었던 프로젝트가 있다면 소개해 주세요."
-        ]
+        current_index = session.current_question_index
+        if current_index >= len(question_plans):
+            interview_logger.info(f"✅ 모든 질문 완료: {comparison_id} ({current_index}/{len(question_plans)})")
+            session.state = SessionState.COMPLETED  # 명시적으로 완료 상태 설정
+            return None
         
-        question_content = question_templates[min(question_number - 1, len(question_templates) - 1)]
+        current_plan = question_plans[current_index]
+        
+        # 동적 질문인 경우 실제 질문 내용이 비어있을 수 있으므로 생성해야 함
+        question_content = current_plan.question_content
+        if not question_content and not current_plan.is_fixed:
+            # 동적 질문은 나중에 LLM으로 생성
+            question_content = f"[{current_plan.question_type} 질문이 생성됩니다]"
+        
+        company_data = self.company_loader.get_company_data(session.company_id)
+        
+        result = {
+            "question_id": current_plan.question_id,
+            "question_number": current_index + 1,
+            "question_content": question_content,
+            "question_type": current_plan.question_type,
+            "question_intent": current_plan.question_intent,
+            "question_level": current_plan.question_level,
+            "is_fixed": current_plan.is_fixed,
+            "source": current_plan.source,
+            "current_phase": "interviewer_question",  # 면접관이 질문 제시
+            "progress": session.get_progress(),
+            "company_name": company_data.get('name', '회사') if company_data else '회사',
+            "time_limit": 120
+        }
+        
+        interview_logger.info(f"📝 질문 반환: {current_index + 1}/{len(question_plans)} - {current_plan.question_type} - {current_plan.source}")
+        return result
+
+    def process_interviewer_question(self, comparison_id: str) -> Dict[str, Any]:
+        """면접관이 질문을 제시하고 AI 답변을 자동 생성"""
+        session = self.get_session(comparison_id)
+        if not session:
+            raise ValueError(f"세션을 찾을 수 없습니다: {comparison_id}")
+        
+        # 현재 질문 가져오기
+        current_question = self.get_next_question(comparison_id)
+        if not current_question:
+            return {
+                "comparison_id": comparison_id,
+                "status": "completed",
+                "message": "모든 질문이 완료되었습니다."
+            }
+        
+        # AI 답변 자동 생성 (비동기로 처리)
+        import asyncio
+        try:
+            # AI 답변 생성을 위한 비동기 작업 예약
+            asyncio.create_task(self._generate_ai_answer_async(comparison_id, current_question))
+        except Exception as e:
+            interview_logger.error(f"❌ AI 답변 생성 예약 실패: {str(e)}")
         
         return {
-            "question_id": f"q_{question_number}",
-            "question_number": question_number,
-            "question_content": question_content,
-            "current_phase": session.current_phase,
-            "progress": session.get_progress(),
-            "company_name": self.company_loader.get_company_data(session.company_id).get('name', '회사')
+            "comparison_id": comparison_id,
+            "status": "question_presented",
+            "current_question": current_question,
+            "message": "면접관이 질문을 제시했습니다."
         }
+    
+    async def _generate_ai_answer_async(self, comparison_id: str, question_data: Dict[str, Any]):
+        """AI 답변을 비동기로 생성"""
+        try:
+            # AI 답변 생성 로직 (기존 AI 답변 생성 코드 활용)
+            from ..candidate.model import AICandidateModel
+            ai_model = AICandidateModel()
+            
+            # AI 세션 ID 생성
+            ai_session_id = f"ai_session_{comparison_id}"
+            
+            # AI 답변 생성
+            ai_response = ai_model.generate_ai_answer_for_question(ai_session_id, question_data)
+            
+            if ai_response and ai_response.answer_content:
+                # AI 답변을 세션에 저장
+                self.submit_answer(comparison_id, ai_response.answer_content, "ai")
+                interview_logger.info(f"✅ AI 답변 자동 생성 완료: {question_data['question_id']}")
+            else:
+                interview_logger.warning(f"⚠️ AI 답변 생성 실패: {question_data['question_id']}")
+                
+        except Exception as e:
+            interview_logger.error(f"❌ AI 답변 생성 중 오류: {str(e)}")
     
     def switch_turn(self, comparison_id: str) -> Dict[str, Any]:
         """턴 수동 전환"""

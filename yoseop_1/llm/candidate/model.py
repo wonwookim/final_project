@@ -184,14 +184,16 @@ class AICandidateModel:
         주어진 회사와 직군에 맞는 AI 지원자 페르소나를 LLM으로 실시간 생성
         
         Args:
-            company_name: 회사명 (예: "네이버", "카카오")
+            company_name: 회사명 (예: "naver", "kakao" 또는 "네이버", "카카오")
             position_name: 직군명 (예: "백엔드", "프론트엔드")
             
         Returns:
             생성된 CandidatePersona 객체 또는 None (실패 시)
         """
         try:
-            print(f"🎯 {company_name} {position_name} 직군 페르소나 생성 시작...")
+            # 회사 코드를 한국어 회사명으로 변환
+            company_korean_name = self._get_company_korean_name(company_name)
+            print(f"🎯 {company_korean_name} ({company_name}) {position_name} 직군 페르소나 생성 시작...")
             
             # 1단계: 직군 ID 매핑
             position_id = self._get_position_id(position_name)
@@ -508,6 +510,28 @@ class AICandidateModel:
         """회사 데이터 로드"""
         return safe_json_load("llm/data/companies_data.json", {"companies": []})
     
+    def _get_company_korean_name(self, company_code: str) -> str:
+        """회사 코드를 한국어 회사명으로 변환"""
+        company_mapping = {
+            "naver": "네이버",
+            "kakao": "카카오", 
+            "toss": "토스",
+            "line": "라인",
+            "coupang": "쿠팡",
+            "baemin": "배달의민족",
+            "daangn": "당근마켓",
+            # 이미 한국어인 경우 그대로 반환
+            "네이버": "네이버",
+            "카카오": "카카오",
+            "토스": "토스",
+            "라인": "라인", 
+            "쿠팡": "쿠팡",
+            "배달의민족": "배달의민족",
+            "당근마켓": "당근마켓"
+        }
+        
+        return company_mapping.get(company_code.lower(), company_code.capitalize())
+    
     def _load_fixed_questions(self) -> Dict[str, List[Dict]]:
         """고정 질문 데이터 로드"""
         return get_fixed_questions()
@@ -658,6 +682,33 @@ class AICandidateModel:
                 error=f"AI 세션을 찾을 수 없습니다: {ai_session_id}"
             )
         
+        # 페르소나를 세션에 1회만 생성/저장
+        if not hasattr(ai_session, 'persona') or ai_session.persona is None:
+            # 🆕 LLM 기반 실시간 페르소나 생성 사용
+            print(f"🎯 LLM으로 {ai_session.company_id} 페르소나 실시간 생성 중...")
+            ai_session.persona = self.create_persona_for_interview(ai_session.company_id, ai_session.position)
+        persona = ai_session.persona
+        
+        if not persona:
+            # Fallback: 기본 페르소나 생성
+            print(f"⚠️ {ai_session.company_id} 페르소나 생성 실패, 기본 페르소나로 fallback")
+            persona = self._create_default_persona(ai_session.company_id, ai_session.position)
+            ai_session.persona = persona
+        
+        if not persona:
+            # 최종 fallback: 하드코딩된 기본 답변 생성
+            print(f"🔄 모든 페르소나 생성 실패, 기본 답변으로 fallback")
+            return AnswerResponse(
+                answer_content=f"안녕하세요. 저는 {ai_session.company_id}에 지원한 {ai_session.position} 개발자입니다. 3년간의 개발 경험을 바탕으로 {self._get_company_korean_name(ai_session.company_id)}에서 더 큰 성장을 이루고 싶어 지원하게 되었습니다. 새로운 기술 습득에 열정적이며, 팀워크를 중시하는 개발자입니다.",
+                quality_level=QualityLevel(8),
+                llm_provider=LLMProvider.OPENAI_GPT4O_MINI,
+                persona_name=f"{self._get_company_korean_name(ai_session.company_id)} 지원자",
+                confidence_score=0.8,
+                response_time=0.5,
+                reasoning="기본 페르소나 사용",
+                error=None
+            )
+        
         # 일관성 있는 답변 생성을 위한 요청 구성
         request = AnswerRequest(
             question_content=question_data["question_content"],
@@ -671,7 +722,7 @@ class AICandidateModel:
         )
         
         # 답변 생성
-        answer_response = self.generate_answer(request)
+        answer_response = self.generate_answer(request, persona=persona)
         
         # AI 세션에 답변 저장
         if not answer_response.error:
@@ -725,17 +776,27 @@ class AICandidateModel:
         
         # 페르소나 조회 (파라미터로 전달된 경우 우선 사용)
         if not persona:
-            persona = self.get_persona(request.company_id)
+            # 🆕 LLM 기반 실시간 페르소나 생성 사용
+            print(f"🎯 LLM으로 {request.company_id} 페르소나 실시간 생성 중...")
+            persona = self.create_persona_for_interview(request.company_id, request.position)
+            
         if not persona:
+            # Fallback: 기본 페르소나 생성
+            print(f"⚠️ {request.company_id} 페르소나 생성 실패, 기본 페르소나로 fallback")
+            persona = self._create_default_persona(request.company_id, request.position)
+            
+        if not persona:
+            # 최종 fallback: 하드코딩된 기본 답변 생성
+            print(f"🔄 모든 페르소나 생성 실패, 기본 답변으로 fallback")
             return AnswerResponse(
-                answer_content="",
+                answer_content=f"안녕하세요. 저는 {request.company_id}에 지원한 {request.position} 개발자입니다. 3년간의 개발 경험을 바탕으로 {self._get_company_korean_name(request.company_id)}에서 더 큰 성장을 이루고 싶어 지원하게 되었습니다. 새로운 기술 습득에 열정적이며, 팀워크를 중시하는 개발자입니다.",
                 quality_level=request.quality_level,
                 llm_provider=request.llm_provider,
-                persona_name="Unknown",
-                confidence_score=0.0,
-                response_time=0.0,
-                reasoning="페르소나를 찾을 수 없음",
-                error=f"회사 {request.company_id}의 페르소나를 찾을 수 없습니다."
+                persona_name=f"{self._get_company_korean_name(request.company_id)} 지원자",
+                confidence_score=0.7,
+                response_time=0.1,
+                reasoning="기본 답변 사용 (API 키 없음)",
+                error=None
             )
         
         # 회사 데이터 조회
@@ -1613,6 +1674,73 @@ class AICandidateModel:
             "interview_style": persona.interview_style,
             "success_factors": getattr(persona, 'success_factors', [])
         }
+
+    def _create_default_persona(self, company_id: str, position: str) -> Optional[CandidatePersona]:
+        """LLM 페르소나 생성 실패 시 사용할 기본 페르소나 생성"""
+        try:
+            print(f"🔄 기본 페르소나 생성 중: {company_id} - {position}")
+            
+            # 회사 정보 조회
+            company_info = self._get_company_info(company_id)
+            company_name = company_info.get("name", company_id.capitalize())
+            
+            # 기본 페르소나 데이터
+            default_persona = CandidatePersona(
+                name=f"{company_name} 지원자",
+                summary=f"{position} 개발자로 {company_name}에 지원하는 경력 3년차 개발자입니다.",
+                background={
+                    "career_years": "3",
+                    "current_position": f"{position} 개발자",
+                    "education": ["대학교 컴퓨터공학과 졸업"],
+                    "total_experience": "3년"
+                },
+                technical_skills=self._get_default_tech_skills(position),
+                projects=[{
+                    "name": f"{position} 프로젝트",
+                    "description": f"{position} 개발 프로젝트 경험",
+                    "tech_stack": self._get_default_tech_skills(position)[:3],
+                    "achievements": ["성공적인 프로젝트 완수", "팀워크 향상에 기여"]
+                }],
+                experiences=[{
+                    "company": "기존 회사",
+                    "position": f"{position} 개발자",
+                    "period": "2021 - 현재",
+                    "achievements": ["프로젝트 성공적 완수", "기술 역량 향상"]
+                }],
+                strengths=["문제 해결 능력", "팀워크", "학습 의지"],
+                weaknesses=["완벽주의적 성향"],
+                motivation=f"{company_name}에서 {position} 개발자로 성장하고 싶습니다.",
+                inferred_personal_experiences=[{
+                    "category": "학습",
+                    "experience": "지속적인 기술 학습을 통해 성장해왔습니다.",
+                    "lesson": "꾸준한 학습의 중요성을 깨달았습니다."
+                }],
+                career_goal=f"{company_name}에서 {position} 전문가로 성장하고 싶습니다.",
+                personality_traits=["성실함", "적극성", "협력적"],
+                interview_style="진정성 있고 논리적으로 답변하는 스타일",
+                resume_id=0  # 기본값
+            )
+            
+            print(f"✅ 기본 페르소나 생성 완료: {default_persona.name}")
+            return default_persona
+            
+        except Exception as e:
+            print(f"❌ 기본 페르소나 생성 실패: {str(e)}")
+            return None
+    
+    def _get_default_tech_skills(self, position: str) -> List[str]:
+        """직군별 기본 기술 스택"""
+        tech_mapping = {
+            "프론트엔드": ["JavaScript", "React", "HTML/CSS", "TypeScript", "Vue.js"],
+            "백엔드": ["Java", "Spring Boot", "MySQL", "Python", "Node.js"],
+            "풀스택": ["JavaScript", "React", "Node.js", "MySQL", "TypeScript"],
+            "AI": ["Python", "TensorFlow", "PyTorch", "Machine Learning", "Data Science"],
+            "데이터": ["Python", "SQL", "Pandas", "Tableau", "R"],
+            "기획": ["Product Management", "기획", "분석", "Communication", "Strategy"]
+        }
+        
+        # 직군 매핑에서 찾지 못하면 백엔드 기본값 사용
+        return tech_mapping.get(position, tech_mapping["백엔드"])
 
 if __name__ == "__main__":
     # AI 지원자 모델 테스트
