@@ -10,8 +10,16 @@ import InterviewActive from './pages/InterviewActive';
 import InterviewActiveTemp from './pages/InterviewActive_temp';
 import InterviewResults from './pages/InterviewResults';
 import InterviewHistory from './pages/InterviewHistory';
+import InterviewModeSelection from './pages/interview/InterviewModeSelection';
 import LoginPage from './pages/LoginPage';
 import ProfilePage from './pages/ProfilePage';
+import SignUpPage from './pages/SignUpPage';
+
+// New Interview Flow Pages
+import JobPostingSelection from './pages/interview/JobPostingSelection';
+import ResumeSelection from './pages/interview/ResumeSelection';
+import AISetup from './pages/interview/AISetup';
+import EnvironmentCheck from './pages/interview/EnvironmentCheck';
 
 function App() {
   return (
@@ -22,16 +30,27 @@ function App() {
             <Routes>
               {/* Main Routes */}
               <Route path="/" element={<MainPage />} />
-              <Route path="/interview/setup" element={<InterviewSetup />} />
-              <Route path="/interview/active" element={<InterviewActive />} />
-              <Route path="/interview/active-temp" element={<InterviewActiveTemp />} />
-              <Route path="/interview/results" element={<InterviewResults />} />
               <Route path="/history" element={<InterviewHistory />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/signup" element={<SignUpPage />} />
               
-              {/* Redirect legacy routes */}
-              <Route path="/interview" element={<Navigate to="/interview/setup" replace />} />
+              {/* New Interview Flow - 4 Steps */}
+                              <Route path="/interview/job-posting" element={<JobPostingSelection />} />
+                <Route path="/interview/resume-selection" element={<ResumeSelection />} />
+                <Route path="/interview/interview-mode-selection" element={<InterviewModeSelection />} />
+                <Route path="/interview/ai-setup" element={<AISetup />} />
+                <Route path="/interview/environment-check" element={<EnvironmentCheck />} />
+              
+              {/* Interview Execution */}
+              <Route path="/interview/active" element={<InterviewActive />} />
+              <Route path="/interview/active-temp" element={<InterviewActiveTemp />} />
+              <Route path="/interview/results" element={<InterviewResults />} />
+              <Route path="/interview/results/:sessionId" element={<InterviewResults />} />
+              
+              {/* Legacy routes - redirect to new flow */}
+              <Route path="/interview" element={<Navigate to="/interview/job-posting" replace />} />
+              <Route path="/interview/setup" element={<Navigate to="/interview/job-posting" replace />} />
               
               {/* TODO: Implement these pages */}
               {/* <Route path="/profile" element={<ProfilePage />} /> */}

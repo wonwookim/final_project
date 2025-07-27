@@ -1,8 +1,50 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
 import { InterviewSettings, Question, InterviewResult } from '../services/api';
 
+// 새로운 타입 정의
+interface JobPosting {
+  company: string;       // 표시용 회사명
+  companyCode: string;   // API용 회사 코드
+  position: string;
+  postingId: string;
+}
+
+interface Resume {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  academic_record: string;
+  career: string;
+  tech: string;
+  activities: string;
+  certificate: string;
+  awards: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface AISettings {
+  mode: string;
+  aiQualityLevel: number;
+  interviewers: Array<{
+    id: string;
+    name: string;
+    role: string;
+  }>;
+}
+
 // 상태 타입 정의
 interface InterviewState {
+  // 새로운 4단계 플로우 데이터
+  jobPosting: JobPosting | null;
+  resume: Resume | null;
+  interviewMode: string | null;
+  aiSettings: AISettings | null;
+  
+  // 카메라 스트림
+  cameraStream: MediaStream | null;
+  
   // 면접 설정
   settings: InterviewSettings | null;
   
@@ -35,7 +77,7 @@ interface InterviewState {
   }>;
   
   // 면접 진행 상태
-  interviewStatus: 'idle' | 'setup' | 'active' | 'paused' | 'completed';
+  interviewStatus: 'idle' | 'setup' | 'ready' | 'active' | 'paused' | 'completed';
   
   // 결과
   results: InterviewResult | null;
@@ -53,6 +95,11 @@ interface InterviewState {
 
 // 액션 타입 정의
 type InterviewAction =
+  | { type: 'SET_JOB_POSTING'; payload: JobPosting }
+  | { type: 'SET_RESUME'; payload: Resume }
+  | { type: 'SET_INTERVIEW_MODE'; payload: string }
+  | { type: 'SET_AI_SETTINGS'; payload: AISettings }
+  | { type: 'SET_CAMERA_STREAM'; payload: MediaStream | null }
   | { type: 'SET_SETTINGS'; payload: InterviewSettings }
   | { type: 'SET_SESSION_ID'; payload: string }
   | { type: 'SET_QUESTIONS'; payload: Question[] }
@@ -71,6 +118,11 @@ type InterviewAction =
 
 // 초기 상태
 const initialState: InterviewState = {
+  jobPosting: null,
+  resume: null,
+  interviewMode: null,
+  aiSettings: null,
+  cameraStream: null,
   settings: null,
   sessionId: null,
   questions: [],
@@ -89,6 +141,21 @@ const initialState: InterviewState = {
 // 리듀서 함수
 function interviewReducer(state: InterviewState, action: InterviewAction): InterviewState {
   switch (action.type) {
+    case 'SET_JOB_POSTING':
+      return { ...state, jobPosting: action.payload };
+    
+    case 'SET_RESUME':
+      return { ...state, resume: action.payload };
+    
+    case 'SET_INTERVIEW_MODE':
+      return { ...state, interviewMode: action.payload };
+    
+    case 'SET_AI_SETTINGS':
+      return { ...state, aiSettings: action.payload };
+    
+    case 'SET_CAMERA_STREAM':
+      return { ...state, cameraStream: action.payload };
+    
     case 'SET_SETTINGS':
       return { ...state, settings: action.payload };
     

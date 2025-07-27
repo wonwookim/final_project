@@ -41,7 +41,7 @@ const MainPage: React.FC = () => {
   const handleStartInterview = () => {
     setIsLoading(true);
     setTimeout(() => {
-      navigate('/interview/setup');
+      navigate('/interview/job-posting');
     }, 1000);
   };
 
@@ -67,13 +67,13 @@ const MainPage: React.FC = () => {
   ];
 
   const recentCompanies = [
-    { name: "네이버", logo: "🔵", color: "bg-blue-100" },
-    { name: "카카오", logo: "💛", color: "bg-yellow-100" },
-    { name: "라인", logo: "💚", color: "bg-green-100" },
-    { name: "쿠팡", logo: "🔴", color: "bg-red-100" },
-    { name: "배민", logo: "🍔", color: "bg-orange-100" },
-    { name: "당근", logo: "🥕", color: "bg-orange-100" },
-    { name: "토스", logo: "💳", color: "bg-blue-100" }
+    { name: "네이버", logo: "/img/naver.png" },
+    { name: "카카오", logo: "/img/kakao.svg" },
+    { name: "라인", logo: "/img/line.svg" },
+    { name: "쿠팡", logo: "/img/coupang.svg" },
+    { name: "배민", logo: "/img/baemin.svg" },
+    { name: "당근", logo: "/img/daangn.png" },
+    { name: "토스", logo: "/img/toss.png" }
   ];
 
   return (
@@ -176,10 +176,13 @@ const MainPage: React.FC = () => {
             {recentCompanies.map((company, index) => (
               <div
                 key={index}
-                className={`${company.color} rounded-full px-6 py-3 flex items-center gap-2 hover:scale-105 transition-transform cursor-pointer`}
+                className="border-2 border-gray-300 rounded-2xl px-6 py-2 hover:scale-105 transition-transform cursor-pointer hover:border-gray-400"
               >
-                <span className="text-2xl">{company.logo}</span>
-                <span className="font-medium text-slate-800">{company.name}</span>
+                <img 
+                  src={company.logo} 
+                  alt={`${company.name} 로고`}
+                  className="w-8 h-8 object-contain"
+                />
               </div>
             ))}
           </div>

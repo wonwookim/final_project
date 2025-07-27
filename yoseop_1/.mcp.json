@@ -1,17 +1,8 @@
 {
   "mcpServers": {
-    "sequential-thinking": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-sequential-thinking"
-      ]
-    },
     "supabase": {
       "command": "cmd",
       "args": [
-        "/c",
-        "npx",
         "-y",
         "@supabase/mcp-server-supabase@latest",
         "--read-only",

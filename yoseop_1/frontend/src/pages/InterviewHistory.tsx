@@ -182,13 +182,13 @@ const InterviewHistory: React.FC = () => {
   };
 
   const handleViewDetails = (sessionId: string) => {
-    // 세션 ID를 사용하여 결과 페이지로 이동하거나 상세 페이지 구현
-    navigate('/interview/results', { state: { sessionId } });
+    // 세션 ID를 사용하여 결과 페이지로 이동
+    navigate(`/interview/results/${sessionId}`);
   };
 
   const handleViewFeedback = (sessionId: string) => {
-    // 피드백 상세 페이지로 이동 (추후 구현)
-    navigate('/interview/results', { state: { sessionId, tab: 'improvement' } });
+    // 피드백 상세 페이지로 이동
+    navigate(`/interview/results/${sessionId}`, { state: { tab: 'longterm' } });
   };
 
   if (isLoading) {

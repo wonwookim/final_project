@@ -10,6 +10,7 @@ const LoginPage: React.FC = () => {
     email: '',
     password: ''
   });
+  const [error, setError] = useState('');
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -17,18 +18,26 @@ const LoginPage: React.FC = () => {
       ...prev,
       [name]: value
     }));
+    setError(''); // 입력 변경 시 에러 메시지 초기화
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
-    // Mock login process
+    setError('');
+
+    // 실제 로그인 검증
+    const { email, password } = formData;
     setTimeout(() => {
       setIsLoading(false);
-      alert('로그인 기능은 준비 중입니다.');
-      // navigate('/');
-    }, 1000);
+      if (email === 'admin@naver.com' && password === '1234qwer!') {
+        // 로그인 성공
+        // navigate('/');
+        alert('로그인 성공!');
+      } else {
+        setError('이메일 또는 비밀번호를 다시 확인해주세요.');
+      }
+    }, 700);
   };
 
   const handleSocialLogin = (provider: string) => {
@@ -40,7 +49,6 @@ const LoginPage: React.FC = () => {
       <Header 
         title="로그인"
         subtitle="Beta-GO Interview에 오신 것을 환영합니다"
-        showBackButton
       />
       
       <main className="container mx-auto px-6 py-12">
@@ -52,6 +60,12 @@ const LoginPage: React.FC = () => {
             </div>
 
             <form onSubmit={handleLogin} className="space-y-6">
+              {/* 에러 메시지 */}
+              {error && (
+                <div className="mb-2 text-center text-red-600 font-semibold text-sm">
+                  {error}
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   이메일
@@ -136,7 +150,7 @@ const LoginPage: React.FC = () => {
               <p className="text-sm text-slate-600">
                 계정이 없으신가요?{' '}
                 <button 
-                  onClick={() => alert('회원가입 기능은 준비 중입니다.')}
+                  onClick={() => navigate('/signup')}
                   className="text-blue-600 hover:text-blue-700 font-medium"
                 >
                   회원가입

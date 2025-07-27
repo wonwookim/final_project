@@ -463,7 +463,7 @@ const ProfilePage: React.FC = () => {
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold text-slate-900">면접 히스토리</h2>
               <button 
-                onClick={() => navigate('/interview/setup')}
+                onClick={() => navigate('/interview/job-posting')}
                 className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
               >
                 🚀 새 면접 시작
