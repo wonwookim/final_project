@@ -365,11 +365,41 @@ class InterviewerService:
     
     def _build_topic_specific_prompt(self, user_resume: Dict, company_info: Dict, 
                                    interviewer_role: str, topic: str) -> str:
-        """주제별 특화 프롬프트 빌더"""
+        """전사적 DNA 매트릭스 프롬프트 빌더 - 회사의 모든 특성과 직무 전문성을 융합한 맞춤형 질문 생성"""
         
+        # 1. [회사 DNA] 정보 체계적 추출
         company_name = company_info.get('name', '회사')
+        talent_profile = company_info.get('talent_profile', '정의되지 않음')
+        core_competencies = ', '.join(company_info.get('core_competencies', ['정의되지 않음']))
+        tech_focus = ', '.join(company_info.get('tech_focus', ['정의되지 않음']))
+        question_direction = company_info.get('question_direction', '정의되지 않음')
         
-        # 주제별 세부 가이드라인
+        # 기업문화 정보 추출
+        company_culture = company_info.get('company_culture', {})
+        core_values = []
+        work_style = ''
+        if isinstance(company_culture, dict):
+            core_values = company_culture.get('core_values', [])
+            work_style = company_culture.get('work_style', '')
+        
+        # 2. [지원자 직무 컨텍스트] 정의
+        position = user_resume.get('position', '개발자')
+        position_contexts = {
+            "백엔드": "대용량 트래픽 처리, 데이터베이스 설계, MSA 아키텍처, API 성능 최적화, 시스템 안정성, 분산 트랜잭션",
+            "프론트엔드": "웹 성능 최적화(로딩 속도), 상태 관리, UI/UX 개선, 크로스 브라우징, 웹 접근성, Critical Rendering Path",
+            "AI": "모델 성능 및 정확도, 데이터 전처리, 과적합 방지, 최신 논문 구현, MLOps, Transformer 아키텍처",
+            "데이터사이언스": "A/B 테스트 설계, 통계적 가설 검증, Feature Engineering, 데이터 시각화, 예측 모델링, 불균형 데이터 처리",
+            "기획": "사용자 요구사항 분석, 제품 로드맵 설정, KPI 정의, 시장 조사, 기능 우선순위 결정, RICE/ICE 프레임워크"
+        }
+        
+        # 직군 매칭 (부분 문자열 포함 검사)
+        position_context = "소프트웨어 개발 일반"
+        for key, context in position_contexts.items():
+            if key in position or key.lower() in position.lower():
+                position_context = context
+                break
+        
+        # 주제별 기본 가이드라인
         topic_guidelines = {
             '인성_가치관': '지원자의 핵심 가치관과 인생 철학을 파악할 수 있는 질문',
             '성장_동기': '학습 의지와 자기계발에 대한 태도를 확인하는 질문',
@@ -388,30 +418,68 @@ class InterviewerService:
             '조직_문화_적응': '새로운 환경에 대한 적응력과 조직 문화 이해도를 평가하는 질문'
         }
         
-        guideline = topic_guidelines.get(topic, f'{topic} 관련 전문성을 평가하는 질문')
+        # 3. 안전장치: 필수 DNA 정보 부족 시 기존 방식 사용
+        critical_dna_missing = (
+            talent_profile == '정의되지 않음' and 
+            core_competencies == '정의되지 않음' and 
+            tech_focus == '정의되지 않음' and 
+            question_direction == '정의되지 않음'
+        )
         
-        prompt = f"""
+        if critical_dna_missing:
+            # 기존 프롬프트 구조로 폴백
+            guideline = topic_guidelines.get(topic, f'{topic} 관련 전문성을 평가하는 질문')
+            return f"""
 당신은 {company_name}의 {interviewer_role} 담당 면접관입니다.
 
+면접 직군: {position}
 면접 주제: {topic}
 질문 가이드라인: {guideline}
 
-회사 정보:
-- 회사명: {company_name}
-- 핵심 역량: {', '.join(company_info.get('core_competencies', []))}
-
-지원자 정보:
-- 이름: {user_resume.get('name', '지원자')}
-- 경력: {user_resume.get('career_years', '0')}년
-- 주요 기술: {', '.join(user_resume.get('technical_skills', [])[:3])}
-
-AI 지원자: 춘식이
-
 위 주제에 대해 두 지원자를 동시에 평가할 수 있는 메인 질문을 하나만 생성해주세요.
-이 질문은 해당 주제에 대한 심층적인 탐구의 시작점이 되어야 합니다.
 
 응답 형식:
 {{"question": "질문 내용", "intent": "질문 의도"}}
+"""
+        
+        # 4. [전사적 DNA 매트릭스 프롬프트] 구성
+        prompt = f"""
+### 당신의 미션 ###
+당신은 '{company_name}'의 채용 철학을 완벽하게 이해한 최고 수준의 {interviewer_role} 면접관입니다.
+아래에 주어진 [회사 DNA]와 [지원자 컨텍스트]를 '모두' 유기적으로 결합하여, 지원자의 역량을 다각도로 검증할 수 있는 매우 날카롭고 구체적인 질문을 '단 하나만' 생성하세요.
+
+### [회사 DNA 분석] ###
+- **인재상 (WHO):** 우리는 '{talent_profile}'인 사람을 원합니다.
+- **핵심 역량 (WHAT):** 우리는 '{core_competencies}' 역량을 중요하게 생각합니다.
+- **기술 중점 분야 (WHERE):** 우리의 기술은 '{tech_focus}' 분야에 집중되어 있습니다.
+- **평가 방향 (HOW):** 우리는 '{question_direction}' 방식으로 지원자를 평가합니다.
+{f"- **핵심가치:** {', '.join(core_values[:3])}" if core_values else ""}
+{f"- **업무문화:** {work_style}" if work_style else ""}
+
+### [지원자 컨텍스트] ###
+- **직군:** {position}
+- **주요 업무 영역:** {position_context}
+- **면접 주제:** {topic_guidelines.get(topic, f'{topic} 관련 전문성을 평가하는 질문')}
+
+### [질문 생성 사고 프로세스] (반드시 이 순서대로 생각하고 질문을 만드세요) ###
+1. **DNA 융합:** 우리 회사의 **인재상(WHO)**과 **핵심 역량(WHAT)**을 고려했을 때, {position} 직무에서는 어떤 행동이나 기술적 결정이 가장 중요할지 정의하세요.
+
+2. **상황 설정:** 위에서 정의한 행동/결정이 필요한 구체적인 문제 상황을 우리 회사의 **기술 중점 분야(WHERE)** 내에서 매우 현실적으로 설정하세요.
+
+3. **질문 공식화:** 설정된 상황 속에서, 지원자가 어떻게 문제를 해결했는지 그 경험을 묻는 최종 질문을 만드세요. 이 질문은 반드시 우리 회사의 **평가 방향(HOW)**에 부합해야 하며, 지원자의 기술적 깊이와 우리 회사와의 문화적 적합성을 동시에 파악할 수 있어야 합니다.
+
+### [질문 생성의 예시] ###
+**만약 회사가 '네이버', 인재상이 '기술로 모든 것을 연결하는 플랫폼 빌더', 기술 중점이 'AI', 직군이 '백엔드'라면:**
+- **사고 과정:** '기술로 모든 것을 연결'하는 '백엔드' 개발자는 기존 시스템의 한계를 넘어서는 것을 두려워하지 않아야 한다. 네이버의 'AI' 기술 중점 분야에서, 대규모 AI 모델의 데이터 서빙 파이프라인은 항상 도전적인 과제이다.
+- **좋은 질문:** "네이버의 핵심 가치 중 하나는 '기술로 모든 것을 연결'하는 것입니다. 과거 대규모 AI 모델에 실시간으로 데이터를 공급하는 파이프라인에서 병목 현상을 겪고, 이를 해결하기 위해 기존 시스템의 구조에 '도전'하여 새롭게 개선했던 경험이 있다면 말씀해주세요. 어떤 기술적 근거로 새로운 아키텍처를 제안했고, 그 결과는 어땠나요?"
+
+### [최종 출력] ###
+다른 어떤 설명도 없이, 아래 JSON 형식에 맞춰서만 응답하세요.
+{{
+  "question": "생성된 최종 질문 내용",
+  "intent": "이 질문을 통해 평가하려는 역량 (예: 데이터베이스 최적화 능력과 고객 중심 사고의 결합)",
+  "related_dna": ["평가와 관련된 회사 DNA 키워드 (예: '고객 중심', '최고의 기술력')"]
+}}
 """
         return prompt
     
@@ -570,6 +638,7 @@ def main():
         # 샘플 데이터
         user_resume = {
             'name': '김개발',
+            'position': '백엔드 개발자',  # 직군 정보 추가
             'career_years': '3',
             'technical_skills': ['Python', 'Django', 'PostgreSQL', 'AWS']
         }
