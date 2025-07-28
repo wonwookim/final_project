@@ -210,6 +210,77 @@ class ExistingTablesService:
             return []
     
     # ===================
+    # 채용공고 관련 함수
+    # ===================
+    
+    async def get_posting_by_id(self, posting_id: int) -> Optional[Dict[str, Any]]:
+        """채용공고 정보 조회 (회사, 직무 정보 포함)"""
+        try:
+            result = self.client.table('posting').select(
+                '*, company(company_id, name), position(position_id, position_name)'
+            ).eq('posting_id', posting_id).single().execute()
+            return result.data if result.data else None
+        except Exception as e:
+            logger.error(f"채용공고 조회 실패 (ID: {posting_id}): {str(e)}")
+            return None
+    
+    async def get_postings_by_company(self, company_id: int) -> List[Dict[str, Any]]:
+        """특정 회사의 모든 채용공고 조회"""
+        try:
+            result = self.client.table('posting').select(
+                '*, position(position_name)'
+            ).eq('company_id', company_id).execute()
+            return result.data if result.data else []
+        except Exception as e:
+            logger.error(f"회사별 채용공고 조회 실패 (회사 ID: {company_id}): {str(e)}")
+            return []
+    
+    async def find_posting_by_company_position(self, company_name: str, position_name: str) -> Optional[Dict[str, Any]]:
+        """회사명과 직무명으로 채용공고 찾기"""
+        try:
+            # 먼저 회사명으로 company_id 찾기
+            company_result = self.client.table('company').select('company_id').ilike('name', f'%{company_name}%').execute()
+            if not company_result.data:
+                logger.warning(f"회사를 찾을 수 없음: {company_name}")
+                return None
+            
+            company_id = company_result.data[0]['company_id']
+            
+            # 해당 회사의 포지션에서 직무명 찾기
+            position_result = self.client.table('position').select('position_id').eq('company_id', company_id).ilike('position_name', f'%{position_name}%').execute()
+            if not position_result.data:
+                logger.warning(f"직무를 찾을 수 없음: {position_name} (회사: {company_name})")
+                return None
+            
+            position_id = position_result.data[0]['position_id']
+            
+            # 채용공고 찾기
+            posting_result = self.client.table('posting').select(
+                '*, company(company_id, name), position(position_id, position_name)'
+            ).eq('company_id', company_id).eq('position_id', position_id).execute()
+            
+            if posting_result.data:
+                return posting_result.data[0]  # 첫 번째 매칭되는 채용공고 반환
+            else:
+                logger.warning(f"채용공고를 찾을 수 없음: {company_name} - {position_name}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"채용공고 검색 실패 ({company_name}, {position_name}): {str(e)}")
+            return None
+    
+    async def get_all_postings(self) -> List[Dict[str, Any]]:
+        """모든 채용공고 조회 (회사, 직무 정보 포함)"""
+        try:
+            result = self.client.table('posting').select(
+                '*, company(name), position(position_name)'
+            ).execute()
+            return result.data if result.data else []
+        except Exception as e:
+            logger.error(f"전체 채용공고 조회 실패: {str(e)}")
+            return []
+    
+    # ===================
     # 유틸리티 함수
     # ===================
     

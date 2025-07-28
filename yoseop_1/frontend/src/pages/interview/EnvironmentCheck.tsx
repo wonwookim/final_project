@@ -225,7 +225,7 @@ const EnvironmentCheck: React.FC = () => {
     
     // 4단계 플로우 데이터를 기존 InterviewActive가 기대하는 형식으로 변환
     const finalSettings = {
-      company: state.jobPosting?.companyCode || state.jobPosting?.company || '',  // API용 회사 코드 우선 사용
+      company: state.jobPosting?.company || '',  // 회사명 사용
       position: state.jobPosting?.position || '',
       mode: state.aiSettings?.mode || 'personalized',
       difficulty: '중간',
