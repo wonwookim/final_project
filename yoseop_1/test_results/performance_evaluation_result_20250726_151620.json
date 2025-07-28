@@ -1,0 +1,148 @@
+{
+  "timestamp": "2025-07-26T15:16:06.541734",
+  "test_scenario": "전체 면접 사이클 성능 평가",
+  "steps": [
+    {
+      "step": 1,
+      "name": "페르소나 생성",
+      "status": "success",
+      "input": {
+        "company": "네이버",
+        "position": "백엔드"
+      },
+      "output": {
+        "persona_name": "춘식이",
+        "summary": "전자공학 전공의 백엔드 개발자로, 데이터 기반 의사결정과 사용자 중심 혁신에 강점을 지니고 있습니다.",
+        "technical_skills": [
+          "Node.js",
+          "MongoDB",
+          "머신러닝"
+        ],
+        "projects_count": 1,
+        "background": {
+          "career_years": "0",
+          "current_position": "신입 백엔드 개발자",
+          "education": [
+            "지거국 전자공학부 졸업"
+          ]
+        }
+      },
+      "evaluation_notes": [
+        "페르소나명: 춘식이 - 이력서와 일치",
+        "기술 스택 수: 3개 - 충분한 다양성",
+        "프로젝트 경험: 1개 - 적절한 경험 수준"
+      ]
+    },
+    {
+      "step": 2,
+      "name": "메인 질문 생성",
+      "status": "success",
+      "input": {
+        "persona_name": "춘식이",
+        "technical_skills": [
+          "Node.js",
+          "MongoDB",
+          "머신러닝"
+        ],
+        "projects": [
+          "개인 맞춤형 헬스케어 앱 개발"
+        ]
+      },
+      "output": {
+        "interviewer": null,
+        "question_type": "",
+        "question": "자기소개를 부탁드립니다.",
+        "intent": "지원자의 기본 정보와 성격, 역량을 파악"
+      },
+      "evaluation_metrics": {
+        "resume_relevance_score": 0,
+        "is_tech_question": false,
+        "question_length": 2,
+        "has_specific_context": false
+      },
+      "evaluation_notes": [
+        "페르소나 연관성: 0개 키워드 매칭",
+        "질문 유형:  - 기술 질문 여부 확인됨",
+        "질문 길이: 2단어 - 적절한 상세도",
+        "구체성: 일반적 질문"
+      ]
+    },
+    {
+      "step": 3,
+      "name": "답변 생성",
+      "status": "success",
+      "input": {
+        "question": "자기소개를 부탁드립니다.",
+        "persona_name": "춘식이",
+        "company": "네이버",
+        "position": "백엔드",
+        "quality_level": "VERY_GOOD"
+      },
+      "output": {
+        "answer": "안녕하세요, 저는 춘식이라고 합니다. 전자공학 전공의 백엔드 개발자로, 데이터 기반 의사결정과 사용자 중심 혁신에 강점을 지니고 있습니다. 개인 맞춤형 헬스케어 앱 개발 프로젝트에서 혈당측정기와 연동하여 사용자 맞춤형 레시피 및 운동 추천 기능을 구현하였고, 이를 통해 사용자 피드백을 반영하여 앱 기능을 개선하여 SW 특허를 출원하는 성과를 거두었습니다. \n\n네이버의 혁신적인 백엔드 개발자로 성장하여, 사용자에게 더 나은 경험을 제공하는 플랫폼을 만드는 일에 기여하고 싶습니다. 면접 기회를 주셔서 감사합니다.",
+        "quality_level": "QualityLevel.VERY_GOOD",
+        "answer_length": 65
+      },
+      "evaluation_metrics": {
+        "persona_consistency_score": 1,
+        "has_specific_examples": true,
+        "has_quantitative_data": false,
+        "answer_length": 65,
+        "technical_depth": 0
+      },
+      "evaluation_notes": [
+        "페르소나 일관성: 1개 관련 키워드 포함",
+        "구체적 사례: 프로젝트 경험 언급 있음",
+        "정량적 데이터: 정성적 답변",
+        "답변 길이: 65단어 - 적절한 상세도",
+        "기술적 깊이: 0개 기술 스택 언급"
+      ]
+    },
+    {
+      "step": 4,
+      "name": "꼬리 질문 생성",
+      "status": "success",
+      "input": {
+        "main_question": "자기소개를 부탁드립니다.",
+        "answer": "안녕하세요, 저는 춘식이라고 합니다. 전자공학 전공의 백엔드 개발자로, 데이터 기반 의사결정과 사용자 중심 혁신에 강점을 지니고 있습니다. 개인 맞춤형 헬스케어 앱 개발 프로젝트에서 혈당측정기와 연동하여 사용자 맞춤형 레시피 및 운동 추천 기능을 구현하였고, 이를 통해 사용자 피드백을 반영하여 앱 기능을 개선하여 SW 특허를 출원하는 성과를 거두었습니다. ...",
+        "persona_name": "춘식이"
+      },
+      "output": {
+        "interviewer": null,
+        "question_type": null,
+        "followup_question": "자기소개를 부탁드립니다.",
+        "intent": "지원자의 기본 정보와 성격, 역량을 파악"
+      },
+      "evaluation_metrics": {
+        "answer_relevance_score": 0,
+        "has_depth_indicators": false,
+        "question_length": 2,
+        "is_contextual": false,
+        "technical_focus": false
+      },
+      "evaluation_notes": [
+        "답변 연관성: 0개 공통 키워드",
+        "심층성: 표면적 질문",
+        "맥락 연결: 연관성 부족",
+        "기술적 집중: 일반적 질문",
+        "질문 길이: 2단어"
+      ]
+    }
+  ],
+  "performance_scores": {
+    "overall_score": 16.0,
+    "success_rate": 100.0,
+    "detailed_scores": {
+      "persona_generation": 30,
+      "main_question_quality": 4,
+      "answer_quality": 30,
+      "followup_question_quality": 0
+    },
+    "performance_grade": "D급 (개선필요)"
+  },
+  "test_configuration": {
+    "company": "네이버",
+    "position": "백엔드"
+  },
+  "execution_time_seconds": 14.051417112350464
+}
