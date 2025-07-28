@@ -142,3 +142,6 @@ celerybeat.pid
 .dmypy.json
 dmypy.json*.pyc
 *.log
+
+*.pyc
+__pycache__/
