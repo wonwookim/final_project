@@ -82,6 +82,7 @@ class InterviewSettings(BaseModel):
     difficulty: str = "중간"
     candidate_name: str
     documents: Optional[List[str]] = None
+    posting_id: Optional[int] = None  # 🆕 채용공고 ID - 지정되면 실제 DB 데이터 사용
 
 class QuestionRequest(BaseModel):
     """질문 요청 모델"""
@@ -224,6 +225,64 @@ async def get_interview_results(
         interview_logger.error(f"결과 조회 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# 채용공고 관련 엔드포인트
+
+@app.get("/api/postings")
+async def get_all_postings():
+    """모든 채용공고 조회 (회사, 직무 정보 포함)"""
+    try:
+        from database.services.existing_tables_service import existing_tables_service
+        postings = await existing_tables_service.get_all_postings()
+        
+        # 실제 DB 구조에 맞게 단순화된 데이터 구조
+        formatted_postings = []
+        for posting in postings:
+            formatted_posting = {
+                "posting_id": posting.get("posting_id"),
+                "company_id": posting.get("company_id"),
+                "position_id": posting.get("position_id"),
+                "company": posting.get("company", {}).get("name", "Unknown Company"),
+                "position": posting.get("position", {}).get("position_name", "Unknown Position"),
+                "content": posting.get("content", f"{posting.get('company', {}).get('name', '')} {posting.get('position', {}).get('position_name', '')} 채용공고")
+            }
+            formatted_postings.append(formatted_posting)
+        
+        interview_logger.info(f"📋 채용공고 {len(formatted_postings)}개 조회 완료")
+        return {"postings": formatted_postings}
+        
+    except Exception as e:
+        interview_logger.error(f"채용공고 조회 오류: {str(e)}")
+        # Fallback: 더미 데이터 반환
+        return {"postings": []}
+
+@app.get("/api/postings/{posting_id}")
+async def get_posting_by_id(posting_id: int):
+    """특정 채용공고 상세 조회"""
+    try:
+        from database.services.existing_tables_service import existing_tables_service
+        posting = await existing_tables_service.get_posting_by_id(posting_id)
+        
+        if not posting:
+            raise HTTPException(status_code=404, detail="채용공고를 찾을 수 없습니다")
+        
+        formatted_posting = {
+            "posting_id": posting.get("posting_id"),
+            "company_id": posting.get("company_id"),
+            "position_id": posting.get("position_id"),
+            "company": posting.get("company", {}).get("name", "Unknown Company"),
+            "position": posting.get("position", {}).get("position_name", "Unknown Position"),
+            "content": posting.get("content", f"{posting.get('company', {}).get('name', '')} {posting.get('position', {}).get('position_name', '')} 상세 채용공고")
+        }
+        
+        interview_logger.info(f"📋 채용공고 상세 조회: posting_id={posting_id}")
+        return formatted_posting
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        interview_logger.error(f"채용공고 상세 조회 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # AI 경쟁 모드 엔드포인트
 
 @app.post("/api/interview/ai/start")
@@ -233,11 +292,38 @@ async def start_ai_competition(
 ):
     """AI 지원자와의 경쟁 면접 시작"""
     try:
-        settings_dict = {
-            "company": settings.company,
-            "position": settings.position,
-            "candidate_name": settings.candidate_name
-        }
+        # 🆕 posting_id가 있으면 DB에서 실제 채용공고 정보를 가져와서 사용
+        if settings.posting_id:
+            from database.services.existing_tables_service import existing_tables_service
+            posting_info = await existing_tables_service.get_posting_by_id(settings.posting_id)
+            
+            if posting_info:
+                interview_logger.info(f"📋 실제 채용공고 사용: posting_id={settings.posting_id}")
+                interview_logger.info(f"   회사: {posting_info.get('company', {}).get('name', 'Unknown')}")
+                interview_logger.info(f"   직무: {posting_info.get('position', {}).get('position_name', 'Unknown')}")
+                
+                settings_dict = {
+                    "company": posting_info.get('company', {}).get('name', settings.company),
+                    "position": posting_info.get('position', {}).get('position_name', settings.position),
+                    "candidate_name": settings.candidate_name,
+                    "posting_id": settings.posting_id,
+                    "company_id": posting_info.get('company_id'),
+                    "position_id": posting_info.get('position_id')
+                }
+            else:
+                interview_logger.warning(f"⚠️ 채용공고를 찾을 수 없음: posting_id={settings.posting_id}, fallback to original")
+                settings_dict = {
+                    "company": settings.company,
+                    "position": settings.position,
+                    "candidate_name": settings.candidate_name
+                }
+        else:
+            # 기존 방식: company/position 문자열 사용
+            settings_dict = {
+                "company": settings.company,
+                "position": settings.position,
+                "candidate_name": settings.candidate_name
+            }
         
         result = await service.start_ai_competition(settings_dict)
         return result

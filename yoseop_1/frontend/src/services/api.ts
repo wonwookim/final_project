@@ -34,7 +34,16 @@ apiClient.interceptors.response.use(
   }
 );
 
-// 타입 정의
+// 타입 정의 - 실제 DB 구조에 맞게 단순화
+export interface JobPosting {
+  posting_id: number;
+  company_id: number;
+  position_id: number;
+  company: string;      // company 테이블 JOIN 결과
+  position: string;     // position 테이블 JOIN 결과
+  content: string;      // 원본 content (설명으로 사용)
+}
+
 export interface InterviewSettings {
   company: string;
   position: string;
@@ -42,6 +51,7 @@ export interface InterviewSettings {
   difficulty: string;
   candidate_name: string;
   documents?: string[];
+  posting_id?: number;  // 🆕 채용공고 ID 추가
 }
 
 export interface Question {
@@ -324,6 +334,32 @@ export const validateFileSize = (file: File, maxSize: number = 16 * 1024 * 1024)
 export const validateFileExtension = (file: File, allowedExtensions: string[] = ['pdf', 'doc', 'docx']): boolean => {
   const extension = file.name.split('.').pop()?.toLowerCase();
   return extension ? allowedExtensions.includes(extension) : false;
+};
+
+// 🆕 채용공고 관련 API 함수들
+export const postingAPI = {
+  // 모든 채용공고 조회
+  async getAllPostings(): Promise<JobPosting[]> {
+    try {
+      const response = await apiClient.get('/postings');
+      return (response.data as { postings: JobPosting[] }).postings;
+    } catch (error) {
+      console.error('채용공고 목록 조회 실패:', error);
+      // fallback: 빈 배열 반환
+      return [];
+    }
+  },
+
+  // 특정 채용공고 상세 조회
+  async getPostingById(postingId: number): Promise<JobPosting | null> {
+    try {
+      const response = await apiClient.get(`/postings/${postingId}`);
+      return response.data as JobPosting;
+    } catch (error) {
+      console.error(`채용공고 상세 조회 실패 (ID: ${postingId}):`, error);
+      return null;
+    }
+  },
 };
 
 export default apiClient;

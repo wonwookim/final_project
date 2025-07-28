@@ -1,12 +1,14 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
 import { InterviewSettings, Question, InterviewResult } from '../services/api';
 
-// 새로운 타입 정의
+// JobPosting 타입 정의 - 실제 DB 구조에 맞게 최종 단순화
 interface JobPosting {
-  company: string;       // 표시용 회사명
-  companyCode: string;   // API용 회사 코드
-  position: string;
-  postingId: string;
+  posting_id: number;    // posting_id
+  company_id: number;    // 회사 ID
+  position_id: number;   // 직무 ID
+  company: string;       // 회사명 (company 테이블 JOIN 결과)
+  position: string;      // 직무명 (position 테이블 JOIN 결과)
+  content: string;       // 채용공고 내용
 }
 
 interface Resume {

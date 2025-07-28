@@ -32,11 +32,11 @@ from ..shared.utils import safe_json_load, get_fixed_questions
 
 # 직군 매핑 (position_name -> position_id)
 POSITION_MAPPING = {
-    "프론트엔드": 1,
+    "프론트엔드 개발자": 1,
     "프론트": 1,
     "frontend": 1,
     "백엔드": 2,
-    "백엔드개발자": 2,
+    "백엔드 개발자": 2,
     "backend": 2,
     "기획": 3,
     "기획자": 3,
@@ -51,7 +51,27 @@ POSITION_MAPPING = {
     "데이터": 5,
     "data science": 5,
     "data scientist": 5,
-    "ds": 5
+    "ds": 5,
+    # 🆕 모바일 개발자 매핑 추가
+    "모바일": 6,
+    "모바일개발자": 6,
+    "모바일개발자android": 6,
+    "모바일개발자ios": 6,
+    "android": 6,
+    "ios": 6,
+    "mobile": 6,
+    "앱개발자": 6,
+    "앱": 6,
+    # 🆕 기타 일반적인 직군들 추가
+    "풀스택": 7,
+    "fullstack": 7,
+    "풀스택개발자": 7,
+    "devops": 8,
+    "데브옵스": 8,
+    "인프라": 8,
+    "qa": 9,
+    "테스터": 9,
+    "품질관리": 9
 }
 
 # 새로운 CandidatePersona 모델 (LLM 생성용)
@@ -197,14 +217,15 @@ class AICandidateModel:
             company_korean_name = self._get_company_korean_name(company_name)
             print(f"🎯 [PERSONA DEBUG] 회사명 변환: {company_name} -> {company_korean_name}")
             
-            # 1단계: 직군 ID 매핑
-            position_id = self._get_position_id(position_name)
+            # 1단계: 직군 ID 매핑 (DB 우선, 하드코딩 fallback)
+            position_id = self._get_position_id(position_name, company_korean_name)
             print(f"📊 [PERSONA DEBUG] 직군 매핑 시도: {position_name} -> {position_id}")
             
             if not position_id:
                 print(f"❌ [PERSONA DEBUG] 지원하지 않는 직군: {position_name}")
-                print(f"🔍 [PERSONA DEBUG] 가능한 직군 목록 확인 필요")
-                return None
+                print(f"🔍 [PERSONA DEBUG] fallback으로 기본 페르소나 생성 시도")
+                # 🆕 fallback: 기본 페르소나 생성
+                return self._create_default_persona(company_korean_name, position_name)
             
             print(f"✅ [PERSONA DEBUG] 직군 매핑 성공: {position_name} -> {position_id}")
             
@@ -214,8 +235,9 @@ class AICandidateModel:
             
             if not resume_data:
                 print(f"❌ [PERSONA DEBUG] position_id {position_id}에 해당하는 이력서가 없습니다")
-                print(f"🔍 [PERSONA DEBUG] DB 연결 상태 및 이력서 데이터 확인 필요")
-                return None
+                print(f"🔍 [PERSONA DEBUG] fallback으로 기본 페르소나 생성 시도")
+                # 🆕 fallback: 기본 페르소나 생성
+                return self._create_default_persona(company_korean_name, position_name)
             
             print(f"✅ [PERSONA DEBUG] 이력서 로드 성공: ID {resume_data.get('ai_resume_id', 'unknown')}")
             
@@ -261,10 +283,41 @@ class AICandidateModel:
             traceback.print_exc()
             return None
     
-    def _get_position_id(self, position_name: str) -> Optional[int]:
-        """직군명을 position_id로 변환"""
-        position_lower = position_name.lower().replace(" ", "")
-        return POSITION_MAPPING.get(position_lower)
+    def _get_position_id(self, position_name: str, company_name: str = None) -> Optional[int]:
+        """직군명을 position_id로 변환 - DB 우선, 하드코딩 fallback"""
+        try:
+            # 🆕 1순위: DB에서 직접 조회 (company_name이 있는 경우)
+            if company_name and get_supabase_client:
+                from database.services.existing_tables_service import existing_tables_service
+                import asyncio
+                
+                # 비동기 함수를 동기로 실행
+                try:
+                    loop = asyncio.get_event_loop()
+                    posting_info = loop.run_until_complete(
+                        existing_tables_service.find_posting_by_company_position(company_name, position_name)
+                    )
+                    if posting_info and posting_info.get('position', {}).get('position_id'):
+                        position_id = posting_info['position']['position_id']
+                        print(f"✅ [DB] 직군 매핑 성공: {position_name} -> position_id={position_id}")
+                        return position_id
+                except Exception as db_error:
+                    print(f"⚠️ [DB] 직군 조회 실패: {str(db_error)}")
+            
+            # 🆕 2순위: 하드코딩된 매핑 사용 (기존 호환성)
+            position_lower = position_name.lower().replace(" ", "").replace("(", "").replace(")", "")
+            mapped_id = POSITION_MAPPING.get(position_lower)
+            if mapped_id:
+                print(f"✅ [MAPPING] 직군 매핑 성공: {position_name} -> position_id={mapped_id}")
+                return mapped_id
+            
+            print(f"❌ [MAPPING] 지원하지 않는 직군: {position_name}")
+            print(f"🔍 [MAPPING] 가능한 직군 목록: {list(POSITION_MAPPING.keys())}")
+            return None
+            
+        except Exception as e:
+            print(f"❌ [POSITION] 직군 ID 변환 오류: {str(e)}")
+            return None
     
     def _get_random_resume_from_db(self, position_id: int) -> Optional[Dict[str, Any]]:
         """데이터베이스에서 해당 직군의 이력서를 무작위로 선택"""
@@ -527,6 +580,53 @@ class AICandidateModel:
         """회사 데이터 로드"""
         return safe_json_load("llm/data/companies_data.json", {"companies": []})
     
+    def _create_default_persona(self, company_name: str, position_name: str) -> Optional[CandidatePersona]:
+        """fallback: 기본 페르소나 생성 (DB에서 이력서를 찾지 못했을 때)"""
+        try:
+            print(f"🔄 [DEFAULT PERSONA] 기본 페르소나 생성 시작: {company_name} - {position_name}")
+            
+            # 기본 이력서 데이터 생성
+            default_resume = {
+                "ai_resume_id": -1,
+                "title": f"{position_name} 지원자",
+                "content": f"""
+이름: 김개발
+직무: {position_name}
+경력: 3년차
+
+[경력 사항]
+- {company_name} 관련 프로젝트 경험 다수
+- {position_name} 분야 전문성 보유
+- 팀 협업 및 문제 해결 능력 우수
+
+[기술 스택]
+- {position_name} 관련 핵심 기술
+- 협업 도구 활용 능력
+- 지속적인 학습 및 성장 마인드
+
+[프로젝트 경험]
+- {company_name} 스타일의 서비스 개발 경험
+- 사용자 중심의 서비스 설계 및 개발
+- 성능 최적화 및 유지보수 경험
+                """.strip(),
+                "position_id": 99  # 기본값
+            }
+            
+            # LLM으로 페르소나 생성
+            company_info = self._get_company_info(company_name)
+            persona = self._generate_persona_with_llm(default_resume, company_info, position_name)
+            
+            if persona:
+                print(f"✅ [DEFAULT PERSONA] 기본 페르소나 생성 성공: {persona.name}")
+                return persona
+            else:
+                print(f"❌ [DEFAULT PERSONA] 기본 페르소나 생성 실패")
+                return None
+                
+        except Exception as e:
+            print(f"❌ [DEFAULT PERSONA] 기본 페르소나 생성 오류: {str(e)}")
+            return None
+
     def _get_company_korean_name(self, company_code: str) -> str:
         """회사 코드를 한국어 회사명으로 변환"""
         company_mapping = {
@@ -791,20 +891,29 @@ class AICandidateModel:
         """질문에 대한 AI 지원자 답변 생성"""
         start_time = datetime.now()
         
+        # 🆕 페르소나 사용 패턴 추적
+        persona_source = "unknown"
+        
         # 페르소나 조회 (파라미터로 전달된 경우 우선 사용)
-        if not persona:
+        if persona:
+            persona_source = "provided_parameter"
+            print(f"✅ [GENERATE ANSWER] 전달받은 페르소나 사용: {persona.name} (company: {request.company_id})")
+        else:
             # 🆕 LLM 기반 실시간 페르소나 생성 사용
-            print(f"🎯 LLM으로 {request.company_id} 페르소나 실시간 생성 중...")
+            persona_source = "created_new"
+            print(f"🔄 [GENERATE ANSWER] 페르소나 없음 - 새로 생성: {request.company_id}")
             persona = self.create_persona_for_interview(request.company_id, request.position)
             
         if not persona:
             # Fallback: 기본 페르소나 생성
-            print(f"⚠️ {request.company_id} 페르소나 생성 실패, 기본 페르소나로 fallback")
+            persona_source = "fallback_default"
+            print(f"⚠️ [GENERATE ANSWER] LLM 페르소나 생성 실패 - 기본 페르소나로 fallback")
             persona = self._create_default_persona(request.company_id, request.position)
             
         if not persona:
             # 최종 fallback: 하드코딩된 기본 답변 생성
-            print(f"🔄 모든 페르소나 생성 실패, 기본 답변으로 fallback")
+            persona_source = "fallback_hardcoded"
+            print(f"🔄 [GENERATE ANSWER] 모든 페르소나 생성 실패 - 하드코딩 답변으로 fallback")
             return AnswerResponse(
                 answer_content=f"안녕하세요. 저는 {request.company_id}에 지원한 {request.position} 개발자입니다. 3년간의 개발 경험을 바탕으로 {self._get_company_korean_name(request.company_id)}에서 더 큰 성장을 이루고 싶어 지원하게 되었습니다. 새로운 기술 습득에 열정적이며, 팀워크를 중시하는 개발자입니다.",
                 quality_level=request.quality_level,
@@ -860,6 +969,13 @@ class AICandidateModel:
         # 모델에 따른 AI 이름 결정
         ai_name = self.get_ai_name(request.llm_provider)
         
+        # 🆕 페르소나 일관성 로그
+        print(f"📊 [ANSWER COMPLETE] 답변 생성 완료:")
+        print(f"   - 페르소나: {persona.name}")
+        print(f"   - 페르소나 소스: {persona_source}")
+        print(f"   - 회사: {request.company_id}")
+        print(f"   - 응답시간: {response_time:.2f}초")
+        
         return AnswerResponse(
             answer_content=processed_answer,
             quality_level=request.quality_level,
@@ -873,7 +989,9 @@ class AICandidateModel:
                 "token_count": llm_response.token_count,
                 "company_id": request.company_id,
                 "question_type": request.question_type.value,
-                "original_prompt_length": len(prompt)
+                "original_prompt_length": len(prompt),
+                "persona_source": persona_source,  # 🆕 페르소나 소스 추가
+                "persona_name_internal": persona.name if persona else "Unknown"  # 🆕 실제 페르소나 이름
             }
         )
     
