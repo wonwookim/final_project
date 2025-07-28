@@ -1338,7 +1338,7 @@ const InterviewActive: React.FC = () => {
         {/* 면접 시작 팝업 */}
         {renderStartPopup()}
         {/* 상단 면접관 3명 */}
-        <div className="grid grid-cols-3 gap-4 p-4" style={{ height: '50vh' }}>
+        <div className="grid grid-cols-3 gap-4 p-4" style={{ height: '40vh' }}>
           {/* 인사 면접관 */}
           <div className={`bg-gray-900 rounded-lg overflow-hidden relative border-2 transition-all duration-300 ${
             // TTS 재생 중이고 인사 면접관일 때
@@ -1452,7 +1452,7 @@ const InterviewActive: React.FC = () => {
         </div>
 
         {/* 하단 영역 */}
-        <div className="grid grid-cols-3 gap-4 p-4" style={{ height: '50vh' }}>
+        <div className="grid gap-4 p-4" style={{ height: '60vh', gridTemplateColumns: '2fr 1fr 2fr' }}>
           {/* 사용자 영역 */}
           <div className={`bg-gray-900 rounded-lg overflow-hidden relative border-2 transition-all duration-300 ${
             // STT 활성화 시 (사용자가 말하는 중)

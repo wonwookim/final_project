@@ -2118,3 +2118,23 @@
 {"timestamp": "2025-07-28T13:58:45.269380", "level": "INFO", "logger": "interview_system", "message": "🔄 면접 계속: 3/20 질문 진행 중", "module": "", "function": null, "line": 0}
 {"timestamp": "2025-07-28T14:24:24.978048", "level": "INFO", "logger": "interview_system", "message": "📋 채용공고 35개 조회 완료", "module": "", "function": null, "line": 0}
 {"timestamp": "2025-07-28T14:24:25.047421", "level": "INFO", "logger": "interview_system", "message": "📋 채용공고 35개 조회 완료", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:14.623628", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:14.624627", "level": "INFO", "logger": "interview_system", "message": "🚀 비교 세션 생성: comp_5ff39de1 - 김개발 vs 춘식이", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:14.626133", "level": "INFO", "logger": "interview_system", "message": "🎯 비교 면접 질문 계획 생성 시작: naver - 기획", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:14.627141", "level": "INFO", "logger": "interview_system", "message": "🎯 질문 계획 생성 시작: naver - 기획 - 중간", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:15.091772", "level": "INFO", "logger": "interview_system", "message": "📋 고정 질문 선별 완료: 7개", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:15.092782", "level": "INFO", "logger": "interview_system", "message": "✅ 질문 계획 생성 완료: 총 19개 질문", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:15.093799", "level": "INFO", "logger": "interview_system", "message": "📊 구성: 고정 7개, 동적 12개", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:15.095311", "level": "INFO", "logger": "interview_system", "message": "✅ 질문 계획 생성 완료: 19개 질문", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:15.096689", "level": "INFO", "logger": "interview_system", "message": "📊 세션 등록 완료: 총 19개 질문으로 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:15.098201", "level": "INFO", "logger": "interview_system", "message": "📝 질문 반환: 1/19 - INTRO - fixed", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:15.100211", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:15.101210", "level": "INFO", "logger": "interview_system", "message": "🚀 비교 세션 생성: comp_6fe39fcc - 김개발 vs 춘식이", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:15.102212", "level": "INFO", "logger": "interview_system", "message": "🎯 비교 면접 질문 계획 생성 시작: naver - 기획", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:15.103209", "level": "INFO", "logger": "interview_system", "message": "🎯 질문 계획 생성 시작: naver - 기획 - 중간", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:15.146843", "level": "INFO", "logger": "interview_system", "message": "📋 고정 질문 선별 완료: 7개", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:15.146843", "level": "INFO", "logger": "interview_system", "message": "✅ 질문 계획 생성 완료: 총 19개 질문", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:15.146843", "level": "INFO", "logger": "interview_system", "message": "📊 구성: 고정 7개, 동적 12개", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:15.148349", "level": "INFO", "logger": "interview_system", "message": "✅ 질문 계획 생성 완료: 19개 질문", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:15.148349", "level": "INFO", "logger": "interview_system", "message": "📊 세션 등록 완료: 총 19개 질문으로 시작", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-07-28T14:33:15.149354", "level": "INFO", "logger": "interview_system", "message": "📝 질문 반환: 1/19 - INTRO - fixed", "module": "", "function": null, "line": 0}
