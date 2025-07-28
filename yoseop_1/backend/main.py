@@ -37,6 +37,10 @@ from llm.core.llm_manager import LLMProvider
 try:
     from extensions.database_integration import database_router
     from extensions.migration_api import migration_router
+    from routers.user import user_router
+    from routers.resume import resume_router
+    from routers.history import history_router
+
     DATABASE_ENABLED = True
     print("✅ 데이터베이스 확장 로드 성공")
     print("✅ 마이그레이션 API 로드 성공")
@@ -67,6 +71,9 @@ app.add_middleware(
 if DATABASE_ENABLED:
     app.include_router(database_router)
     app.include_router(migration_router)
+    app.include_router(user_router)
+    app.include_router(resume_router)
+    app.include_router(history_router)
     print("✅ 데이터베이스 API 라우터 등록 완료")
     print("✅ 마이그레이션 API 라우터 등록 완료")
 
