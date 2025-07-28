@@ -6,12 +6,16 @@
 
 import time
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from dataclasses import dataclass, field
 from enum import Enum
 
 # shared 모듈에서 공통 타입 import
 from ..shared.models import QuestionType, QuestionAnswer
+
+# 순환 import 방지를 위한 TYPE_CHECKING 사용
+if TYPE_CHECKING:
+    from ..candidate.model import CandidatePersona
 
 
 class SessionState(Enum):
@@ -164,6 +168,9 @@ class ComparisonSession:
     starts_with_user: bool = True
     created_at: datetime = field(default_factory=datetime.now)
     state: SessionState = SessionState.CREATED
+    
+    # 🆕 AI 페르소나 일관성을 위한 필드
+    ai_persona: Optional['CandidatePersona'] = None
     
     def switch_phase(self):
         """턴 전환"""

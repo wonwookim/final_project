@@ -5,13 +5,17 @@ AI vs Human 비교 세션 관리자
 """
 
 import uuid
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, TYPE_CHECKING
 from datetime import datetime
 
 from .models import ComparisonSession, SessionState, AnswerData
 from .question_generator import question_generator_service, QuestionPlan
 from ..shared.company_data_loader import get_company_loader
 from ..shared.logging_config import interview_logger
+
+# 순환 import 방지를 위한 TYPE_CHECKING 사용
+if TYPE_CHECKING:
+    from ..candidate.model import CandidatePersona
 
 
 class ComparisonSessionManager:
@@ -27,7 +31,10 @@ class ComparisonSessionManager:
         # 각 세션별 질문 계획 저장
         self.session_question_plans: Dict[str, List[QuestionPlan]] = {}
         
-    async def start_comparison_session(self, company_id: str, position: str, user_name: str, ai_name: str = "춘식이") -> str:
+        # 🆕 페르소나 캐싱 시스템
+        self.persona_cache: Dict[str, 'CandidatePersona'] = {}  # session_id -> persona
+        
+    async def start_comparison_session(self, company_id: str, position: str, user_name: str, ai_name: str = "춘식이", posting_id: int = None, position_id: int = None) -> str:
         """비교 세션 시작"""
         company_data = self.company_loader.get_company_data(company_id)
         if not company_data:
@@ -311,4 +318,55 @@ class ComparisonSessionManager:
                 "average_score": sum(a.score for a in session.ai_answers if a.score) / len(session.ai_answers) if session.ai_answers else 0
             },
             "completed_at": datetime.now().isoformat()
+        }
+    
+    # 🆕 페르소나 캐싱 관리 메서드들
+    def set_session_persona(self, comparison_id: str, persona: 'CandidatePersona') -> None:
+        """세션별 페르소나 저장"""
+        session = self.get_session(comparison_id)
+        if session:
+            session.ai_persona = persona
+            self.persona_cache[comparison_id] = persona
+            interview_logger.info(f"✅ [PERSONA CACHE] 페르소나 저장: {comparison_id} -> {persona.name}")
+        else:
+            interview_logger.error(f"❌ [PERSONA CACHE] 세션을 찾을 수 없음: {comparison_id}")
+    
+    def get_session_persona(self, comparison_id: str) -> Optional['CandidatePersona']:
+        """세션별 페르소나 조회"""
+        # 1순위: 세션 객체에서 조회
+        session = self.get_session(comparison_id)
+        if session and session.ai_persona:
+            interview_logger.info(f"✅ [PERSONA CACHE] 세션에서 페르소나 조회: {comparison_id} -> {session.ai_persona.name}")
+            return session.ai_persona
+        
+        # 2순위: 캐시에서 조회
+        if comparison_id in self.persona_cache:
+            persona = self.persona_cache[comparison_id]
+            interview_logger.info(f"✅ [PERSONA CACHE] 캐시에서 페르소나 조회: {comparison_id} -> {persona.name}")
+            # 세션 객체에도 동기화
+            if session:
+                session.ai_persona = persona
+            return persona
+        
+        interview_logger.warning(f"⚠️ [PERSONA CACHE] 페르소나를 찾을 수 없음: {comparison_id}")
+        return None
+    
+    def clear_session_persona(self, comparison_id: str) -> None:
+        """세션 종료 시 페르소나 캐시 정리"""
+        if comparison_id in self.persona_cache:
+            persona_name = self.persona_cache[comparison_id].name
+            del self.persona_cache[comparison_id]
+            interview_logger.info(f"🧹 [PERSONA CACHE] 페르소나 캐시 정리: {comparison_id} -> {persona_name}")
+        
+        session = self.get_session(comparison_id)
+        if session and session.ai_persona:
+            session.ai_persona = None
+            interview_logger.info(f"🧹 [PERSONA CACHE] 세션 페르소나 정리: {comparison_id}")
+    
+    def get_persona_cache_stats(self) -> Dict[str, Any]:
+        """페르소나 캐시 통계"""
+        return {
+            "total_cached": len(self.persona_cache),
+            "cache_sessions": list(self.persona_cache.keys()),
+            "cache_personas": [p.name for p in self.persona_cache.values()]
         }

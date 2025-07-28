@@ -76,10 +76,10 @@ class SessionManager:
         return self.base_session_manager.get_next_question(session_id)
     
     # 비교 세션 관리 (새로운 기능)
-    async def start_comparison_interview(self, company_id: str, position: str, user_name: str, ai_name: str = "춘식이") -> str:
+    async def start_comparison_interview(self, company_id: str, position: str, user_name: str, ai_name: str = "춘식이", posting_id: int = None, position_id: int = None) -> str:
         """AI 비교 면접 시작 (새로운 질문 생성 시스템 사용)"""
         comparison_id = await self.comparison_session_manager.start_comparison_session(
-            company_id, position, user_name, ai_name
+            company_id, position, user_name, ai_name, posting_id, position_id
         )
         self.all_sessions[comparison_id] = {
             "type": "comparison",

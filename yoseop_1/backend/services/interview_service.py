@@ -184,6 +184,14 @@ class InterviewService:
             if "error" in results:
                 raise ValueError(results["error"])
             
+            # 🧹 면접 완료 시 페르소나 캐시 정리 (비교 면접인 경우)
+            if session_id.startswith("comp_"):
+                try:
+                    self.session_manager.comparison_session_manager.clear_session_persona(session_id)
+                    interview_logger.info(f"🧹 [CLEANUP] 면접 완료 - 페르소나 캐시 정리: {session_id}")
+                except Exception as cleanup_error:
+                    interview_logger.warning(f"⚠️ [CLEANUP] 페르소나 캐시 정리 실패: {cleanup_error}")
+            
             # 결과가 이미 완전한 형태로 반환됨
             return results
             
@@ -196,14 +204,22 @@ class InterviewService:
         try:
             interview_logger.info("AI 비교 면접 시작")
             
-            company_id = self.get_company_id(settings['company'])
+            # 🆕 DB 기반 정보가 있으면 사용, 없으면 기존 방식
+            if settings.get('company_id') and settings.get('position_id'):
+                company_id = settings['company_id']
+                interview_logger.info(f"📋 DB 기반 정보 사용: company_id={company_id}, position_id={settings.get('position_id')}")
+            else:
+                # 기존 방식: 회사명으로 company_id 찾기
+                company_id = self.get_company_id(settings['company'])
             
             # 🆕 SessionManager를 통한 비교 면접 시작 (새로운 20개 질문 시스템)
             comparison_session_id = await self.session_manager.start_comparison_interview(
                 company_id=company_id,
                 position=settings['position'],
                 user_name=settings['candidate_name'],
-                ai_name="춘식이"
+                ai_name="춘식이",
+                posting_id=settings.get('posting_id'),  # 🆕 posting_id 전달
+                position_id=settings.get('position_id')  # 🆕 position_id 전달
             )
             
             # AI 이름 가져오기
@@ -316,7 +332,9 @@ class InterviewService:
                 llm_provider=LLMProvider.OPENAI_GPT4O_MINI
             )
             
-            ai_answer = self.ai_candidate_model.generate_answer(answer_request)
+            # 🔄 단독 AI 답변 생성 (세션 없음 - 매번 새로운 페르소나)
+            interview_logger.info(f"🎭 [STANDALONE AI] 단독 AI 답변 생성 (세션 무관): {company_id} - {position}")
+            ai_answer = self.ai_candidate_model.generate_answer(answer_request, persona=None)
             
             if not ai_answer:
                 raise Exception("AI 답변 생성에 실패했습니다.")
@@ -433,7 +451,28 @@ class InterviewService:
                 interview_logger.info(f"🎯 AI 답변 생성 요청: {session.company_id} - {getattr(session, 'position', '백엔드 개발자')}")
                 interview_logger.info(f"📝 질문 내용: {ai_question_content}")
                 
-                ai_answer_response = self.ai_candidate_model.generate_answer(answer_request)
+                # 🆕 세션별 페르소나 조회 및 생성
+                session_persona = self.session_manager.comparison_session_manager.get_session_persona(comparison_session_id)
+                
+                if not session_persona:
+                    # 페르소나가 없으면 생성하고 캐시에 저장
+                    interview_logger.info(f"🎭 [PERSONA] 세션 페르소나 생성 중: {comparison_session_id}")
+                    session_persona = self.ai_candidate_model.create_persona_for_interview(
+                        session.company_id, 
+                        getattr(session, 'position', '백엔드 개발자')
+                    )
+                    
+                    if session_persona:
+                        # 생성된 페르소나를 세션에 저장
+                        self.session_manager.comparison_session_manager.set_session_persona(comparison_session_id, session_persona)
+                        interview_logger.info(f"✅ [PERSONA] 페르소나 생성 및 저장 완료: {session_persona.name}")
+                    else:
+                        interview_logger.error(f"❌ [PERSONA] 페르소나 생성 실패: {comparison_session_id}")
+                else:
+                    interview_logger.info(f"✅ [PERSONA] 기존 세션 페르소나 재사용: {session_persona.name}")
+                
+                # 페르소나와 함께 답변 생성
+                ai_answer_response = self.ai_candidate_model.generate_answer(answer_request, persona=session_persona)
                 
                 interview_logger.info(f"✅ AI 답변 생성 완료: 페르소나={ai_answer_response.persona_name}")
                 
