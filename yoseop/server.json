@@ -1,6 +1,0 @@
-{"timestamp": "2025-07-22T15:39:40.597212", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
-{"timestamp": "2025-07-22T15:39:40.635971", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
-{"timestamp": "2025-07-23T10:36:52.736881", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
-{"timestamp": "2025-07-23T10:36:52.739483", "level": "ERROR", "logger": "interview_system", "message": "AI 경쟁 면접 시작 오류: No module named 'core'", "module": "", "function": null, "line": 0}
-{"timestamp": "2025-07-23T10:42:05.139972", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}
-{"timestamp": "2025-07-23T11:01:30.075548", "level": "INFO", "logger": "interview_system", "message": "AI 비교 면접 시작", "module": "", "function": null, "line": 0}

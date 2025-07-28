@@ -191,55 +191,72 @@ class AICandidateModel:
             생성된 CandidatePersona 객체 또는 None (실패 시)
         """
         try:
+            print(f"🔥 [PERSONA DEBUG] 페르소나 생성 시작: company='{company_name}', position='{position_name}'")
+            
             # 회사 코드를 한국어 회사명으로 변환
             company_korean_name = self._get_company_korean_name(company_name)
-            print(f"🎯 {company_korean_name} ({company_name}) {position_name} 직군 페르소나 생성 시작...")
+            print(f"🎯 [PERSONA DEBUG] 회사명 변환: {company_name} -> {company_korean_name}")
             
             # 1단계: 직군 ID 매핑
             position_id = self._get_position_id(position_name)
+            print(f"📊 [PERSONA DEBUG] 직군 매핑 시도: {position_name} -> {position_id}")
+            
             if not position_id:
-                print(f"❌ 지원하지 않는 직군: {position_name}")
+                print(f"❌ [PERSONA DEBUG] 지원하지 않는 직군: {position_name}")
+                print(f"🔍 [PERSONA DEBUG] 가능한 직군 목록 확인 필요")
                 return None
             
-            print(f"📊 직군 매핑: {position_name} -> {position_id}")
+            print(f"✅ [PERSONA DEBUG] 직군 매핑 성공: {position_name} -> {position_id}")
             
             # 2단계: 데이터베이스에서 이력서 조회
+            print(f"🗄️ [PERSONA DEBUG] DB에서 이력서 조회 시작: position_id={position_id}")
             resume_data = self._get_random_resume_from_db(position_id)
+            
             if not resume_data:
-                print(f"❌ position_id {position_id}에 해당하는 이력서가 없습니다")
+                print(f"❌ [PERSONA DEBUG] position_id {position_id}에 해당하는 이력서가 없습니다")
+                print(f"🔍 [PERSONA DEBUG] DB 연결 상태 및 이력서 데이터 확인 필요")
                 return None
             
-            print(f"📋 이력서 로드 성공: ID {resume_data.get('ai_resume_id', 'unknown')}")
+            print(f"✅ [PERSONA DEBUG] 이력서 로드 성공: ID {resume_data.get('ai_resume_id', 'unknown')}")
             
             # 3단계: 회사 정보 가져오기
+            print(f"🏢 [PERSONA DEBUG] 회사 정보 조회: {company_name}")
             company_info = self._get_company_info(company_name)
+            print(f"📝 [PERSONA DEBUG] 회사 정보 결과: {bool(company_info)}")
             
             # 4단계: LLM 프롬프트 생성
+            print(f"📝 [PERSONA DEBUG] LLM 프롬프트 생성 중...")
             prompt = self._build_persona_generation_prompt(resume_data, company_name, position_name, company_info)
+            print(f"✅ [PERSONA DEBUG] 프롬프트 생성 완료 (길이: {len(prompt)} 문자)")
             
             # 5단계: LLM 호출로 페르소나 생성 (max_tokens 늘림)
-            print(f"🤖 LLM으로 페르소나 생성 중...")
+            print(f"🤖 [PERSONA DEBUG] LLM API 호출 시작...")
             llm_response = self._generate_persona_with_extended_tokens(
                 prompt,
                 self._build_system_prompt_for_persona_generation()
             )
             
+            print(f"📡 [PERSONA DEBUG] LLM 응답 수신: error={llm_response.error}, content_length={len(llm_response.content) if llm_response.content else 0}")
+            
             if llm_response.error:
-                print(f"❌ LLM 응답 오류: {llm_response.error}")
+                print(f"❌ [PERSONA DEBUG] LLM 응답 오류: {llm_response.error}")
                 return None
             
             # 6단계: JSON 응답을 CandidatePersona 객체로 변환
+            print(f"🔄 [PERSONA DEBUG] JSON 파싱 시작...")
             persona = self._parse_llm_response_to_persona(llm_response.content, resume_data.get('ai_resume_id', 0))
             
             if persona:
-                print(f"✅ 페르소나 생성 완료: {persona.name} ({company_name} {position_name})")
+                print(f"✅ [PERSONA DEBUG] 페르소나 생성 완료: {persona.name} ({company_name} {position_name})")
                 return persona
             else:
-                print(f"❌ 페르소나 파싱 실패")
+                print(f"❌ [PERSONA DEBUG] 페르소나 파싱 실패 - LLM 응답 내용 확인 필요")
+                print(f"🔍 [PERSONA DEBUG] LLM 응답 샘플: {llm_response.content[:200]}...")
                 return None
                 
         except Exception as e:
-            print(f"❌ 페르소나 생성 중 오류 발생: {str(e)}")
+            print(f"❌ [PERSONA DEBUG] 페르소나 생성 중 오류 발생: {str(e)}")
+            print(f"📍 [PERSONA DEBUG] 오류 위치 추적:")
             import traceback
             traceback.print_exc()
             return None
@@ -1678,11 +1695,12 @@ class AICandidateModel:
     def _create_default_persona(self, company_id: str, position: str) -> Optional[CandidatePersona]:
         """LLM 페르소나 생성 실패 시 사용할 기본 페르소나 생성"""
         try:
-            print(f"🔄 기본 페르소나 생성 중: {company_id} - {position}")
+            print(f"🔄 [DEFAULT PERSONA] 기본 페르소나 생성 시작: {company_id} - {position}")
             
             # 회사 정보 조회
             company_info = self._get_company_info(company_id)
             company_name = company_info.get("name", company_id.capitalize())
+            print(f"✅ [DEFAULT PERSONA] 회사 정보 조회 완료: {company_name}")
             
             # 기본 페르소나 데이터
             default_persona = CandidatePersona(
@@ -1721,11 +1739,13 @@ class AICandidateModel:
                 resume_id=0  # 기본값
             )
             
-            print(f"✅ 기본 페르소나 생성 완료: {default_persona.name}")
+            print(f"✅ [DEFAULT PERSONA] 기본 페르소나 생성 완료: {default_persona.name}")
             return default_persona
             
         except Exception as e:
-            print(f"❌ 기본 페르소나 생성 실패: {str(e)}")
+            print(f"❌ [DEFAULT PERSONA] 기본 페르소나 생성 실패: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def _get_default_tech_skills(self, position: str) -> List[str]:

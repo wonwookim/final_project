@@ -251,14 +251,27 @@ class AICandidateModel:
     
     def start_ai_interview(self, company_id: str, position: str) -> str:
         """AI 지원자 면접 시작 (면접자와 동일한 플로우)"""
-        persona = self.get_persona(company_id)
+        print(f"🚀 [AI INTERVIEW] AI 면접 시작: company_id='{company_id}', position='{position}'")
+        
+        # 🆕 새로운 LLM 기반 페르소나 생성 사용
+        persona = self.create_persona_for_interview(company_id, position)
+        
         if not persona:
-            raise ValueError(f"회사 {company_id}의 AI 지원자 페르소나를 찾을 수 없습니다.")
+            print(f"❌ [AI INTERVIEW] 페르소나 생성 실패, 기본 페르소나 시도: {company_id}")
+            # Fallback: 기본 페르소나 생성 시도
+            persona = self._create_default_persona(company_id, position)
+            
+        if not persona:
+            print(f"❌ [AI INTERVIEW] 모든 페르소나 생성 실패: {company_id}")
+            raise ValueError(f"회사 {company_id}의 AI 지원자 페르소나를 생성할 수 없습니다.")
+        
+        print(f"✅ [AI INTERVIEW] 페르소나 생성 성공: {persona.name}")
         
         # AI 세션 생성
         ai_session = AICandidateSession(company_id, position, persona)
         self.ai_sessions[ai_session.session_id] = ai_session
         
+        print(f"✅ [AI INTERVIEW] AI 세션 생성 완료: {ai_session.session_id}")
         return ai_session.session_id
     
     def get_ai_next_question(self, ai_session_id: str) -> Optional[Dict[str, Any]]:
@@ -459,9 +472,18 @@ class AICandidateModel:
         """질문에 대한 AI 지원자 답변 생성"""
         start_time = datetime.now()
         
-        # 페르소나 조회
-        persona = self.get_persona(request.company_id)
+        print(f"🎤 [GENERATE ANSWER] 답변 생성 시작: company='{request.company_id}', position='{request.position}'")
+        
+        # 🆕 새로운 LLM 기반 페르소나 생성 사용
+        persona = self.create_persona_for_interview(request.company_id, request.position)
+        
         if not persona:
+            print(f"❌ [GENERATE ANSWER] 페르소나 생성 실패, 기본 페르소나 시도")
+            # Fallback: 기본 페르소나 생성 시도
+            persona = self._create_default_persona(request.company_id, request.position)
+            
+        if not persona:
+            print(f"❌ [GENERATE ANSWER] 모든 페르소나 생성 실패")
             return AnswerResponse(
                 answer_content="",
                 quality_level=request.quality_level,
@@ -469,9 +491,11 @@ class AICandidateModel:
                 persona_name="Unknown",
                 confidence_score=0.0,
                 response_time=0.0,
-                reasoning="페르소나를 찾을 수 없음",
-                error=f"회사 {request.company_id}의 페르소나를 찾을 수 없습니다."
+                reasoning="페르소나를 생성할 수 없음",
+                error=f"회사 {request.company_id}의 페르소나를 생성할 수 없습니다."
             )
+        
+        print(f"✅ [GENERATE ANSWER] 페르소나 준비 완료: {persona.name}")
         
         # 회사 데이터 조회
         company_data = self._get_company_data(request.company_id)
