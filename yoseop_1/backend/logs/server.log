@@ -2503,3 +2503,4 @@
 2025-07-29 09:02:34,006 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '카카오', 'position': 'ai', 'candidate_name': '김개발', 'use_interviewer_service': True}
 2025-07-29 09:02:34,016 - interview_system - INFO - None:0 - 🎯 DEBUG: InterviewerService 강제 사용 = True
 2025-07-29 09:02:34,020 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작 (강제 설정)
+2025-07-29 09:02:47,721 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작 완료: interviewer_comp_1c28c3cd

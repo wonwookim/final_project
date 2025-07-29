@@ -38,7 +38,8 @@ class CompanyDataLoader:
             company_id_mapping = {
                 '네이버': 'naver',
                 '카카오': 'kakao', 
-                '라인플러스': 'line',
+                '라인': 'line',
+                '라인플러스': 'line',  # Supabase DB 호환성
                 '쿠팡': 'coupang',
                 '배달의민족': 'baemin',
                 '당근마켓': 'daangn',
