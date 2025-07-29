@@ -1469,6 +1469,7 @@ const InterviewActive: React.FC = () => {
               muted
               playsInline
               className="w-full h-full object-cover"
+              style={{ transform: 'scaleX(-1)' }}
             />
             
             {/* 📹 카메라 연결 상태 오버레이 */}

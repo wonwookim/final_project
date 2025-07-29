@@ -416,7 +416,7 @@ const EnvironmentCheck: React.FC = () => {
                 muted
                 playsInline
                 className="w-full rounded-xl border border-slate-300 bg-gray-100"
-                style={{ maxHeight: '300px', minHeight: '200px' }}
+                style={{ maxHeight: '300px', minHeight: '200px', transform: 'scaleX(-1)' }}
               />
               {stream ? (
                 <div className="absolute bottom-3 left-3 bg-green-500 text-white px-2 py-1 rounded text-xs font-medium">
