@@ -9,9 +9,28 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
+from pydantic import BaseModel
 
 # 기존 llm.core.llm_manager의 enum들은 제거되었음 - 문자열 타입 사용
 from ..candidate.quality_controller import QualityLevel
+
+class LLMProvider(Enum):
+    OPENAI_GPT4 = "openai_gpt4"
+    OPENAI_GPT35 = "openai_gpt35"
+    OPENAI_GPT4O_MINI = "openai_gpt4o_mini"
+    OPENAI_GPT4O = "openai_gpt4o"
+    GOOGLE_GEMINI_PRO = "google_gemini_pro"
+    GOOGLE_GEMINI_FLASH = "google_gemini_flash"
+    KT_BELIEF = "kt_belief"
+
+class LLMResponse(BaseModel):
+    """LLM 응답 표준화"""
+    content: str
+    provider: LLMProvider
+    model_name: str
+    token_count: Optional[int] = None
+    response_time: Optional[float] = None
+    error: Optional[str] = None
 
 class QuestionType(Enum):
     """질문 유형"""
@@ -103,7 +122,7 @@ class AnswerRequest:
     company_id: str
     position: str
     quality_level: QualityLevel
-    llm_provider: str
+    llm_provider: LLMProvider
     additional_context: Optional[str] = None
 
 @dataclass
@@ -111,7 +130,7 @@ class AnswerResponse:
     """답변 생성 응답"""
     answer_content: str
     quality_level: QualityLevel
-    llm_provider: str
+    llm_provider: LLMProvider
     persona_name: str
     confidence_score: float
     response_time: float
@@ -155,5 +174,22 @@ class AICandidatePersonaContext:
             context += f"{i}. {exp.get('company', '회사')}: {exp.get('position', '직책')} ({exp.get('period', '기간')})\n"
             if exp.get('achievements'):
                 context += f"   주요 성과: {', '.join(exp['achievements'])}\n"
+        
+        return context
+
+@dataclass
+class ConversationHistoryContext:
+    """대화 이력 컨텍스트 (기존 AICandidateSession의 컨텍스트 기능만 분리)"""
+    question_answers: List[QuestionAnswer]
+    
+    def get_previous_answers_context(self) -> str:
+        """이전 답변 컨텍스트 (일관성 유지용)"""
+        if not self.question_answers:
+            return ""
+        
+        context = "\n=== 이전 답변 내역 (일관성 유지) ===\n"
+        for i, qa in enumerate(self.question_answers[-3:], 1):  # 최근 3개만
+            context += f"{i}. [{qa.question_type.value}] {qa.question_content}\n"
+            context += f"   답변: {qa.answer_content[:100]}...\n\n"
         
         return context
