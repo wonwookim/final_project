@@ -8,6 +8,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from backend.schemas.user import UserCreate, UserLogin, UserResponse, AuthResponse
+from pydantic import BaseModel
 from backend.services.auth_service import get_auth_service, get_current_user, AuthService
 
 # 라우터 초기화
@@ -15,6 +16,14 @@ auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 # 보안 스키마
 security = HTTPBearer()
+
+# OTP 관련 스키마
+class SendOTPRequest(BaseModel):
+    email: str
+
+class VerifyOTPRequest(BaseModel):
+    email: str
+    code: str
 
 @auth_router.post("/signup", response_model=AuthResponse)
 async def signup(
@@ -96,3 +105,35 @@ async def verify_token(
         return {"valid": False, "error": "Invalid token"}
     except Exception as e:
         return {"valid": False, "error": str(e)}
+
+@auth_router.post("/send-otp")
+async def send_otp(
+    request: SendOTPRequest,
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """
+    이메일로 OTP 코드 발송
+    """
+    try:
+        result = await auth_service.send_email_otp(request.email)
+        return {"success": True, "message": "인증번호가 이메일로 발송되었습니다."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OTP 발송 중 오류가 발생했습니다: {str(e)}")
+
+@auth_router.post("/verify-otp")
+async def verify_otp(
+    request: VerifyOTPRequest,
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """
+    이메일 OTP 코드 검증
+    """
+    try:
+        result = await auth_service.verify_email_otp(request.email, request.code)
+        return {"success": True, "verified": True, "message": "이메일 인증이 완료되었습니다."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OTP 검증 중 오류가 발생했습니다: {str(e)}")

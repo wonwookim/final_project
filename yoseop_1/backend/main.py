@@ -45,13 +45,13 @@ try:
     from routers.posting import posting_router
 
     DATABASE_ENABLED = True
-    print("✅ 데이터베이스 확장 로드 성공")
-    print("✅ 마이그레이션 API 로드 성공")
-    print("✅ 인증 라우터 로드 성공")
+    print("데이터베이스 확장 로드 성공")
+    print("마이그레이션 API 로드 성공")
+    print("인증 라우터 로드 성공")
 except ImportError as e:
     DATABASE_ENABLED = False
-    print(f"⚠️ 데이터베이스 확장 로드 실패: {e}")
-    print("   메모리 기반 모드로 실행됩니다.")
+    print(f"데이터베이스 확장 로드 실패: {e}")
+    print("메모리 기반 모드로 실행됩니다.")
 
 # FastAPI 앱 초기화
 app = FastAPI(
@@ -81,9 +81,9 @@ if DATABASE_ENABLED:
     app.include_router(auth_router)
     app.include_router(company_router)
     app.include_router(posting_router)
-    print("✅ 데이터베이스 API 라우터 등록 완료")
-    print("✅ 마이그레이션 API 라우터 등록 완료")
-    print("✅ 인증 API 라우터 등록 완료")
+    print("데이터베이스 API 라우터 등록 완료")
+    print("마이그레이션 API 라우터 등록 완료") 
+    print("인증 API 라우터 등록 완료")
 
 # 서비스 계층 사용
 interview_service = InterviewService()
@@ -465,9 +465,9 @@ async def get_turn_based_question(
 if __name__ == "__main__":
     import uvicorn
     
-    print("🚀 Beta-GO Interview FastAPI 시작!")
-    print("📱 브라우저에서 http://localhost:8000 접속")
-    print("📚 API 문서: http://localhost:8000/docs")
+    print("Beta-GO Interview FastAPI 시작!")
+    print("브라우저에서 http://localhost:8000 접속")
+    print("API 문서: http://localhost:8000/docs")
     
     uvicorn.run(
         "main:app",
