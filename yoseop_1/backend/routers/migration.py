@@ -1,46 +1,23 @@
-"""
-데이터 마이그레이션 API 엔드포인트
-웹 인터페이스에서 마이그레이션 실행 가능
-"""
-
-from fastapi import APIRouter, HTTPException, BackgroundTasks
-from pydantic import BaseModel
-from typing import Dict, Any, Optional
-from datetime import datetime
+from database.services.existing_tables_service import existing_tables_service
 import sys
 import os
+import logging
+from datetime import datetime
 
 # 프로젝트 루트 경로 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from fastapi import APIRouter, HTTPException, BackgroundTasks
+from database.supabase_client import supabase_client
+from backend.schemas.company import CompanyResponse
 from database.services.data_migration_service import migration_service
-import logging
+from schemas.migration import MigrationRequest, MigrationStatus, migration_status
+from typing import List
 
 logger = logging.getLogger(__name__)
 
 # 라우터 생성
-migration_router = APIRouter(prefix="/api/migration", tags=["Migration"])
-
-# ===================
-# 요청/응답 모델
-# ===================
-
-class MigrationRequest(BaseModel):
-    task: str  # 'all', 'companies', 'questions', 'candidates'
-    dry_run: bool = False
-
-class MigrationStatus(BaseModel):
-    status: str
-    message: str
-    results: Optional[Dict[str, Any]] = None
-
-# 마이그레이션 상태 저장
-migration_status = {
-    "is_running": False,
-    "current_task": None,
-    "progress": 0,
-    "last_result": None
-}
+migration_router = APIRouter(prefix="/migration", tags=["Migration"])
 
 # ===================
 # 마이그레이션 엔드포인트

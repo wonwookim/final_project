@@ -13,46 +13,13 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from database.services.existing_tables_service import existing_tables_service
+from backend.schemas.database import CreateUserRequest, CreateInterviewRequest, SaveInterviewDetailRequest, SaveResumeRequest
 import logging
 
 logger = logging.getLogger(__name__)
 
 # 라우터 생성
-database_router = APIRouter(prefix="/api/database", tags=["Database"])
-
-# ===================
-# 요청/응답 모델
-# ===================
-
-class CreateUserRequest(BaseModel):
-    name: str
-    email: str
-    pw: str
-
-class CreateInterviewRequest(BaseModel):
-    user_id: int
-    company_id: int
-    position_id: int
-    posting_id: Optional[int] = None
-
-class SaveInterviewDetailRequest(BaseModel):
-    interview_id: int
-    who: str  # 'user' 또는 'ai'
-    question_index: int
-    question_id: int
-    question_content: str
-    question_intent: str
-    question_level: str
-    answer: str
-    feedback: str
-    sequence: int
-    duration: int
-
-class SaveResumeRequest(BaseModel):
-    user_id: int
-    title: str
-    content: str
-
+database_router = APIRouter(prefix="/database", tags=["Database"])
 # ===================
 # 사용자 관련 엔드포인트
 # ===================
