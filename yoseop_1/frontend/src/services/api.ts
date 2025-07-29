@@ -350,7 +350,7 @@ export const postingAPI = {
   async getAllPostings(): Promise<JobPosting[]> {
     try {
       const response = await apiClient.get('/posting');
-      return (response.data as { postings: JobPosting[] }).postings;
+      return response.data as JobPosting[];
     } catch (error) {
       console.error('채용공고 목록 조회 실패:', error);
       // fallback: 빈 배열 반환

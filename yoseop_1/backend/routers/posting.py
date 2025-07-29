@@ -29,12 +29,12 @@ async def get_posting_list():
             }
             formatted_postings.append(formatted_posting)
 
-        return {"postings": formatted_postings}
+        return formatted_postings
 
     except Exception as e:
         # 로그 출력 (interview_logger 사용 시 추가)
         print(f"채용공고 조회 오류: {str(e)}")
-        return {"postings": []}
+        return []
 
 
 # 🟢 GET /posting/{posting_id} – 채용공고 상세 조회
