@@ -2504,3 +2504,21 @@
 2025-07-29 09:02:34,016 - interview_system - INFO - None:0 - 🎯 DEBUG: InterviewerService 강제 사용 = True
 2025-07-29 09:02:34,020 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작 (강제 설정)
 2025-07-29 09:02:47,721 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작 완료: interviewer_comp_1c28c3cd
+2025-07-29 12:45:58,941 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 12:45:59,015 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 13:50:07,949 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 13:50:08,028 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 13:50:39,947 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 받은 settings = {'company': '네이버', 'position': '기획', 'mode': 'ai_competition', 'difficulty': '중간', 'candidate_name': '김개발', 'documents': [], 'posting_id': None, 'use_interviewer_service': True}
+2025-07-29 13:50:39,950 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: use_interviewer_service = True
+2025-07-29 13:50:39,952 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 서비스에 전달할 settings_dict = {'company': '네이버', 'position': '기획', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 13:50:39,954 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '네이버', 'position': '기획', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 13:50:39,957 - interview_system - INFO - None:0 - 🎯 DEBUG: InterviewerService 강제 사용 = True
+2025-07-29 13:50:39,960 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작 (강제 설정)
+2025-07-29 13:50:51,724 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작 완료: interviewer_comp_2940e53a
+2025-07-29 13:50:51,737 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 받은 settings = {'company': '네이버', 'position': '기획', 'mode': 'ai_competition', 'difficulty': '중간', 'candidate_name': '김개발', 'documents': [], 'posting_id': None, 'use_interviewer_service': True}
+2025-07-29 13:50:51,744 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: use_interviewer_service = True
+2025-07-29 13:50:51,747 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 서비스에 전달할 settings_dict = {'company': '네이버', 'position': '기획', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 13:50:51,750 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '네이버', 'position': '기획', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 13:50:51,751 - interview_system - INFO - None:0 - 🎯 DEBUG: InterviewerService 강제 사용 = True
+2025-07-29 13:50:51,755 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작 (강제 설정)
+2025-07-29 13:51:03,987 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작 완료: interviewer_comp_75dad631

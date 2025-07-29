@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://127.0.0.1:8000/api';
+const API_BASE_URL = 'http://127.0.0.1:8000';
 
 // API 클라이언트 설정
 const apiClient = axios.create({
@@ -10,10 +10,19 @@ const apiClient = axios.create({
   },
 });
 
-// 요청 인터셉터
+// 요청 인터셉터 - JWT 토큰 자동 추가
 apiClient.interceptors.request.use(
   (config) => {
     console.log('API 요청:', config.method?.toUpperCase(), config.url);
+    
+    // JWT 토큰이 있으면 Authorization 헤더에 추가
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      // config.headers가 undefined일 경우 빈 객체로 초기화
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    
     return config;
   },
   (error) => {
@@ -22,7 +31,7 @@ apiClient.interceptors.request.use(
   }
 );
 
-// 응답 인터셉터
+// 응답 인터셉터 - 토큰 만료 처리
 apiClient.interceptors.response.use(
   (response) => {
     console.log('API 응답:', response.status, response.data);
@@ -30,6 +39,18 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     console.error('응답 오류:', error.response?.status, error.response?.data);
+    
+    // 401 에러 (인증 실패) 시 토큰 삭제 및 로그인 페이지로 리다이렉트
+    if (error.response?.status === 401) {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_profile');
+      
+      // 현재 페이지가 로그인/회원가입 페이지가 아닌 경우에만 리다이렉트
+      if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/signup')) {
+        window.location.href = '/login';
+      }
+    }
+    
     return Promise.reject(error);
   }
 );
@@ -104,7 +125,7 @@ export const interviewApi = {
     total_questions: number;
     message: string;
   }> {
-    const response = await apiClient.post('/interview/start', settings);
+    const response = await apiClient.post('/api/interview/start', settings);
     return response.data as {
       session_id: string;
       total_questions: number;
@@ -121,7 +142,7 @@ export const interviewApi = {
     const formData = new FormData();
     formData.append('file', file);
     
-    const response = await apiClient.post('/interview/upload', formData, {
+    const response = await apiClient.post('/api/interview/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -143,7 +164,7 @@ export const interviewApi = {
     completed?: boolean;
     message?: string;
   }> {
-    const response = await apiClient.get(`/interview/question?session_id=${sessionId}`);
+    const response = await apiClient.get(`/api/interview/question?session_id=${sessionId}`);
     return response.data as {
       question?: Question;
       question_index?: number;
@@ -160,7 +181,7 @@ export const interviewApi = {
     message: string;
     detailed_evaluation: string;
   }> {
-    const response = await apiClient.post('/interview/answer', answerData);
+    const response = await apiClient.post('/api/interview/answer', answerData);
     return response.data as {
       score: number;
       message: string;
@@ -170,14 +191,14 @@ export const interviewApi = {
 
   // 면접 결과 조회
   async getInterviewResults(sessionId: string): Promise<InterviewResult> {
-    const response = await apiClient.get(`/interview/results/${sessionId}`);
+    const response = await apiClient.get(`/api/interview/results/${sessionId}`);
     return response.data as InterviewResult;
   },
 
   // 면접 기록 조회
   async getInterviewHistory(userId?: string): Promise<InterviewHistory> {
     const params = userId ? { user_id: userId } : {};
-    const response = await apiClient.get('/interview/history', { params });
+    const response = await apiClient.get('/api/interview/history', { params });
     return response.data as InterviewHistory;
   },
 
@@ -207,7 +228,7 @@ export const interviewApi = {
     
     console.log('🎯 DEBUG: 최종 전송 설정값 (InterviewerService 강제):', finalSettings);
     
-    const response = await apiClient.post('/interview/ai/start', finalSettings);
+    const response = await apiClient.post('/api/interview/ai/start', finalSettings);
     return response.data as {
       session_id: string;
       comparison_session_id: string;
@@ -234,7 +255,7 @@ export const interviewApi = {
     next_user_question?: Question;
     next_question?: Question;
   }> {
-    const response = await apiClient.post('/interview/comparison/user-turn', {
+    const response = await apiClient.post('/api/interview/comparison/user-turn', {
       comparison_session_id: comparisonSessionId,
       answer: answer
     });
@@ -264,7 +285,7 @@ export const interviewApi = {
     current_question_index?: number;
     message: string;
   }> {
-    const response = await apiClient.post('/interview/comparison/ai-turn', {
+    const response = await apiClient.post('/api/interview/comparison/ai-turn', {
       comparison_session_id: comparisonSessionId,
       step: step
     });
@@ -296,7 +317,7 @@ export const interviewApi = {
     quality_level: string;
     persona_name: string;
   }> {
-    const response = await apiClient.get(`/interview/ai-answer/${sessionId}/${questionId}`);
+    const response = await apiClient.get(`/api/interview/ai-answer/${sessionId}/${questionId}`);
     return response.data as {
       question: string;
       questionType: string;
@@ -314,7 +335,7 @@ export const interviewApi = {
     status: string;
     timestamp: string;
   }> {
-    const response = await apiClient.get('/health');
+    const response = await apiClient.get('/api/health');
     return response.data as {
       status: string;
       timestamp: string;
@@ -352,7 +373,7 @@ export const postingAPI = {
   // 모든 채용공고 조회
   async getAllPostings(): Promise<JobPosting[]> {
     try {
-      const response = await apiClient.get('/postings');
+      const response = await apiClient.get('/api/postings');
       return (response.data as { postings: JobPosting[] }).postings;
     } catch (error) {
       console.error('채용공고 목록 조회 실패:', error);
@@ -364,12 +385,126 @@ export const postingAPI = {
   // 특정 채용공고 상세 조회
   async getPostingById(postingId: number): Promise<JobPosting | null> {
     try {
-      const response = await apiClient.get(`/postings/${postingId}`);
+      const response = await apiClient.get(`/api/postings/${postingId}`);
       return response.data as JobPosting;
     } catch (error) {
       console.error(`채용공고 상세 조회 실패 (ID: ${postingId}):`, error);
       return null;
     }
+  },
+};
+
+// 🔐 인증 관련 타입 정의
+export interface LoginRequest {
+  email: string;
+  pw: string;
+}
+
+export interface SignupRequest {
+  name: string;
+  email: string;
+  pw: string;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  refresh_token?: string;
+  token_type: string;
+  user: {
+    user_id: number;
+    name: string;
+    email: string;
+  };
+}
+
+export interface UserProfile {
+  user_id: number;
+  name: string;
+  email: string;
+}
+
+// 🔐 인증 관련 API 함수들
+export const authApi = {
+  // 회원가입
+  async signup(userData: SignupRequest): Promise<AuthResponse> {
+    const response = await apiClient.post('/auth/signup', userData);
+    return response.data as AuthResponse;
+  },
+
+  // 로그인
+  async login(credentials: LoginRequest): Promise<AuthResponse> {
+    const response = await apiClient.post('/auth/login', credentials);
+    return response.data as AuthResponse;
+  },
+
+  // 로그아웃
+  async logout(): Promise<{ message: string }> {
+    const response = await apiClient.post('/auth/logout');
+    return response.data as { message: string };
+  },
+
+  // 현재 사용자 정보 조회
+  async getCurrentUser(): Promise<UserProfile> {
+    const response = await apiClient.get('/auth/user');
+    return response.data as UserProfile;
+  },
+
+  // 토큰 검증
+  async verifyToken(): Promise<{ valid: boolean; user?: any; error?: string }> {
+    const response = await apiClient.get('/auth/verify');
+    return response.data as { valid: boolean; user?: any; error?: string };
+  },
+
+  // OTP 발송
+  async sendOtp(email: string): Promise<{ success: boolean; message: string }> {
+    const response = await apiClient.post('/auth/send-otp', { email });
+    return response.data as { success: boolean; message: string };
+  },
+
+  // OTP 검증
+  async verifyOtp(email: string, code: string): Promise<{ success: boolean; verified: boolean; message: string }> {
+    const response = await apiClient.post('/auth/verify-otp', { email, code });
+    return response.data as { success: boolean; verified: boolean; message: string };
+  },
+};
+
+// 토큰 관리 유틸리티
+export const tokenManager = {
+  // 토큰 저장
+  setToken(token: string): void {
+    localStorage.setItem('auth_token', token);
+  },
+
+  // 토큰 조회
+  getToken(): string | null {
+    return localStorage.getItem('auth_token');
+  },
+
+  // 토큰 삭제
+  removeToken(): void {
+    localStorage.removeItem('auth_token');
+  },
+
+  // 사용자 정보 저장
+  setUser(user: UserProfile): void {
+    localStorage.setItem('user_profile', JSON.stringify(user));
+  },
+
+  // 사용자 정보 조회
+  getUser(): UserProfile | null {
+    const userStr = localStorage.getItem('user_profile');
+    return userStr ? JSON.parse(userStr) : null;
+  },
+
+  // 사용자 정보 삭제
+  removeUser(): void {
+    localStorage.removeItem('user_profile');
+  },
+
+  // 전체 인증 정보 삭제
+  clearAuth(): void {
+    this.removeToken();
+    this.removeUser();
   },
 };
 

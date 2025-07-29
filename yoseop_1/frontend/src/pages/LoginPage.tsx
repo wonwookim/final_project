@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import { authApi, tokenManager, handleApiError } from '../services/api';
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -26,18 +27,29 @@ const LoginPage: React.FC = () => {
     setIsLoading(true);
     setError('');
 
-    // 실제 로그인 검증
-    const { email, password } = formData;
-    setTimeout(() => {
+    try {
+      // 실제 API 호출
+      const { email, password } = formData;
+      const authResponse = await authApi.login({
+        email,
+        pw: password // 백엔드 스키마에 맞게 pw 사용
+      });
+
+      // 로그인 성공 처리
+      tokenManager.setToken(authResponse.access_token);
+      tokenManager.setUser(authResponse.user);
+
+      // 메인 페이지로 리다이렉트
+      navigate('/');
+      
+    } catch (error: any) {
+      // 에러 처리
+      const errorMessage = handleApiError(error);
+      setError(errorMessage);
+      console.error('로그인 실패:', error);
+    } finally {
       setIsLoading(false);
-      if (email === 'admin@naver.com' && password === '1234qwer!') {
-        // 로그인 성공
-        // navigate('/');
-        alert('로그인 성공!');
-      } else {
-        setError('이메일 또는 비밀번호를 다시 확인해주세요.');
-      }
-    }, 700);
+    }
   };
 
   const handleSocialLogin = (provider: string) => {
