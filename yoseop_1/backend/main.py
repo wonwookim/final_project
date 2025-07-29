@@ -129,7 +129,12 @@ class AITurnRequest(BaseModel):
     """AI 턴 처리 요청 모델"""
     comparison_session_id: str
     step: str = "question"  # "question" 또는 "answer"
-
+    
+class CompetitionTurnSubmission(BaseModel):
+    """경쟁 면접 통합 턴 제출 모델"""
+    comparison_session_id: str
+    answer: str
+    
 # 의존성 주입
 def get_interview_service():
     return interview_service
@@ -373,42 +378,20 @@ async def get_ai_answer(
         interview_logger.error(f"AI 답변 생성 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/interview/comparison/user-turn")
-async def submit_comparison_user_turn(
-    answer_data: ComparisonAnswerSubmission,
+@app.post("/api/interview/comparison/turn")
+async def process_competition_turn(
+    submission: CompetitionTurnSubmission,
     service: InterviewService = Depends(get_interview_service)
 ):
-    """비교 면접 사용자 턴 답변 제출"""
+    """경쟁 면접 통합 턴 처리"""
     try:
-        answer_dict = {
-            "comparison_session_id": answer_data.comparison_session_id,
-            "answer": answer_data.answer
-        }
-        
-        result = await service.submit_comparison_user_turn(answer_dict)
+        result = await service.process_competition_turn(
+            submission.comparison_session_id,
+            submission.answer
+        )
         return result
-        
     except Exception as e:
-        interview_logger.error(f"사용자 턴 제출 오류: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/interview/comparison/ai-turn")
-async def process_comparison_ai_turn(
-    ai_turn_data: AITurnRequest,
-    service: InterviewService = Depends(get_interview_service)
-):
-    """비교 면접 AI 턴 처리"""
-    try:
-        turn_dict = {
-            "comparison_session_id": ai_turn_data.comparison_session_id,
-            "step": ai_turn_data.step
-        }
-        
-        result = await service.process_comparison_ai_turn(turn_dict)
-        return result
-        
-    except Exception as e:
-        interview_logger.error(f"AI 턴 처리 오류: {str(e)}")
+        interview_logger.error(f"경쟁 면접 턴 처리 API 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/interview/history")

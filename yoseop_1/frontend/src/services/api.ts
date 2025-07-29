@@ -246,63 +246,38 @@ export const interviewApi = {
     };
   },
 
-  // 비교 면접 사용자 턴 제출
-  async submitComparisonUserTurn(comparisonSessionId: string, answer: string): Promise<{
+  // 경쟁 면접 통합 턴 처리 (사용자 답변 → AI 답변 + 다음 질문)
+  async processCompetitionTurn(comparisonSessionId: string, answer: string): Promise<{
     status: string;
-    message: string;
-    next_phase: string;
-    submission_result: any;
-    next_user_question?: Question;
-    next_question?: Question;
+    ai_answer: {
+      content: string;
+    };
+    next_question: any;
+    next_user_question: any;
+    interview_status: string;
+    progress: {
+      current: number;
+      total: number;
+      percentage: number;
+    };
   }> {
-    const response = await apiClient.post('/api/interview/comparison/user-turn', {
+    const response = await apiClient.post('/interview/comparison/turn', {
       comparison_session_id: comparisonSessionId,
       answer: answer
     });
     return response.data as {
       status: string;
-      message: string;
-      next_phase: string;
-      submission_result: any;
-      next_user_question?: Question;
-      next_question?: Question;
-    };
-  },
-
-  // 비교 면접 AI 턴 처리
-  async processComparisonAITurn(comparisonSessionId: string, step: string = 'question'): Promise<{
-    status: string;
-    step: string;
-    interview_status?: string;
-    ai_question?: any;
-    ai_answer?: {
-      content: string;
-      persona_name: string;
-      confidence: number;
-    };
-    next_user_question?: Question;
-    next_phase?: string;
-    current_question_index?: number;
-    message: string;
-  }> {
-    const response = await apiClient.post('/api/interview/comparison/ai-turn', {
-      comparison_session_id: comparisonSessionId,
-      step: step
-    });
-    return response.data as {
-      status: string;
-      step: string;
-      interview_status?: string;
-      ai_question?: any;
-      ai_answer?: {
+      ai_answer: {
         content: string;
-        persona_name: string;
-        confidence: number;
       };
-      next_user_question?: Question;
-      next_phase?: string;
-      current_question_index?: number;
-      message: string;
+      next_question: any;
+      next_user_question: any;
+      interview_status: string;
+      progress: {
+        current: number;
+        total: number;
+        percentage: number;
+      };
     };
   },
 
