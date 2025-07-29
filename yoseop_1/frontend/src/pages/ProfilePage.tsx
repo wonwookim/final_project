@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { useAuth } from '../hooks/useAuth';
+import { positionApi, resumeApi, Position, ResumeResponse, ResumeCreate } from '../services/api';
 
 interface InterviewRecord {
   id: string;
@@ -13,28 +14,24 @@ interface InterviewRecord {
   status: 'completed' | 'in_progress' | 'failed';
 }
 
-interface UserResume {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  academic_record: string;
-  career: string;
-  tech: string;
-  activities: string;
-  certificate: string;
-  awards: string;
-  created_at: string;
-  updated_at: string;
+// UserResume 인터페이스를 백엔드 스키마와 일치하도록 수정
+interface UserResume extends ResumeResponse {
+  // 추가 UI용 필드들
+  position_name?: string; // 직군명 (매핑용)
+  displayName?: string;   // 표시용 이력서 제목
 }
 
 const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('resume');
-  const [currentView, setCurrentView] = useState<'list' | 'create' | 'edit'>('list');
+  const [currentView, setCurrentView] = useState<'list' | 'create' | 'edit' | 'view'>('list');
   const [isLoading, setIsLoading] = useState(false);
-  const [editingResumeId, setEditingResumeId] = useState<string | null>(null);
+  const [editingResumeId, setEditingResumeId] = useState<number | null>(null);
+  
+  // 🆕 Position 관련 상태
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [positionsLoading, setPositionsLoading] = useState(false);
   const [userInfo, setUserInfo] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -71,18 +68,20 @@ const ProfilePage: React.FC = () => {
   const [resumeList, setResumeList] = useState<UserResume[]>([]);
 
   const [currentResume, setCurrentResume] = useState<UserResume>({
-    id: '',
-    name: user?.name || '',
-    email: user?.email || '',
-    phone: '',
+    user_resume_id: 0,
+    user_id: user?.user_id || 0,
     academic_record: '',
+    position_id: 0,
+    created_date: '',
+    updated_date: '',
     career: '',
     tech: '',
     activities: '',
     certificate: '',
     awards: '',
-    created_at: '',
-    updated_at: ''
+    // UI용 추가 필드
+    position_name: '',
+    displayName: ''
   });
 
   const sidebarMenus = [
@@ -91,7 +90,50 @@ const ProfilePage: React.FC = () => {
     { id: 'personal-info', label: '개인정보 관리', icon: '👤', color: 'text-orange-600' }
   ];
 
-  // 사용자 정보가 로드되면 상태 업데이트
+  // 🆕 Position 목록 로딩 함수
+  const loadPositions = async () => {
+    try {
+      setPositionsLoading(true);
+      const positionsData = await positionApi.getPositions();
+      setPositions(positionsData);
+    } catch (error) {
+      console.error('직군 목록 조회 실패:', error);
+    } finally {
+      setPositionsLoading(false);
+    }
+  };
+
+  // 🆕 이력서 목록 로딩 함수
+  const loadResumes = async () => {
+    try {
+      setIsLoading(true);
+      const resumesData = await resumeApi.getResumes();
+      
+      // position_name 매핑 추가
+      const resumesWithPositionName = resumesData.map(resume => ({
+        ...resume,
+        position_name: positions.find(p => p.position_id === resume.position_id)?.position_name || '직군 미정',
+        displayName: generateResumeTitle(resume, positions)
+      }));
+      
+      setResumeList(resumesWithPositionName);
+    } catch (error) {
+      console.error('이력서 목록 조회 실패:', error);
+      // 에러 시 빈 배열로 설정 (404는 정상적인 경우)
+      setResumeList([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 🆕 이력서 제목 생성 함수
+  const generateResumeTitle = (resume: ResumeResponse, positions: Position[]): string => {
+    const position = positions.find(p => p.position_id === resume.position_id);
+    const positionName = position?.position_name || '일반';
+    return `${user?.name || '사용자'}_${positionName}_이력서`;
+  };
+
+  // 사용자 정보가 로드되면 상태 업데이트 및 데이터 로딩
   useEffect(() => {
     if (user) {
       setUserInfo({
@@ -103,17 +145,31 @@ const ProfilePage: React.FC = () => {
       // currentResume도 업데이트 (기본값 설정용)
       setCurrentResume(prev => ({
         ...prev,
-        name: user.name,
-        email: user.email
+        user_id: user.user_id
       }));
     }
   }, [user]);
 
+  // 컴포넌트 마운트 시 Position 목록 로딩
+  useEffect(() => {
+    loadPositions();
+  }, []);
+
+  // Position이 로드되고 사용자가 있으면 이력서 목록 로딩
+  useEffect(() => {
+    if (user && positions.length > 0 && activeTab === 'resume') {
+      loadResumes();
+    }
+  }, [user, positions, activeTab]);
+
   // 이력서 관련 유틸리티 함수들
   const calculateCompletionRate = (resume: UserResume): number => {
-    // 이메일, 전화번호 제외하고 필수 필드만 체크
-    const fields = ['name', 'academic_record', 'career', 'tech'];
-    const filledFields = fields.filter(field => resume[field as keyof UserResume]?.toString().trim());
+    // 필수 필드만 체크 (position_id, academic_record, career, tech)
+    const fields = ['position_id', 'academic_record', 'career', 'tech'];
+    const filledFields = fields.filter(field => {
+      const value = resume[field as keyof UserResume];
+      return field === 'position_id' ? value && value !== 0 : value?.toString().trim();
+    });
     return Math.round((filledFields.length / fields.length) * 100);
   };
 
@@ -124,25 +180,33 @@ const ProfilePage: React.FC = () => {
   // 이력서 네비게이션 함수들
   const handleCreateResume = () => {
     setCurrentResume({
-      id: '',
-      name: userInfo.name,
-      email: userInfo.email,
-      phone: '',
+      user_resume_id: 0,
+      user_id: user?.user_id || 0,
       academic_record: '',
+      position_id: 0, // 사용자가 선택해야 함
+      created_date: '',
+      updated_date: '',
       career: '',
       tech: '',
       activities: '',
       certificate: '',
       awards: '',
-      created_at: '',
-      updated_at: ''
+      // UI용 추가 필드
+      position_name: '',
+      displayName: ''
     });
     setCurrentView('create');
   };
 
+  const handleViewResume = (resume: UserResume) => {
+    setCurrentResume(resume);
+    setEditingResumeId(resume.user_resume_id);
+    setCurrentView('view');
+  };
+
   const handleEditResume = (resume: UserResume) => {
     setCurrentResume(resume);
-    setEditingResumeId(resume.id);
+    setEditingResumeId(resume.user_resume_id);
     setCurrentView('edit');
   };
 
@@ -151,7 +215,11 @@ const ProfilePage: React.FC = () => {
     setEditingResumeId(null);
   };
 
-  const handleResumeUpdate = (field: keyof UserResume, value: string) => {
+  const handleEditFromView = () => {
+    setCurrentView('edit');
+  };
+
+  const handleResumeUpdate = (field: keyof UserResume, value: string | number) => {
     setCurrentResume(prev => ({
       ...prev,
       [field]: value
@@ -159,61 +227,112 @@ const ProfilePage: React.FC = () => {
   };
 
   const handleResumeSave = async () => {
+    // 📝 필수 필드 검증
+    if (!currentResume.position_id || currentResume.position_id === 0) {
+      alert('직군을 선택해주세요.');
+      return;
+    }
+    if (!currentResume.academic_record.trim()) {
+      alert('학력을 입력해주세요.');
+      return;
+    }
+    if (!currentResume.career.trim()) {
+      alert('경력을 입력해주세요.');
+      return;
+    }
+    if (!currentResume.tech.trim()) {
+      alert('기술스택을 입력해주세요.');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const now = new Date().toISOString().split('T')[0];
-      
+      // API 요청용 데이터 준비 (UI용 필드 제외)
+      const resumeData: ResumeCreate = {
+        academic_record: currentResume.academic_record,
+        position_id: currentResume.position_id,
+        career: currentResume.career,
+        tech: currentResume.tech,
+        activities: currentResume.activities || '',
+        certificate: currentResume.certificate || '',
+        awards: currentResume.awards || ''
+      };
+
       if (currentView === 'create') {
-        // 새 이력서 생성
-        const newResume: UserResume = {
-          ...currentResume,
-          id: Date.now().toString(),
-          created_at: now,
-          updated_at: now
-        };
-        setResumeList(prev => [...prev, newResume]);
+        // 🆕 새 이력서 생성 API 호출
+        const createdResume = await resumeApi.createResume(resumeData);
         alert('이력서가 생성되었습니다.');
-      } else if (currentView === 'edit') {
-        // 기존 이력서 수정
-        const updatedResume: UserResume = {
-          ...currentResume,
-          updated_at: now
-        };
-        setResumeList(prev => prev.map(resume => 
-          resume.id === editingResumeId ? updatedResume : resume
-        ));
+        
+        // 목록 새로고침
+        await loadResumes();
+      } else if (currentView === 'edit' && editingResumeId) {
+        // ✏️ 기존 이력서 수정 API 호출
+        const updatedResume = await resumeApi.updateResume(editingResumeId, resumeData);
         alert('이력서가 수정되었습니다.');
+        
+        // 목록 새로고침
+        await loadResumes();
       }
       
-      // TODO: user_resume 테이블에 저장하는 API 호출
-      console.log('이력서 저장:', currentResume);
-      
       handleBackToList();
-    } catch (error) {
+    } catch (error: any) {
       console.error('이력서 저장 실패:', error);
-      alert('이력서 저장에 실패했습니다.');
+      const errorMessage = error.response?.data?.detail || '이력서 저장에 실패했습니다.';
+      alert(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleDeleteResume = (resumeId: string) => {
+  const handleDeleteResume = async (resumeId: number) => {
     if (window.confirm('정말로 이 이력서를 삭제하시겠습니까?')) {
-      setResumeList(prev => prev.filter(resume => resume.id !== resumeId));
-      alert('이력서가 삭제되었습니다.');
+      try {
+        setIsLoading(true);
+        
+        // 🗑️ 이력서 삭제 API 호출
+        await resumeApi.deleteResume(resumeId);
+        alert('이력서가 삭제되었습니다.');
+        
+        // 목록 새로고침
+        await loadResumes();
+      } catch (error: any) {
+        console.error('이력서 삭제 실패:', error);
+        const errorMessage = error.response?.data?.detail || '이력서 삭제에 실패했습니다.';
+        alert(errorMessage);
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
-  const handleCopyResume = (resume: UserResume) => {
-    const copiedResume: UserResume = {
-      ...resume,
-      id: Date.now().toString(),
-      name: `${resume.name} (복사본)`,
-      created_at: new Date().toISOString().split('T')[0],
-      updated_at: new Date().toISOString().split('T')[0]
-    };
-    setResumeList(prev => [...prev, copiedResume]);
-    alert('이력서가 복사되었습니다.');
+  const handleCopyResume = async (resume: UserResume) => {
+    try {
+      setIsLoading(true);
+      
+      // 📋 이력서 복사용 데이터 준비 (ID 관련 필드 제외)
+      const copyData: ResumeCreate = {
+        academic_record: resume.academic_record,
+        position_id: resume.position_id,
+        career: resume.career,
+        tech: resume.tech,
+        activities: resume.activities,
+        certificate: resume.certificate,
+        awards: resume.awards
+      };
+      
+      // API 호출로 새 이력서 생성
+      await resumeApi.createResume(copyData);
+      alert('이력서가 복사되었습니다.');
+      
+      // 목록 새로고침
+      await loadResumes();
+    } catch (error: any) {
+      console.error('이력서 복사 실패:', error);
+      const errorMessage = error.response?.data?.detail || '이력서 복사에 실패했습니다.';
+      alert(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleUserInfoUpdate = (field: string, value: string) => {
@@ -280,10 +399,10 @@ const ProfilePage: React.FC = () => {
                   {resumeList.map(resume => {
                     const completionRate = calculateCompletionRate(resume);
                     return (
-                      <div key={resume.id} className="bg-white rounded-lg border border-slate-200 p-6 hover:shadow-md transition-all duration-300 hover:border-blue-300">
+                      <div key={resume.user_resume_id} className="bg-white rounded-lg border border-slate-200 p-6 hover:shadow-md transition-all duration-300 hover:border-blue-300 cursor-pointer" onClick={() => handleViewResume(resume)}>
                         <div className="flex items-center justify-between mb-4">
-                          <h3 className="font-semibold text-slate-900 truncate">{resume.name}_이력서</h3>
-                          <span className="text-xs text-slate-500">{formatDate(resume.updated_at)}</span>
+                          <h3 className="font-semibold text-slate-900 truncate">{resume.displayName || `${user?.name}_${resume.position_name}_이력서`}</h3>
+                          <span className="text-xs text-slate-500">{formatDate(resume.updated_date)}</span>
                         </div>
                         
                         <div className="mb-4">
@@ -305,6 +424,10 @@ const ProfilePage: React.FC = () => {
                         
                         <div className="text-sm text-slate-600 mb-4 space-y-1">
                           <div className="flex items-center gap-2">
+                            <span>💼</span>
+                            <span className="truncate">{resume.position_name || '직군 미선택'}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
                             <span>🎓</span>
                             <span className="truncate">{resume.academic_record || '학력 미입력'}</span>
                           </div>
@@ -316,19 +439,37 @@ const ProfilePage: React.FC = () => {
                         
                         <div className="flex gap-2">
                           <button
-                            onClick={() => handleEditResume(resume)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewResume(resume);
+                            }}
+                            className="flex-1 bg-slate-50 text-slate-600 py-2 px-3 rounded text-sm font-medium hover:bg-slate-100 transition-colors"
+                          >
+                            👁️ 보기
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditResume(resume);
+                            }}
                             className="flex-1 bg-blue-50 text-blue-600 py-2 px-3 rounded text-sm font-medium hover:bg-blue-100 transition-colors"
                           >
                             ✏️ 수정
                           </button>
                           <button
-                            onClick={() => handleCopyResume(resume)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopyResume(resume);
+                            }}
                             className="flex-1 bg-green-50 text-green-600 py-2 px-3 rounded text-sm font-medium hover:bg-green-100 transition-colors"
                           >
                             📋 복사
                           </button>
                           <button
-                            onClick={() => handleDeleteResume(resume.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteResume(resume.user_resume_id);
+                            }}
                             className="flex-1 bg-red-50 text-red-600 py-2 px-3 rounded text-sm font-medium hover:bg-red-100 transition-colors"
                           >
                             🗑️ 삭제
@@ -339,6 +480,130 @@ const ProfilePage: React.FC = () => {
                   })}
                 </div>
               )}
+            </div>
+          );
+        } else if (currentView === 'view') {
+          return (
+            <div className="space-y-6">
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={handleBackToList}
+                  className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                >
+                  ←
+                </button>
+                <h2 className="text-2xl font-bold text-slate-900">이력서 상세</h2>
+                <div className="flex-1" />
+                <button
+                  onClick={handleEditFromView}
+                  className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  ✏️ 수정하기
+                </button>
+              </div>
+
+              <div className="bg-white rounded-lg border border-slate-200 p-6 space-y-6">
+                {/* 기본 정보 */}
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    👤 기본 정보
+                  </h3>
+                  
+                  {/* 지원 직군 */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">지원 직군</label>
+                    <input
+                      type="text"
+                      value={positions.find(p => p.position_id === currentResume.position_id)?.position_name || '직군 미선택'}
+                      disabled
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-gray-50 text-gray-700"
+                    />
+                  </div>
+                  
+                  {/* 지원자명 */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">지원자명</label>
+                    <input
+                      type="text"
+                      value={user?.name || ''}
+                      disabled
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-gray-50 text-gray-700"
+                    />
+                  </div>
+                </div>
+
+                {/* 학력 */}
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    🎓 학력
+                  </h3>
+                  <textarea
+                    value={currentResume.academic_record}
+                    disabled
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-gray-50 text-gray-700 resize-none h-24"
+                  />
+                </div>
+
+                {/* 경력 */}
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    💼 경력
+                  </h3>
+                  <textarea
+                    value={currentResume.career}
+                    disabled
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-gray-50 text-gray-700 resize-none h-32"
+                  />
+                </div>
+
+                {/* 기술스택 */}
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    💻 기술스택
+                  </h3>
+                  <textarea
+                    value={currentResume.tech}
+                    disabled
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-gray-50 text-gray-700 resize-none h-24"
+                  />
+                </div>
+
+                {/* 활동/경험 */}
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    🚀 활동/경험
+                  </h3>
+                  <textarea
+                    value={currentResume.activities}
+                    disabled
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-gray-50 text-gray-700 resize-none h-32"
+                  />
+                </div>
+
+                {/* 자격증 */}
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    🏆 자격증
+                  </h3>
+                  <textarea
+                    value={currentResume.certificate}
+                    disabled
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-gray-50 text-gray-700 resize-none h-24"
+                  />
+                </div>
+
+                {/* 수상경력 */}
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    🥇 수상경력
+                  </h3>
+                  <textarea
+                    value={currentResume.awards}
+                    disabled
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-gray-50 text-gray-700 resize-none h-24"
+                  />
+                </div>
+              </div>
             </div>
           );
         } else if (currentView === 'create' || currentView === 'edit') {
@@ -377,14 +642,40 @@ const ProfilePage: React.FC = () => {
                   <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
                     👤 기본 정보
                   </h3>
+                  
+                  {/* 지원 직군 선택 */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">지원 직군 *</label>
+                    {positionsLoading ? (
+                      <div className="flex items-center justify-center py-3 border border-slate-300 rounded-lg">
+                        <LoadingSpinner size="sm" />
+                        <span className="ml-2 text-slate-500">직군 목록 로딩 중...</span>
+                      </div>
+                    ) : (
+                      <select
+                        value={currentResume.position_id || 0}
+                        onChange={(e) => handleResumeUpdate('position_id', parseInt(e.target.value))}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value={0} disabled>직군을 선택해주세요</option>
+                        {positions.map(position => (
+                          <option key={position.position_id} value={position.position_id}>
+                            {position.position_name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  
+                  {/* 이름은 로그인된 사용자 이름 표시 */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">이름 *</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">지원자명</label>
                     <input
                       type="text"
-                      value={currentResume.name}
-                      onChange={(e) => handleResumeUpdate('name', e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="이름을 입력하세요"
+                      value={user?.name || ''}
+                      disabled
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
+                      placeholder="로그인된 사용자명"
                     />
                   </div>
                 </div>

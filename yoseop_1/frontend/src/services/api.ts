@@ -484,4 +484,77 @@ export const tokenManager = {
   },
 };
 
+// 🆕 Position 관련 타입 정의
+export interface Position {
+  position_id: number;
+  position_name: string;
+}
+
+// 🆕 Resume 관련 타입 정의 (백엔드 스키마와 일치)
+export interface ResumeCreate {
+  academic_record: string;
+  position_id: number;
+  career: string;
+  tech: string;
+  activities: string;
+  certificate: string;
+  awards: string;
+}
+
+export interface ResumeResponse {
+  user_resume_id: number;
+  user_id: number;
+  academic_record: string;
+  position_id: number;
+  created_date: string;
+  updated_date: string;
+  career: string;
+  tech: string;
+  activities: string;
+  certificate: string;
+  awards: string;
+}
+
+// 🆕 Position API 함수들
+export const positionApi = {
+  // 전체 직군 목록 조회
+  async getPositions(): Promise<Position[]> {
+    const response = await apiClient.get('/position');
+    return response.data as Position[];
+  },
+};
+
+// 🆕 Resume API 함수들
+export const resumeApi = {
+  // 내 이력서 목록 조회
+  async getResumes(): Promise<ResumeResponse[]> {
+    const response = await apiClient.get('/resume');
+    return response.data as ResumeResponse[];
+  },
+
+  // 이력서 생성
+  async createResume(resumeData: ResumeCreate): Promise<ResumeResponse> {
+    const response = await apiClient.post('/resume', resumeData);
+    return response.data as ResumeResponse;
+  },
+
+  // 이력서 상세 조회
+  async getResumeById(resumeId: number): Promise<ResumeResponse> {
+    const response = await apiClient.get(`/resume/${resumeId}`);
+    return response.data as ResumeResponse;
+  },
+
+  // 이력서 수정
+  async updateResume(resumeId: number, resumeData: ResumeCreate): Promise<ResumeResponse> {
+    const response = await apiClient.put(`/resume/${resumeId}`, resumeData);
+    return response.data as ResumeResponse;
+  },
+
+  // 이력서 삭제
+  async deleteResume(resumeId: number): Promise<{ message: string }> {
+    const response = await apiClient.delete(`/resume/${resumeId}`);
+    return response.data as { message: string };
+  },
+};
+
 export default apiClient;

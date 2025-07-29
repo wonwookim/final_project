@@ -41,8 +41,8 @@ try:
     from routers.auth import auth_router
     from routers.company import company_router
     from routers.posting import posting_router
+    from routers.position import position_router
     from routers.migration import migration_router
-    from routers.database import database_router
     from routers.database import database_router
     from routers.interview import interview_router
 
@@ -99,6 +99,7 @@ if DATABASE_ENABLED:
     app.include_router(auth_router)
     app.include_router(company_router)
     app.include_router(posting_router)
+    app.include_router(position_router)
     app.include_router(migration_router)
     app.include_router(database_router)
     app.include_router(interview_router)
