@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from .models import InterviewSession, ComparisonSession, SessionState, AnswerData
 from .base_session import BaseInterviewSession
 from .comparison_session import ComparisonSessionManager
+from .interviewer_session import InterviewerSession
 from ..shared.models import QuestionAnswer, QuestionType
 from ..shared.company_data_loader import get_company_loader
 
@@ -51,6 +52,7 @@ class SessionManager:
         # 통합 세션 추적
         self.all_sessions: Dict[str, Any] = {}  # 모든 세션 추적
         self.standard_sessions: Dict[str, InterviewSession] = {}  # FinalInterviewSystem 호환 세션들
+        self.interviewer_sessions: Dict[str, InterviewerSession] = {}  # InterviewerService 기반 세션들
         
     # 개별 세션 관리 (기존 기능 위임)
     def start_individual_interview(self, company_id: str, position: str, candidate_name: str) -> str:
@@ -203,8 +205,50 @@ class SessionManager:
     # === FinalInterviewSystem 호환 메서드들 ===
     
     def get_company_data(self, company_id: str) -> Optional[Dict[str, Any]]:
-        """회사 데이터 조회 (FinalInterviewSystem 호환)"""
-        return self.company_loader.get_company_data(company_id)
+        """회사 데이터 조회 - 영문/한글 ID 모두 지원"""
+        print(f"🔍 [SessionManager] get_company_data 호출: company_id='{company_id}'")
+        
+        # 영문 ID로 먼저 시도
+        result = self.company_loader.get_company_data(company_id)
+        if result:
+            print(f"✅ [SessionManager] 영문 ID '{company_id}'로 회사 데이터 조회 성공: {result['name']}")
+            return result
+        
+        # 영문 ID로 실패시, 한글-영문 매핑 시도
+        company_name_mapping = {
+            # 한글 이름 -> 영문 ID 매핑
+            '네이버': 'naver',
+            '카카오': 'kakao', 
+            '라인': 'line',
+            '라인플러스': 'line',
+            '쿠팡': 'coupang',
+            '배달의민족': 'baemin',
+            '당근마켓': 'daangn',
+            '토스': 'toss',
+            # 역방향 매핑도 추가 (영문 -> 영문, 안전장치)
+            'naver': 'naver',
+            'kakao': 'kakao',
+            'line': 'line', 
+            'coupang': 'coupang',
+            'baemin': 'baemin',
+            'daangn': 'daangn',
+            'toss': 'toss'
+        }
+        
+        # 매핑 테이블에서 영문 ID 찾기
+        mapped_id = company_name_mapping.get(company_id)
+        if mapped_id and mapped_id != company_id:
+            print(f"🔄 [SessionManager] '{company_id}' -> '{mapped_id}' 매핑 시도")
+            result = self.company_loader.get_company_data(mapped_id)
+            if result:
+                print(f"✅ [SessionManager] 매핑된 ID '{mapped_id}'로 회사 데이터 조회 성공: {result['name']}")
+                return result
+        
+        # 모든 시도 실패
+        available_companies = self.company_loader.get_supported_companies()
+        print(f"❌ [SessionManager] 회사 데이터 조회 실패: '{company_id}'")
+        print(f"📋 [SessionManager] 사용 가능한 회사 ID들: {available_companies}")
+        return None
     
     def list_companies(self) -> List[Dict[str, str]]:
         """지원 가능한 회사 목록 (FinalInterviewSystem 호환)"""
@@ -689,3 +733,22 @@ JSON 형식으로 응답:
                     "overall_assessment": "시스템 오류로 기본 평가가 적용되었습니다."
                 }
             }
+    
+    # === InterviewerSession 관리 메서드들 ===
+    
+    def start_interviewer_competition(self, company_id: str, position: str, user_name: str) -> Dict[str, Any]:
+        """InterviewerService 기반의 새로운 AI 경쟁 면접을 시작합니다."""
+        session = InterviewerSession(company_id, position, user_name)
+        first_question = session.start()
+
+        self.interviewer_sessions[session.session_id] = session
+
+        return {
+            "session_id": session.session_id,
+            "ai_persona": session.ai_persona.dict(),
+            "question": first_question
+        }
+
+    def get_interviewer_session(self, session_id: str) -> Optional[InterviewerSession]:
+        """ID로 InterviewerSession을 조회합니다."""
+        return self.interviewer_sessions.get(session_id)

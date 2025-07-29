@@ -808,78 +808,70 @@ const InterviewActive: React.FC = () => {
         return [...prev, userAnswer];
       });
       
-      // 사용자 답변 제출
-      const response = await interviewApi.submitComparisonUserTurn(comparisonSessionId, currentAnswer);
+      // 사용자 답변 제출 (새로운 통합 API 사용)
+      const response = await interviewApi.processCompetitionTurn(comparisonSessionId, currentAnswer);
       
       console.log('✅ 사용자 답변 제출 완료:', response);
       setCurrentAnswer('');
       
       // 면접 완료 확인
-      if (response.status === 'completed') {
+      if (response.interview_status === 'completed') {
         console.log('🎉 면접 완료');
         setInterviewState('completed');
         return;
       }
       
-      // AI 답변 생성 및 TTS 재생
-      console.log('🤖 AI 답변 생성 시작...');
+      // AI 답변이 응답에 포함되어 있으므로 바로 처리
+      console.log('🤖 AI 답변 및 다음 질문 처리 시작...');
       setCurrentPhase('ai_turn');
       
       try {
-        // AI 답변을 타임라인에 먼저 추가 (답변 생성 중 표시, 중복 방지)
-        const aiTurnId = `ai_${Date.now()}`;
-        const aiTurn = {
-          id: aiTurnId,
-          type: 'ai' as const,
-          question: currentQuestion?.question || '질문을 불러올 수 없습니다',
-          questionType: currentQuestion?.category || '일반',
-          answer: '',
-          isAnswering: true,
-          persona_name: '춘식이'
-        };
+        // AI 답변이 있는 경우 타임라인에 추가
+        if (response.ai_answer?.content) {
+          const aiTurnId = `ai_${Date.now()}`;
+          const aiTurn = {
+            id: aiTurnId,
+            type: 'ai' as const,
+            question: currentQuestion?.question || '질문을 불러올 수 없습니다',
+            questionType: currentQuestion?.category || '일반',
+            answer: response.ai_answer.content,
+            isAnswering: false,
+            persona_name: '춘식이'
+          };
+          
+          // 중복 방지: 같은 질문에 대한 AI 답변이 이미 있는지 확인
+          setTimeline(prev => {
+            const hasExistingAIAnswer = prev.some(turn => 
+              turn.type === 'ai' && 
+              turn.question === aiTurn.question && 
+              turn.answer
+            );
+            
+            if (hasExistingAIAnswer) {
+              console.log('⚠️ 같은 질문에 대한 AI 답변이 이미 존재함, 추가하지 않음');
+              return prev;
+            }
+            
+            return [...prev, aiTurn];
+          });
+        }
         
-        // 중복 방지: 같은 질문에 대한 AI 답변이 이미 있는지 확인
-        setTimeline(prev => {
-          const hasExistingAIAnswer = prev.some(turn => 
-            turn.type === 'ai' && 
-            turn.question === aiTurn.question && 
-            turn.answer
-          );
+        // AI 답변 TTS 재생 후 다음 질문으로 전환
+        if (response.ai_answer?.content) {
+          console.log('✅ AI 답변 및 다음 질문 수신 완룼:', response.ai_answer.content);
           
-          if (hasExistingAIAnswer) {
-            console.log('⚠️ 같은 질문에 대한 AI 답변이 이미 존재함, 추가하지 않음');
-            return prev;
-          }
-          
-          return [...prev, aiTurn];
-        });
-        
-        // AI 답변 생성 API 호출
-        const aiResponse = await interviewApi.processComparisonAITurn(comparisonSessionId, 'answer');
-        
-        if (aiResponse.ai_answer?.content) {
-          console.log('✅ AI 답변 생성 완료:', aiResponse.ai_answer.content);
-          
-          // 타임라인에서 AI 답변 업데이트
-          setTimeline(prev => prev.map(turn => 
-            turn.id === aiTurnId 
-              ? { ...turn, answer: aiResponse.ai_answer?.content || '', isAnswering: false }
-              : turn
-          ));
-          
-          // AI 답변 TTS 재생 후 다음 질문으로 전환
           if (ttsInstance) {
             console.log('🤖 AI 답변 TTS 재생 시작');
             setIsTTSActive(true);
             setTtsType('ai_answer');
-            ttsInstance.speakAsAICandidate(aiResponse.ai_answer.content)
+            ttsInstance.speakAsAICandidate(response.ai_answer.content)
               .then(() => {
                 console.log('✅ AI 답변 TTS 재생 완료');
                 setIsTTSActive(false);
                 setTtsType('general');
                 // TTS 완료 후 1초 딜레이를 두고 다음 질문으로 전환
                 setTimeout(() => {
-                  handleNextQuestion(aiResponse);
+                  handleNextQuestion(response);
                 }, 1000);
               })
               .catch(error => {
@@ -887,18 +879,17 @@ const InterviewActive: React.FC = () => {
                 setIsTTSActive(false);
                 setTtsType('general');
                 // TTS 실패 시에도 다음 질문으로 전환
-                handleNextQuestion(aiResponse);
+                handleNextQuestion(response);
               });
           } else {
             // TTS 인스턴스가 없으면 바로 다음 질문으로 전환
-            handleNextQuestion(aiResponse);
+            handleNextQuestion(response);
           }
           
         } else {
-          console.error('❌ AI 답변 생성 실패');
-          // 실패 시 타임라인에서 AI 턴 제거
-          setTimeline(prev => prev.filter(turn => turn.id !== aiTurnId));
-          handleNextQuestion(aiResponse);
+          console.error('❌ AI 답변이 응답에 포함되지 않음');
+          // AI 답변이 없어도 다음 질문으로 진행
+          handleNextQuestion(response);
         }
         
       } catch (error) {
@@ -916,38 +907,41 @@ const InterviewActive: React.FC = () => {
 
   // 다음 질문 처리 함수 (첫 번째 질문 포함)
   const handleNextQuestion = (response: any) => {
+    console.log('🔍 handleNextQuestion 응답 구조:', response);
     const nextQuestionData = response.next_user_question || response.next_question;
+    console.log('🎯 추출된 다음 질문 데이터:', nextQuestionData);
     
     if (nextQuestionData) {
-      // 질문 개수 체크: 2개 질문 후 면접 완료
-      const nextQuestionCount = questionCount + 1;
-      console.log(`📊 질문 개수: ${questionCount} → ${nextQuestionCount}`);
-      
-      if (nextQuestionCount > 2) {
-        console.log('🎉 2개 질문 완료 - 면접 종료');
+      // 백엔드의 is_final 플래그 또는 interview_status로 면접 종료 여부 결정
+      if (nextQuestionData.is_final || response.interview_status === 'completed') {
+        console.log('🎉 백엔드에서 면접 완료 신호 - 면접 종료');
         setInterviewState('completed');
         return;
       }
+      
+      const nextQuestionCount = questionCount + 1;
+      console.log(`📊 질문 개수: ${questionCount} → ${nextQuestionCount} (백엔드에서 관리)`);
       console.log('🎯 다음 질문으로 이동:', nextQuestionData);
       
       // 타입 안전성을 위해 any로 캐스팅
       const questionData = nextQuestionData as any;
       
-      // 면접관이 질문을 제시하는 방식
+      // 면접관이 질문을 제시하는 방식 (InterviewerService 구조에 맞게)
       const interviewerTurn = {
         id: `interviewer_${Date.now()}`,
         type: 'interviewer' as const,
-        question: questionData.question_content || questionData.question || '질문을 불러올 수 없습니다',
-        questionType: questionData.question_type || questionData.category || '일반'
+        question: questionData.question || '질문을 불러올 수 없습니다',
+        questionType: questionData.interviewer_type || '일반'
       };
       
-      // 서버 응답을 프론트엔드 형식으로 변환
+      // 서버 응답을 프론트엔드 형식으로 변환 (InterviewerService 구조에 맞게)
       const normalizedNextQuestion = {
         id: questionData.question_id || `q_${Date.now()}`,
-        question: questionData.question_content || questionData.question || '질문을 불러올 수 없습니다',
-        category: questionData.question_type || questionData.category || '일반',
+        question: questionData.question || '질문을 불러올 수 없습니다',
+        category: questionData.interviewer_type || '일반',
         time_limit: questionData.time_limit || 120,
-        keywords: questionData.keywords || []
+        keywords: questionData.keywords || [],
+        intent: questionData.intent || ''
       };
       
       // 중복 방지: 같은 질문이 이미 타임라인에 있는지 확인 (비교 모드와 일반 모드 모두)

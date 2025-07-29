@@ -26,6 +26,46 @@ class QuestionType(Enum):
     GENERAL = "일반"
     BASIC = "기본"
     FUTURE = "미래"
+    
+    @classmethod
+    def from_str(cls, value: str) -> 'QuestionType':
+        """문자열로부터 QuestionType을 반환합니다.
+        
+        Args:
+            value: 영어 문자열 ('HR', 'TECH', 'COLLABORATION' 등) 또는 한글 문자열
+            
+        Returns:
+            QuestionType: 해당하는 QuestionType enum 값
+            
+        Raises:
+            ValueError: 매핑되지 않는 값인 경우
+        """
+        # 영어 문자열 -> QuestionType 매핑
+        english_mapping = {
+            'HR': cls.HR,
+            'TECH': cls.TECH,
+            'COLLABORATION': cls.COLLABORATION,
+            'INTRO': cls.INTRO,
+            'MOTIVATION': cls.MOTIVATION,
+            'MOTIVE': cls.MOTIVE,
+            'FOLLOWUP': cls.FOLLOWUP,
+            'GENERAL': cls.GENERAL,
+            'BASIC': cls.BASIC,
+            'FUTURE': cls.FUTURE
+        }
+        
+        # 대소문자 무시하고 확인
+        upper_value = value.upper()
+        if upper_value in english_mapping:
+            return english_mapping[upper_value]
+        
+        # 한글 문자열로 직접 매핑 시도
+        for question_type in cls:
+            if question_type.value == value:
+                return question_type
+        
+        # 매핑되지 않으면 HR을 기본값으로 반환 (안전한 fallback)
+        return cls.HR
 
 @dataclass
 class QuestionAnswer:

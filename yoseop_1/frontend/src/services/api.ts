@@ -261,7 +261,7 @@ export const interviewApi = {
       percentage: number;
     };
   }> {
-    const response = await apiClient.post('/interview/comparison/turn', {
+    const response = await apiClient.post('/api/interview/comparison/turn', {
       comparison_session_id: comparisonSessionId,
       answer: answer
     });
@@ -280,6 +280,7 @@ export const interviewApi = {
       };
     };
   },
+
 
   // AI 답변 생성
   async getAIAnswer(sessionId: string, questionId: string): Promise<{

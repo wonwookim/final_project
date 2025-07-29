@@ -71,14 +71,31 @@ class InterviewerService:
         }
     
     def _load_companies_data(self) -> Dict[str, Any]:
-        """회사 데이터 로딩 및 캐싱"""
+        """회사 데이터 로딩 및 캐싱 (CompanyDataLoader와 동일한 매핑 방식 사용)"""
         try:
             result = self.client.table('company').select('*').execute()
             companies_dict = {}
+            
+            # CompanyDataLoader와 동일한 매핑 테이블 사용
+            company_id_mapping = {
+                '네이버': 'naver',
+                '카카오': 'kakao', 
+                '라인': 'line',
+                '라인플러스': 'line',  # Supabase DB 호환성
+                '쿠팡': 'coupang',
+                '배달의민족': 'baemin',
+                '당근마켓': 'daangn',
+                '토스': 'toss'
+            }
+            
             if result.data:
                 for company in result.data:
-                    companies_dict[str(company.get('company_id'))] = company
-            print(f"✅ 회사 데이터 로딩 완료: {len(companies_dict)}개")
+                    # 한글 이름을 영문 ID로 매핑
+                    company_name = company.get('name', '')
+                    english_id = company_id_mapping.get(company_name, company_name.lower())
+                    companies_dict[english_id] = company
+                    
+            print(f"✅ 회사 데이터 로딩 완료: {len(companies_dict)}개, 키: {list(companies_dict.keys())}")
             return companies_dict
         except Exception as e:
             print(f"❌ 회사 데이터 로딩 실패: {e}")
@@ -100,8 +117,11 @@ class InterviewerService:
                               user_answer: str = None, chun_sik_answer: str = None) -> Dict:
         """턴제 기반 면접 컨트롤 타워 - 질문 수 한도 관리 및 면접관 턴 제어"""
         
+        print(f"🎯 [InterviewerService] generate_next_question 호출: questions_asked_count={self.questions_asked_count}, total_limit={self.total_question_limit}")
+        
         # 질문 수 한도 확인
         if self.questions_asked_count >= self.total_question_limit:
+            print(f"🏁 [InterviewerService] 질문 한도 도달, 면접 종료: {self.questions_asked_count}/{self.total_question_limit}")
             return {
                 'question': '면접이 종료되었습니다. 수고하셨습니다.',
                 'intent': '면접 종료',
@@ -112,6 +132,7 @@ class InterviewerService:
         # 첫 2개 질문은 고정 (기존 로직 유지)
         if self.questions_asked_count == 0:
             self.questions_asked_count += 1
+            print(f"📝 [InterviewerService] 1번째 질문 생성: 자기소개")
             return {
                 'question': '자기소개를 부탁드립니다.',
                 'intent': '지원자의 기본 정보와 성격, 역량을 파악',
@@ -122,6 +143,7 @@ class InterviewerService:
             company_info = self.companies_data.get(company_id, {})
             company_name = company_info.get('name', '저희 회사')
             self.questions_asked_count += 1
+            print(f"📝 [InterviewerService] 2번째 질문 생성: 지원동기 ({company_name})")
             return {
                 'question': f'저희 {company_name}에 지원하신 동기를 말씀해 주세요.',
                 'intent': '회사에 대한 관심도와 지원 동기 파악',
@@ -130,12 +152,14 @@ class InterviewerService:
         
         # 턴제 시스템 시작 (question_index >= 2)
         else:
+            print(f"🎭 [InterviewerService] {self.questions_asked_count + 1}번째 질문 생성 (턴제 시스템)")
             company_info = self.companies_data.get(company_id, {})
             if not company_info:
                 raise ValueError(f"회사 정보를 찾을 수 없습니다: {company_id}")
             
             # 현재 면접관 결정
             current_interviewer = self._get_current_interviewer()
+            print(f"👔 [InterviewerService] 현재 면접관: {current_interviewer}")
             
             # 면접관의 턴 수행
             question_result = self._conduct_interview_turn(
@@ -145,6 +169,7 @@ class InterviewerService:
             
             # 질문 수 증가
             self.questions_asked_count += 1
+            print(f"📈 [InterviewerService] 질문 수 증가: {self.questions_asked_count}/{self.total_question_limit}")
             
             # 면접관 턴 상태 업데이트
             self._update_turn_state(current_interviewer, question_result)

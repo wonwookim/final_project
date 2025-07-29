@@ -135,6 +135,11 @@ class CompetitionTurnSubmission(BaseModel):
     comparison_session_id: str
     answer: str
     
+class CompetitionTurnSubmission(BaseModel):
+    """경쟁 면접 통합 턴 제출 모델"""
+    comparison_session_id: str
+    answer: str
+
 # 의존성 주입
 def get_interview_service():
     return interview_service

@@ -974,7 +974,9 @@ class AICandidateModel:
         print(f"   - 페르소나: {persona.name}")
         print(f"   - 페르소나 소스: {persona_source}")
         print(f"   - 회사: {request.company_id}")
+        print(f"   - 질문 타입: {request.question_type}")
         print(f"   - 응답시간: {response_time:.2f}초")
+        print(f"   - 답변 내용: {processed_answer[:100]}..." if len(processed_answer) > 100 else f"   - 답변 내용: {processed_answer}")
         
         return AnswerResponse(
             answer_content=processed_answer,
@@ -1238,11 +1240,14 @@ class AICandidateModel:
 
 === 자기소개 답변 구조 ===
 **필수 구성 요소:**
-1. **간단한 자기 정의**: "{summary}"를 기반으로 한 문장으로 자신을 정의하며 시작
-2. **구체적 강점 경험**: 위의 강점 중 1-2개를 구체적인 프로젝트/경험과 연결하여 언급
-3. **회사 기여 의지**: career_goal을 활용하여 {company_data.get('name', '회사')}에 대한 기여 의지를 보여주며 마무리
+1. **정중한 인사**: "안녕하세요, 저는 {name}입니다." 로 시작
+2. **간단한 자기 정의**: "{summary}"를 기반으로 한 문장으로 자신을 정의
+3. **구체적 강점 경험**: 위의 강점 중 1-2개를 구체적인 프로젝트/경험과 연결하여 언급
+4. **회사 기여 의지**: career_goal을 활용하여 {company_data.get('name', '회사')}에 대한 기여 의지를 보여주며 마무리
 
 **답변 톤**: 자신감 있고 겸손하며, 구체적인 경험을 바탕으로 한 진정성 있는 소개
+
+**예시 시작**: "안녕하세요, 저는 {name}입니다. [자기정의 및 나머지 내용 이어서...]"
 
 위 지침을 바탕으로 매력적이고 인상적인 자기소개를 해주세요.
 """
