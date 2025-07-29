@@ -1,6 +1,7 @@
 # backend/schemas/user.py
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
+from typing import Optional
 
 class UserCreate(BaseModel):
     name: str
@@ -24,3 +25,9 @@ class UserEmailUpdate(BaseModel):
 
 class UserPasswordUpdate(BaseModel):
     pw: str
+
+class AuthResponse(BaseModel):
+    access_token: str
+    refresh_token: Optional[str] = None
+    token_type: str = "bearer"
+    user: UserResponse
