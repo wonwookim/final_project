@@ -41,6 +41,8 @@ try:
     from routers.resume import resume_router
     from routers.history import history_router
     from routers.auth import auth_router
+    from routers.company import company_router
+    from routers.posting import posting_router
 
     DATABASE_ENABLED = True
     print("✅ 데이터베이스 확장 로드 성공")
@@ -77,6 +79,8 @@ if DATABASE_ENABLED:
     app.include_router(resume_router)
     app.include_router(history_router)
     app.include_router(auth_router)
+    app.include_router(company_router)
+    app.include_router(posting_router)
     print("✅ 데이터베이스 API 라우터 등록 완료")
     print("✅ 마이그레이션 API 라우터 등록 완료")
     print("✅ 인증 API 라우터 등록 완료")
