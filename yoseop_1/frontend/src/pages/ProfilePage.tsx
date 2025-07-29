@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import { useAuth } from '../hooks/useAuth';
 
 interface InterviewRecord {
   id: string;
@@ -29,13 +30,14 @@ interface UserResume {
 
 const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('resume');
   const [currentView, setCurrentView] = useState<'list' | 'create' | 'edit'>('list');
   const [isLoading, setIsLoading] = useState(false);
   const [editingResumeId, setEditingResumeId] = useState<string | null>(null);
   const [userInfo, setUserInfo] = useState({
-    name: '김개발',
-    email: 'kim@example.com',
+    name: user?.name || '',
+    email: user?.email || '',
     profileImage: null as string | null
   });
 
@@ -70,9 +72,9 @@ const ProfilePage: React.FC = () => {
 
   const [currentResume, setCurrentResume] = useState<UserResume>({
     id: '',
-    name: '김개발',
-    email: 'kim@example.com',
-    phone: '010-1234-5678',
+    name: user?.name || '',
+    email: user?.email || '',
+    phone: '',
     academic_record: '',
     career: '',
     tech: '',
@@ -88,6 +90,24 @@ const ProfilePage: React.FC = () => {
     { id: 'interview-history', label: '면접 히스토리', icon: '📊', color: 'text-purple-600' },
     { id: 'personal-info', label: '개인정보 관리', icon: '👤', color: 'text-orange-600' }
   ];
+
+  // 사용자 정보가 로드되면 상태 업데이트
+  useEffect(() => {
+    if (user) {
+      setUserInfo({
+        name: user.name,
+        email: user.email,
+        profileImage: null
+      });
+      
+      // currentResume도 업데이트 (기본값 설정용)
+      setCurrentResume(prev => ({
+        ...prev,
+        name: user.name,
+        email: user.email
+      }));
+    }
+  }, [user]);
 
   // 이력서 관련 유틸리티 함수들
   const calculateCompletionRate = (resume: UserResume): number => {
@@ -604,6 +624,30 @@ const ProfilePage: React.FC = () => {
     }
   };
 
+  // 인증 로딩 중이거나 사용자 정보가 없으면 로딩 표시
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+        <Header title="마이페이지" subtitle="내 프로필과 면접 기록을 관리하세요" />
+        <div className="flex items-center justify-center h-96">
+          <LoadingSpinner size="lg" />
+          <p className="ml-4 text-gray-600">사용자 정보를 불러오는 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+        <Header title="마이페이지" subtitle="내 프로필과 면접 기록을 관리하세요" />
+        <div className="flex items-center justify-center h-96">
+          <p className="text-gray-600">사용자 정보를 찾을 수 없습니다.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
       <Header 
@@ -618,9 +662,9 @@ const ProfilePage: React.FC = () => {
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-200 p-6 sticky top-24">
               <div className="text-center mb-6">
                 <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white text-2xl font-bold mx-auto mb-3">
-                  {userInfo.name.charAt(0)}
+                  {user.name.charAt(0)}
                 </div>
-                <h3 className="font-bold text-slate-900">{userInfo.name}</h3>
+                <h3 className="font-bold text-slate-900">{user.name}</h3>
               </div>
 
               <nav className="space-y-2">

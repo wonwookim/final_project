@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { InterviewProvider } from './contexts/InterviewContext';
 import ErrorBoundary from './components/common/ErrorBoundary';
+import ProtectedRoute from './components/auth/ProtectedRoute';
 
 // Pages
 import MainPage from './pages/MainPage';
@@ -30,23 +31,67 @@ function App() {
             <Routes>
               {/* Main Routes */}
               <Route path="/" element={<MainPage />} />
-              <Route path="/history" element={<InterviewHistory />} />
+              <Route path="/history" element={
+                <ProtectedRoute>
+                  <InterviewHistory />
+                </ProtectedRoute>
+              } />
               <Route path="/login" element={<LoginPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/profile" element={
+                <ProtectedRoute>
+                  <ProfilePage />
+                </ProtectedRoute>
+              } />
               <Route path="/signup" element={<SignUpPage />} />
               
               {/* New Interview Flow - 4 Steps */}
-                              <Route path="/interview/job-posting" element={<JobPostingSelection />} />
-                <Route path="/interview/resume-selection" element={<ResumeSelection />} />
-                <Route path="/interview/interview-mode-selection" element={<InterviewModeSelection />} />
-                <Route path="/interview/ai-setup" element={<AISetup />} />
-                <Route path="/interview/environment-check" element={<EnvironmentCheck />} />
+              <Route path="/interview/job-posting" element={
+                <ProtectedRoute>
+                  <JobPostingSelection />
+                </ProtectedRoute>
+              } />
+              <Route path="/interview/resume-selection" element={
+                <ProtectedRoute>
+                  <ResumeSelection />
+                </ProtectedRoute>
+              } />
+              <Route path="/interview/interview-mode-selection" element={
+                <ProtectedRoute>
+                  <InterviewModeSelection />
+                </ProtectedRoute>
+              } />
+              <Route path="/interview/ai-setup" element={
+                <ProtectedRoute>
+                  <AISetup />
+                </ProtectedRoute>
+              } />
+              <Route path="/interview/environment-check" element={
+                <ProtectedRoute>
+                  <EnvironmentCheck />
+                </ProtectedRoute>
+              } />
               
               {/* Interview Execution */}
-              <Route path="/interview/active" element={<InterviewActive />} />
-              <Route path="/interview/active-temp" element={<InterviewActiveTemp />} />
-              <Route path="/interview/results" element={<InterviewResults />} />
-              <Route path="/interview/results/:sessionId" element={<InterviewResults />} />
+              <Route path="/interview/active" element={
+                <ProtectedRoute>
+                  <InterviewActive />
+                </ProtectedRoute>
+              } />
+              <Route path="/interview/active-temp" element={
+                <ProtectedRoute>
+                  <InterviewActiveTemp />
+                </ProtectedRoute>
+              } />
+              <Route path="/interview/results" element={
+                <ProtectedRoute>
+                  <InterviewResults />
+                </ProtectedRoute>
+              } />
+              <Route path="/interview/results/:sessionId" element={
+                <ProtectedRoute>
+                  <InterviewResults />
+                </ProtectedRoute>
+              } />
               
               {/* Legacy routes - redirect to new flow */}
               <Route path="/interview" element={<Navigate to="/interview/job-posting" replace />} />

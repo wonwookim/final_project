@@ -1,12 +1,18 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import { authApi, tokenManager, handleApiError } from '../services/api';
+import { handleApiError } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  
+  // URL에서 redirect 파라미터 가져오기
+  const redirectPath = searchParams.get('redirect') || '/';
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -28,22 +34,17 @@ const LoginPage: React.FC = () => {
     setError('');
 
     try {
-      // 실제 API 호출
+      // useAuth의 login 함수 사용 (redirect 경로 전달)
       const { email, password } = formData;
-      const authResponse = await authApi.login({
-        email,
-        pw: password // 백엔드 스키마에 맞게 pw 사용
-      });
+      const result = await login(email, password, redirectPath);
 
-      // 로그인 성공 처리
-      tokenManager.setToken(authResponse.access_token);
-      tokenManager.setUser(authResponse.user);
-
-      // 메인 페이지로 리다이렉트
-      navigate('/');
+      if (!result.success) {
+        // 에러 처리 (성공 시에는 useAuth에서 자동으로 리다이렉트됨)
+        setError(result.error || '로그인에 실패했습니다.');
+      }
       
     } catch (error: any) {
-      // 에러 처리
+      // 예상치 못한 에러 처리
       const errorMessage = handleApiError(error);
       setError(errorMessage);
       console.error('로그인 실패:', error);
@@ -68,7 +69,17 @@ const LoginPage: React.FC = () => {
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 border border-slate-200 shadow-lg">
             <div className="text-center mb-8">
               <h1 className="text-2xl font-bold text-slate-900 mb-2">로그인</h1>
-              <p className="text-slate-600">계정에 로그인하여 면접을 시작하세요</p>
+              <p className="text-slate-600">
+                {redirectPath !== '/' ? 
+                  '로그인 후 요청하신 페이지로 이동합니다' : 
+                  '계정에 로그인하여 면접을 시작하세요'
+                }
+              </p>
+              {redirectPath !== '/' && (
+                <p className="text-sm text-blue-600 mt-1">
+                  이동할 페이지: {redirectPath}
+                </p>
+              )}
             </div>
 
             <form onSubmit={handleLogin} className="space-y-6">

@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import { authApi, tokenManager, handleApiError } from '../services/api';
+import { authApi, handleApiError } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
 
 // 비밀번호 유효성 검사 함수 (백엔드와 동일한 로직)
 interface PasswordValidation {
@@ -39,6 +40,7 @@ const validatePassword = (password: string): PasswordValidation => {
 
 const SignUpPage: React.FC = () => {
   const navigate = useNavigate();
+  const { signup } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
@@ -158,29 +160,28 @@ const SignUpPage: React.FC = () => {
     setError('');
 
     try {
-      // 실제 API 호출
-      const authResponse = await authApi.signup({
-        name: formData.name,
-        email: formData.email,
-        pw: formData.password // 백엔드 스키마에 맞게 pw 사용
-      });
+      // useAuth의 signup 함수 사용
+      const result = await signup(formData.name, formData.email, formData.password);
 
-      // 회원가입 성공 처리
-      if (authResponse.access_token) {
-        // 토큰이 있으면 자동 로그인 처리
-        tokenManager.setToken(authResponse.access_token);
-        tokenManager.setUser(authResponse.user);
-        navigate('/');
+      if (result.success) {
+        // 회원가입 성공 처리
+        if (result.response?.access_token) {
+          // 토큰이 있으면 자동 로그인 처리되었으므로 홈으로 이동
+          navigate('/');
+        } else {
+          // 이메일 인증이 필요한 경우
+          setInfoMessage('이메일로 인증 링크가 전송되었습니다. 이메일을 확인하여 인증을 완료해주세요.');
+          setTimeout(() => {
+            navigate('/login');
+          }, 3000);
+        }
       } else {
-        // 이메일 인증이 필요한 경우
-        setInfoMessage('이메일로 인증 링크가 전송되었습니다. 이메일을 확인하여 인증을 완료해주세요.');
-        setTimeout(() => {
-          navigate('/login');
-        }, 3000);
+        // 에러 처리
+        setError(result.error || '회원가입에 실패했습니다.');
       }
       
     } catch (error: any) {
-      // 에러 처리
+      // 예상치 못한 에러 처리
       const errorMessage = handleApiError(error);
       setError(errorMessage);
       console.error('회원가입 실패:', error);
