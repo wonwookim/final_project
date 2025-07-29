@@ -2118,3 +2118,388 @@
 2025-07-28 13:58:45,269 - interview_system - INFO - None:0 - 🔄 면접 계속: 3/20 질문 진행 중
 2025-07-28 14:24:24,978 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
 2025-07-28 14:24:25,047 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-28 17:35:33,686 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-28 17:35:33,739 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-28 17:36:07,777 - interview_system - INFO - None:0 - 📋 SessionManager 기반 비교면접 시작
+2025-07-28 17:36:07,777 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-28 17:36:07,784 - interview_system - INFO - None:0 - 🚀 비교 세션 생성: comp_e0461b31 - 김개발 vs 춘식이
+2025-07-28 17:36:07,784 - interview_system - INFO - None:0 - 🎯 비교 면접 질문 계획 생성 시작: naver - 프론트엔드 개발자
+2025-07-28 17:36:07,786 - interview_system - INFO - None:0 - 🎯 질문 계획 생성 시작: naver - 프론트엔드 개발자 - 중간
+2025-07-28 17:36:07,905 - interview_system - INFO - None:0 - 📋 고정 질문 선별 완료: 7개
+2025-07-28 17:36:07,908 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 총 19개 질문
+2025-07-28 17:36:07,909 - interview_system - INFO - None:0 - 📊 구성: 고정 7개, 동적 12개
+2025-07-28 17:36:07,911 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 19개 질문
+2025-07-28 17:36:07,912 - interview_system - INFO - None:0 - 📊 세션 등록 완료: 총 19개 질문으로 시작
+2025-07-28 17:36:07,914 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-28 17:36:07,916 - interview_system - INFO - None:0 - 📋 SessionManager 기반 비교면접 시작
+2025-07-28 17:36:07,917 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-28 17:36:07,919 - interview_system - INFO - None:0 - 🚀 비교 세션 생성: comp_bcb1ea93 - 김개발 vs 춘식이
+2025-07-28 17:36:07,920 - interview_system - INFO - None:0 - 🎯 비교 면접 질문 계획 생성 시작: naver - 프론트엔드 개발자
+2025-07-28 17:36:07,921 - interview_system - INFO - None:0 - 🎯 질문 계획 생성 시작: naver - 프론트엔드 개발자 - 중간
+2025-07-28 17:36:07,961 - interview_system - INFO - None:0 - 📋 고정 질문 선별 완료: 7개
+2025-07-28 17:36:07,962 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 총 19개 질문
+2025-07-28 17:36:07,962 - interview_system - INFO - None:0 - 📊 구성: 고정 7개, 동적 12개
+2025-07-28 17:36:07,963 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 19개 질문
+2025-07-28 17:36:07,963 - interview_system - INFO - None:0 - 📊 세션 등록 완료: 총 19개 질문으로 시작
+2025-07-28 17:36:07,964 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-28 17:36:29,013 - interview_system - INFO - None:0 - 📝 답변 제출 후 상태: current_question_index=0, user_answers=1, ai_answers=0
+2025-07-28 17:36:29,014 - interview_system - INFO - None:0 - 🔍 답변 카운트: user=1, ai=0, current_q_id=q_1
+2025-07-28 17:36:29,015 - interview_system - INFO - None:0 - ⏳ 아직 답변 대기 중: user=1, ai=0
+2025-07-28 17:36:29,015 - interview_system - INFO - None:0 - 🔍 사용자 답변 제출 후 세션 상태: current_question_index=0, total_questions=20, is_complete=False
+2025-07-28 17:36:29,020 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-28 17:36:29,022 - interview_system - INFO - None:0 - 🎯 AI 답변 생성 요청: naver - 프론트엔드 개발자
+2025-07-28 17:36:29,023 - interview_system - INFO - None:0 - 📝 질문 내용: 사람들과 협업할 때 가장 어려웠던 점이 있었나요? 있다면 무엇이었는지와 어떻게 극복하셨는지 지원자님의 경험을 답해 주세요.
+2025-07-28 17:36:29,025 - interview_system - WARNING - None:0 - ⚠️ [PERSONA CACHE] 페르소나를 찾을 수 없음: comp_bcb1ea93
+2025-07-28 17:36:29,026 - interview_system - INFO - None:0 - 🎭 [PERSONA] 세션 페르소나 생성 중: comp_bcb1ea93
+2025-07-28 17:36:29,037 - interview_system - INFO - None:0 - ✅ [PERSONA CACHE] 페르소나 저장: comp_bcb1ea93 -> 네이버 지원자
+2025-07-28 17:36:29,039 - interview_system - INFO - None:0 - ✅ [PERSONA] 페르소나 생성 및 저장 완료: 네이버 지원자
+2025-07-28 17:36:34,248 - interview_system - INFO - None:0 - ✅ AI 답변 생성 완료: 페르소나=춘식이
+2025-07-28 17:36:34,249 - interview_system - INFO - None:0 - 📝 답변 제출 후 상태: current_question_index=0, user_answers=1, ai_answers=1
+2025-07-28 17:36:34,250 - interview_system - INFO - None:0 - 🔍 답변 카운트: user=1, ai=1, current_q_id=q_1
+2025-07-28 17:36:34,251 - interview_system - INFO - None:0 - ✅ 현재 질문(1) 완료 - 다음 질문으로 이동
+2025-07-28 17:36:34,252 - interview_system - INFO - None:0 - 📝 질문 반환: 2/19 - 3 - fixed
+2025-07-28 17:36:34,253 - interview_system - INFO - None:0 - 📋 다음 질문 준비: 2/20
+2025-07-28 17:36:34,255 - interview_system - INFO - None:0 - 🔍 AI 답변 제출 후 세션 상태: current_question_index=1, total_questions=20, is_complete=False
+2025-07-28 17:36:34,255 - interview_system - INFO - None:0 - 🔄 면접 계속: 2/20 질문 진행 중
+2025-07-28 17:37:42,299 - interview_system - INFO - None:0 - 📝 답변 제출 후 상태: current_question_index=1, user_answers=2, ai_answers=1
+2025-07-28 17:37:42,301 - interview_system - INFO - None:0 - 🔍 답변 카운트: user=1, ai=0, current_q_id=q_2
+2025-07-28 17:37:42,303 - interview_system - INFO - None:0 - ⏳ 아직 답변 대기 중: user=1, ai=0
+2025-07-28 17:37:42,305 - interview_system - INFO - None:0 - 🔍 사용자 답변 제출 후 세션 상태: current_question_index=1, total_questions=20, is_complete=False
+2025-07-28 17:37:42,316 - interview_system - INFO - None:0 - 📝 질문 반환: 2/19 - 3 - fixed
+2025-07-28 17:37:42,319 - interview_system - INFO - None:0 - 🎯 AI 답변 생성 요청: naver - 프론트엔드 개발자
+2025-07-28 17:37:42,321 - interview_system - INFO - None:0 - 📝 질문 내용: 팀의 목표 달성을 위해 개인의 이익을 포기했던 경험이 있나요?
+2025-07-28 17:37:42,324 - interview_system - INFO - None:0 - ✅ [PERSONA CACHE] 세션에서 페르소나 조회: comp_bcb1ea93 -> 네이버 지원자
+2025-07-28 17:37:42,331 - interview_system - INFO - None:0 - ✅ [PERSONA] 기존 세션 페르소나 재사용: 네이버 지원자
+2025-07-28 17:37:47,658 - interview_system - INFO - None:0 - ✅ AI 답변 생성 완료: 페르소나=춘식이
+2025-07-28 17:37:47,660 - interview_system - INFO - None:0 - 📝 답변 제출 후 상태: current_question_index=1, user_answers=2, ai_answers=2
+2025-07-28 17:37:47,665 - interview_system - INFO - None:0 - 🔍 답변 카운트: user=1, ai=1, current_q_id=q_2
+2025-07-28 17:37:47,668 - interview_system - INFO - None:0 - ✅ 현재 질문(2) 완료 - 다음 질문으로 이동
+2025-07-28 17:37:47,670 - interview_system - INFO - None:0 - 📝 질문 반환: 3/19 - 1 - fixed
+2025-07-28 17:37:47,677 - interview_system - INFO - None:0 - 📋 다음 질문 준비: 3/20
+2025-07-28 17:37:47,681 - interview_system - INFO - None:0 - 🔍 AI 답변 제출 후 세션 상태: current_question_index=2, total_questions=20, is_complete=False
+2025-07-28 17:37:47,683 - interview_system - INFO - None:0 - 🔄 면접 계속: 3/20 질문 진행 중
+2025-07-28 17:41:27,143 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-28 17:41:27,221 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-28 17:41:46,315 - interview_system - INFO - None:0 - 📋 SessionManager 기반 비교면접 시작
+2025-07-28 17:41:46,317 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-28 17:41:46,318 - interview_system - INFO - None:0 - 🚀 비교 세션 생성: comp_0db25fb7 - 김개발 vs 춘식이
+2025-07-28 17:41:46,318 - interview_system - INFO - None:0 - 🎯 비교 면접 질문 계획 생성 시작: naver - 데이터사이언스
+2025-07-28 17:41:46,319 - interview_system - INFO - None:0 - 🎯 질문 계획 생성 시작: naver - 데이터사이언스 - 중간
+2025-07-28 17:41:46,792 - interview_system - INFO - None:0 - 📋 고정 질문 선별 완료: 7개
+2025-07-28 17:41:46,793 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 총 19개 질문
+2025-07-28 17:41:46,794 - interview_system - INFO - None:0 - 📊 구성: 고정 7개, 동적 12개
+2025-07-28 17:41:46,794 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 19개 질문
+2025-07-28 17:41:46,795 - interview_system - INFO - None:0 - 📊 세션 등록 완료: 총 19개 질문으로 시작
+2025-07-28 17:41:46,796 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-28 17:41:46,799 - interview_system - INFO - None:0 - 📋 SessionManager 기반 비교면접 시작
+2025-07-28 17:41:46,800 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-28 17:41:46,800 - interview_system - INFO - None:0 - 🚀 비교 세션 생성: comp_44ad4ade - 김개발 vs 춘식이
+2025-07-28 17:41:46,802 - interview_system - INFO - None:0 - 🎯 비교 면접 질문 계획 생성 시작: naver - 데이터사이언스
+2025-07-28 17:41:46,804 - interview_system - INFO - None:0 - 🎯 질문 계획 생성 시작: naver - 데이터사이언스 - 중간
+2025-07-28 17:41:46,840 - interview_system - INFO - None:0 - 📋 고정 질문 선별 완료: 7개
+2025-07-28 17:41:46,841 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 총 19개 질문
+2025-07-28 17:41:46,842 - interview_system - INFO - None:0 - 📊 구성: 고정 7개, 동적 12개
+2025-07-28 17:41:46,843 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 19개 질문
+2025-07-28 17:41:46,843 - interview_system - INFO - None:0 - 📊 세션 등록 완료: 총 19개 질문으로 시작
+2025-07-28 17:41:46,844 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-28 17:43:06,808 - interview_system - INFO - None:0 - 📝 답변 제출 후 상태: current_question_index=0, user_answers=1, ai_answers=0
+2025-07-28 17:43:06,808 - interview_system - INFO - None:0 - 🔍 답변 카운트: user=1, ai=0, current_q_id=q_1
+2025-07-28 17:43:06,809 - interview_system - INFO - None:0 - ⏳ 아직 답변 대기 중: user=1, ai=0
+2025-07-28 17:43:06,810 - interview_system - INFO - None:0 - 🔍 사용자 답변 제출 후 세션 상태: current_question_index=0, total_questions=20, is_complete=False
+2025-07-28 17:43:06,814 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-28 17:43:06,814 - interview_system - INFO - None:0 - 🎯 AI 답변 생성 요청: naver - 데이터사이언스
+2025-07-28 17:43:06,816 - interview_system - INFO - None:0 - 📝 질문 내용: 사람들과 협업할 때 가장 어려웠던 점이 있었나요? 있다면 무엇이었는지와 어떻게 극복하셨는지 지원자님의 경험을 답해 주세요.
+2025-07-28 17:43:06,816 - interview_system - WARNING - None:0 - ⚠️ [PERSONA CACHE] 페르소나를 찾을 수 없음: comp_44ad4ade
+2025-07-28 17:43:06,817 - interview_system - INFO - None:0 - 🎭 [PERSONA] 세션 페르소나 생성 중: comp_44ad4ade
+2025-07-28 17:43:20,925 - interview_system - INFO - None:0 - ✅ [PERSONA CACHE] 페르소나 저장: comp_44ad4ade -> 춘식이
+2025-07-28 17:43:20,927 - interview_system - INFO - None:0 - ✅ [PERSONA] 페르소나 생성 및 저장 완료: 춘식이
+2025-07-28 17:43:25,298 - interview_system - INFO - None:0 - ✅ AI 답변 생성 완료: 페르소나=춘식이
+2025-07-28 17:43:25,300 - interview_system - INFO - None:0 - 📝 답변 제출 후 상태: current_question_index=0, user_answers=1, ai_answers=1
+2025-07-28 17:43:25,301 - interview_system - INFO - None:0 - 🔍 답변 카운트: user=1, ai=1, current_q_id=q_1
+2025-07-28 17:43:25,302 - interview_system - INFO - None:0 - ✅ 현재 질문(1) 완료 - 다음 질문으로 이동
+2025-07-28 17:43:25,303 - interview_system - INFO - None:0 - 📝 질문 반환: 2/19 - 2 - fixed
+2025-07-28 17:43:25,304 - interview_system - INFO - None:0 - 📋 다음 질문 준비: 2/20
+2025-07-28 17:43:25,305 - interview_system - INFO - None:0 - 🔍 AI 답변 제출 후 세션 상태: current_question_index=1, total_questions=20, is_complete=False
+2025-07-28 17:43:25,306 - interview_system - INFO - None:0 - 🔄 면접 계속: 2/20 질문 진행 중
+2025-07-28 17:48:21,943 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-28 17:48:21,996 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-28 17:48:49,987 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '네이버', 'position': '프론트엔드 개발자', 'candidate_name': '김개발'}
+2025-07-28 17:48:49,991 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = False (타입: <class 'bool'>)
+2025-07-28 17:48:49,993 - interview_system - INFO - None:0 - 📋 SessionManager 기반 비교면접 시작
+2025-07-28 17:48:49,996 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-28 17:48:49,998 - interview_system - INFO - None:0 - 🚀 비교 세션 생성: comp_46681b4b - 김개발 vs 춘식이
+2025-07-28 17:48:50,000 - interview_system - INFO - None:0 - 🎯 비교 면접 질문 계획 생성 시작: naver - 프론트엔드 개발자
+2025-07-28 17:48:50,002 - interview_system - INFO - None:0 - 🎯 질문 계획 생성 시작: naver - 프론트엔드 개발자 - 중간
+2025-07-28 17:48:50,457 - interview_system - INFO - None:0 - 📋 고정 질문 선별 완료: 7개
+2025-07-28 17:48:50,459 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 총 19개 질문
+2025-07-28 17:48:50,460 - interview_system - INFO - None:0 - 📊 구성: 고정 7개, 동적 12개
+2025-07-28 17:48:50,461 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 19개 질문
+2025-07-28 17:48:50,464 - interview_system - INFO - None:0 - 📊 세션 등록 완료: 총 19개 질문으로 시작
+2025-07-28 17:48:50,466 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-28 17:48:50,470 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '네이버', 'position': '프론트엔드 개발자', 'candidate_name': '김개발'}
+2025-07-28 17:48:50,470 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = False (타입: <class 'bool'>)
+2025-07-28 17:48:50,471 - interview_system - INFO - None:0 - 📋 SessionManager 기반 비교면접 시작
+2025-07-28 17:48:50,472 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-28 17:48:50,473 - interview_system - INFO - None:0 - 🚀 비교 세션 생성: comp_6befaada - 김개발 vs 춘식이
+2025-07-28 17:48:50,475 - interview_system - INFO - None:0 - 🎯 비교 면접 질문 계획 생성 시작: naver - 프론트엔드 개발자
+2025-07-28 17:48:50,475 - interview_system - INFO - None:0 - 🎯 질문 계획 생성 시작: naver - 프론트엔드 개발자 - 중간
+2025-07-28 17:48:50,524 - interview_system - INFO - None:0 - 📋 고정 질문 선별 완료: 7개
+2025-07-28 17:48:50,525 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 총 19개 질문
+2025-07-28 17:48:50,526 - interview_system - INFO - None:0 - 📊 구성: 고정 7개, 동적 12개
+2025-07-28 17:48:50,526 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 19개 질문
+2025-07-28 17:48:50,528 - interview_system - INFO - None:0 - 📊 세션 등록 완료: 총 19개 질문으로 시작
+2025-07-28 17:48:50,529 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-28 17:52:03,910 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-28 17:52:03,976 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-28 17:52:42,337 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '당근마켓', 'position': 'ai', 'candidate_name': '김개발'}
+2025-07-28 17:52:42,339 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = False (타입: <class 'bool'>)
+2025-07-28 17:52:42,342 - interview_system - INFO - None:0 - 📋 SessionManager 기반 비교면접 시작
+2025-07-28 17:52:42,345 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-28 17:52:42,347 - interview_system - INFO - None:0 - 🚀 비교 세션 생성: comp_34aa32ee - 김개발 vs 춘식이
+2025-07-28 17:52:42,349 - interview_system - INFO - None:0 - 🎯 비교 면접 질문 계획 생성 시작: daangn - ai
+2025-07-28 17:52:42,351 - interview_system - INFO - None:0 - 🎯 질문 계획 생성 시작: daangn - ai - 중간
+2025-07-28 17:52:42,814 - interview_system - INFO - None:0 - 📋 고정 질문 선별 완료: 7개
+2025-07-28 17:52:42,822 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 총 19개 질문
+2025-07-28 17:52:42,830 - interview_system - INFO - None:0 - 📊 구성: 고정 7개, 동적 12개
+2025-07-28 17:52:42,831 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 19개 질문
+2025-07-28 17:52:42,833 - interview_system - INFO - None:0 - 📊 세션 등록 완료: 총 19개 질문으로 시작
+2025-07-28 17:52:42,835 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-28 17:52:42,842 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '당근마켓', 'position': 'ai', 'candidate_name': '김개발'}
+2025-07-28 17:52:42,846 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = False (타입: <class 'bool'>)
+2025-07-28 17:52:42,847 - interview_system - INFO - None:0 - 📋 SessionManager 기반 비교면접 시작
+2025-07-28 17:52:42,848 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-28 17:52:42,850 - interview_system - INFO - None:0 - 🚀 비교 세션 생성: comp_6716ff12 - 김개발 vs 춘식이
+2025-07-28 17:52:42,851 - interview_system - INFO - None:0 - 🎯 비교 면접 질문 계획 생성 시작: daangn - ai
+2025-07-28 17:52:42,853 - interview_system - INFO - None:0 - 🎯 질문 계획 생성 시작: daangn - ai - 중간
+2025-07-28 17:52:42,903 - interview_system - INFO - None:0 - 📋 고정 질문 선별 완료: 7개
+2025-07-28 17:52:42,906 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 총 19개 질문
+2025-07-28 17:52:42,909 - interview_system - INFO - None:0 - 📊 구성: 고정 7개, 동적 12개
+2025-07-28 17:52:42,910 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 19개 질문
+2025-07-28 17:52:42,912 - interview_system - INFO - None:0 - 📊 세션 등록 완료: 총 19개 질문으로 시작
+2025-07-28 17:52:42,913 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-28 19:19:58,111 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-28 19:19:58,190 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-28 19:22:48,248 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '토스', 'position': '기획', 'candidate_name': '김개발'}
+2025-07-28 19:22:48,250 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = False (타입: <class 'bool'>)
+2025-07-28 19:22:48,252 - interview_system - INFO - None:0 - 📋 SessionManager 기반 비교면접 시작
+2025-07-28 19:22:48,253 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-28 19:22:48,254 - interview_system - INFO - None:0 - 🚀 비교 세션 생성: comp_1911e054 - 김개발 vs 춘식이
+2025-07-28 19:22:48,255 - interview_system - INFO - None:0 - 🎯 비교 면접 질문 계획 생성 시작: toss - 기획
+2025-07-28 19:22:48,261 - interview_system - INFO - None:0 - 🎯 질문 계획 생성 시작: toss - 기획 - 중간
+2025-07-28 19:22:48,754 - interview_system - INFO - None:0 - 📋 고정 질문 선별 완료: 7개
+2025-07-28 19:22:48,755 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 총 19개 질문
+2025-07-28 19:22:48,757 - interview_system - INFO - None:0 - 📊 구성: 고정 7개, 동적 12개
+2025-07-28 19:22:48,757 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 19개 질문
+2025-07-28 19:22:48,759 - interview_system - INFO - None:0 - 📊 세션 등록 완료: 총 19개 질문으로 시작
+2025-07-28 19:22:48,761 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-28 19:22:48,762 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '토스', 'position': '기획', 'candidate_name': '김개발'}
+2025-07-28 19:22:48,764 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = False (타입: <class 'bool'>)
+2025-07-28 19:22:48,765 - interview_system - INFO - None:0 - 📋 SessionManager 기반 비교면접 시작
+2025-07-28 19:22:48,766 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-28 19:22:48,766 - interview_system - INFO - None:0 - 🚀 비교 세션 생성: comp_655f79d6 - 김개발 vs 춘식이
+2025-07-28 19:22:48,767 - interview_system - INFO - None:0 - 🎯 비교 면접 질문 계획 생성 시작: toss - 기획
+2025-07-28 19:22:48,769 - interview_system - INFO - None:0 - 🎯 질문 계획 생성 시작: toss - 기획 - 중간
+2025-07-28 19:22:48,825 - interview_system - INFO - None:0 - 📋 고정 질문 선별 완료: 7개
+2025-07-28 19:22:48,827 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 총 19개 질문
+2025-07-28 19:22:48,829 - interview_system - INFO - None:0 - 📊 구성: 고정 7개, 동적 12개
+2025-07-28 19:22:48,830 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 19개 질문
+2025-07-28 19:22:48,832 - interview_system - INFO - None:0 - 📊 세션 등록 완료: 총 19개 질문으로 시작
+2025-07-28 19:22:48,835 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-28 19:23:12,227 - interview_system - INFO - None:0 - 📝 답변 제출 후 상태: current_question_index=0, user_answers=1, ai_answers=0
+2025-07-28 19:23:12,230 - interview_system - INFO - None:0 - 🔍 답변 카운트: user=1, ai=0, current_q_id=q_1
+2025-07-28 19:23:12,232 - interview_system - INFO - None:0 - ⏳ 아직 답변 대기 중: user=1, ai=0
+2025-07-28 19:23:12,233 - interview_system - INFO - None:0 - 🔍 사용자 답변 제출 후 세션 상태: current_question_index=0, total_questions=20, is_complete=False
+2025-07-28 19:23:12,250 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-28 19:23:12,252 - interview_system - INFO - None:0 - 🎯 AI 답변 생성 요청: toss - 기획
+2025-07-28 19:23:12,255 - interview_system - INFO - None:0 - 📝 질문 내용: 사람들과 협업할 때 가장 어려웠던 점이 있었나요? 있다면 무엇이었는지와 어떻게 극복하셨는지 지원자님의 경험을 답해 주세요.
+2025-07-28 19:23:12,258 - interview_system - WARNING - None:0 - ⚠️ [PERSONA CACHE] 페르소나를 찾을 수 없음: comp_655f79d6
+2025-07-28 19:23:12,260 - interview_system - INFO - None:0 - 🎭 [PERSONA] 세션 페르소나 생성 중: comp_655f79d6
+2025-07-28 19:23:29,097 - interview_system - INFO - None:0 - ✅ [PERSONA CACHE] 페르소나 저장: comp_655f79d6 -> 춘식이
+2025-07-28 19:23:29,099 - interview_system - INFO - None:0 - ✅ [PERSONA] 페르소나 생성 및 저장 완료: 춘식이
+2025-07-28 19:23:34,741 - interview_system - INFO - None:0 - ✅ AI 답변 생성 완료: 페르소나=춘식이
+2025-07-28 19:23:34,742 - interview_system - INFO - None:0 - 📝 답변 제출 후 상태: current_question_index=0, user_answers=1, ai_answers=1
+2025-07-28 19:23:34,745 - interview_system - INFO - None:0 - 🔍 답변 카운트: user=1, ai=1, current_q_id=q_1
+2025-07-28 19:23:34,747 - interview_system - INFO - None:0 - ✅ 현재 질문(1) 완료 - 다음 질문으로 이동
+2025-07-28 19:23:34,749 - interview_system - INFO - None:0 - 📝 질문 반환: 2/19 - 3 - fixed
+2025-07-28 19:23:34,749 - interview_system - INFO - None:0 - 📋 다음 질문 준비: 2/20
+2025-07-28 19:23:34,751 - interview_system - INFO - None:0 - 🔍 AI 답변 제출 후 세션 상태: current_question_index=1, total_questions=20, is_complete=False
+2025-07-28 19:23:34,752 - interview_system - INFO - None:0 - 🔄 면접 계속: 2/20 질문 진행 중
+2025-07-28 19:24:19,651 - interview_system - INFO - None:0 - 📝 답변 제출 후 상태: current_question_index=1, user_answers=2, ai_answers=1
+2025-07-28 19:24:19,654 - interview_system - INFO - None:0 - 🔍 답변 카운트: user=1, ai=0, current_q_id=q_2
+2025-07-28 19:24:19,656 - interview_system - INFO - None:0 - ⏳ 아직 답변 대기 중: user=1, ai=0
+2025-07-28 19:24:19,657 - interview_system - INFO - None:0 - 🔍 사용자 답변 제출 후 세션 상태: current_question_index=1, total_questions=20, is_complete=False
+2025-07-28 19:24:19,665 - interview_system - INFO - None:0 - 📝 질문 반환: 2/19 - 3 - fixed
+2025-07-28 19:24:19,666 - interview_system - INFO - None:0 - 🎯 AI 답변 생성 요청: toss - 기획
+2025-07-28 19:24:19,667 - interview_system - INFO - None:0 - 📝 질문 내용: 팀 프로젝트에서 본인의 역할은 주로 무엇인가요?
+2025-07-28 19:24:19,668 - interview_system - INFO - None:0 - ✅ [PERSONA CACHE] 세션에서 페르소나 조회: comp_655f79d6 -> 춘식이
+2025-07-28 19:24:19,669 - interview_system - INFO - None:0 - ✅ [PERSONA] 기존 세션 페르소나 재사용: 춘식이
+2025-07-28 19:24:24,473 - interview_system - INFO - None:0 - ✅ AI 답변 생성 완료: 페르소나=춘식이
+2025-07-28 19:24:24,476 - interview_system - INFO - None:0 - 📝 답변 제출 후 상태: current_question_index=1, user_answers=2, ai_answers=2
+2025-07-28 19:24:24,478 - interview_system - INFO - None:0 - 🔍 답변 카운트: user=1, ai=1, current_q_id=q_2
+2025-07-28 19:24:24,479 - interview_system - INFO - None:0 - ✅ 현재 질문(2) 완료 - 다음 질문으로 이동
+2025-07-28 19:24:24,482 - interview_system - INFO - None:0 - 📝 질문 반환: 3/19 - 3 - fixed
+2025-07-28 19:24:24,483 - interview_system - INFO - None:0 - 📋 다음 질문 준비: 3/20
+2025-07-28 19:24:24,487 - interview_system - INFO - None:0 - 🔍 AI 답변 제출 후 세션 상태: current_question_index=2, total_questions=20, is_complete=False
+2025-07-28 19:24:24,488 - interview_system - INFO - None:0 - 🔄 면접 계속: 3/20 질문 진행 중
+2025-07-29 08:25:39,848 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 08:25:39,955 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 08:26:00,908 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '네이버', 'position': '백엔드 개발자', 'candidate_name': '김개발'}
+2025-07-29 08:26:00,912 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = False (타입: <class 'bool'>)
+2025-07-29 08:26:00,920 - interview_system - INFO - None:0 - 📋 SessionManager 기반 비교면접 시작
+2025-07-29 08:26:00,924 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-29 08:26:00,926 - interview_system - INFO - None:0 - 🚀 비교 세션 생성: comp_30dab5c9 - 김개발 vs 춘식이
+2025-07-29 08:26:00,926 - interview_system - INFO - None:0 - 🎯 비교 면접 질문 계획 생성 시작: naver - 백엔드 개발자
+2025-07-29 08:26:00,926 - interview_system - INFO - None:0 - 🎯 질문 계획 생성 시작: naver - 백엔드 개발자 - 중간
+2025-07-29 08:26:01,410 - interview_system - INFO - None:0 - 📋 고정 질문 선별 완료: 7개
+2025-07-29 08:26:01,410 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 총 19개 질문
+2025-07-29 08:26:01,427 - interview_system - INFO - None:0 - 📊 구성: 고정 7개, 동적 12개
+2025-07-29 08:26:01,427 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 19개 질문
+2025-07-29 08:26:01,441 - interview_system - INFO - None:0 - 📊 세션 등록 완료: 총 19개 질문으로 시작
+2025-07-29 08:26:01,441 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-29 08:26:01,441 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '네이버', 'position': '백엔드 개발자', 'candidate_name': '김개발'}
+2025-07-29 08:26:01,457 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = False (타입: <class 'bool'>)
+2025-07-29 08:26:01,457 - interview_system - INFO - None:0 - 📋 SessionManager 기반 비교면접 시작
+2025-07-29 08:26:01,457 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-29 08:26:01,457 - interview_system - INFO - None:0 - 🚀 비교 세션 생성: comp_4b6e27e6 - 김개발 vs 춘식이
+2025-07-29 08:26:01,477 - interview_system - INFO - None:0 - 🎯 비교 면접 질문 계획 생성 시작: naver - 백엔드 개발자
+2025-07-29 08:26:01,480 - interview_system - INFO - None:0 - 🎯 질문 계획 생성 시작: naver - 백엔드 개발자 - 중간
+2025-07-29 08:26:01,539 - interview_system - INFO - None:0 - 📋 고정 질문 선별 완료: 7개
+2025-07-29 08:26:01,541 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 총 19개 질문
+2025-07-29 08:26:01,541 - interview_system - INFO - None:0 - 📊 구성: 고정 7개, 동적 12개
+2025-07-29 08:26:01,541 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 19개 질문
+2025-07-29 08:26:01,541 - interview_system - INFO - None:0 - 📊 세션 등록 완료: 총 19개 질문으로 시작
+2025-07-29 08:26:01,541 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-29 08:26:07,462 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 08:26:07,561 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 08:26:32,227 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '네이버', 'position': '기획', 'candidate_name': '김개발'}
+2025-07-29 08:26:32,228 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = False (타입: <class 'bool'>)
+2025-07-29 08:26:32,230 - interview_system - INFO - None:0 - 📋 SessionManager 기반 비교면접 시작
+2025-07-29 08:26:32,232 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-29 08:26:32,235 - interview_system - INFO - None:0 - 🚀 비교 세션 생성: comp_8ccf456d - 김개발 vs 춘식이
+2025-07-29 08:26:32,237 - interview_system - INFO - None:0 - 🎯 비교 면접 질문 계획 생성 시작: naver - 기획
+2025-07-29 08:26:32,239 - interview_system - INFO - None:0 - 🎯 질문 계획 생성 시작: naver - 기획 - 중간
+2025-07-29 08:26:32,308 - interview_system - INFO - None:0 - 📋 고정 질문 선별 완료: 7개
+2025-07-29 08:26:32,310 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 총 19개 질문
+2025-07-29 08:26:32,312 - interview_system - INFO - None:0 - 📊 구성: 고정 7개, 동적 12개
+2025-07-29 08:26:32,315 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 19개 질문
+2025-07-29 08:26:32,317 - interview_system - INFO - None:0 - 📊 세션 등록 완료: 총 19개 질문으로 시작
+2025-07-29 08:26:32,322 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-29 08:26:32,326 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '네이버', 'position': '기획', 'candidate_name': '김개발'}
+2025-07-29 08:26:32,326 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = False (타입: <class 'bool'>)
+2025-07-29 08:26:32,326 - interview_system - INFO - None:0 - 📋 SessionManager 기반 비교면접 시작
+2025-07-29 08:26:32,340 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-29 08:26:32,345 - interview_system - INFO - None:0 - 🚀 비교 세션 생성: comp_c892c6b8 - 김개발 vs 춘식이
+2025-07-29 08:26:32,348 - interview_system - INFO - None:0 - 🎯 비교 면접 질문 계획 생성 시작: naver - 기획
+2025-07-29 08:26:32,351 - interview_system - INFO - None:0 - 🎯 질문 계획 생성 시작: naver - 기획 - 중간
+2025-07-29 08:26:32,396 - interview_system - INFO - None:0 - 📋 고정 질문 선별 완료: 7개
+2025-07-29 08:26:32,398 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 총 19개 질문
+2025-07-29 08:26:32,398 - interview_system - INFO - None:0 - 📊 구성: 고정 7개, 동적 12개
+2025-07-29 08:26:32,401 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 19개 질문
+2025-07-29 08:26:32,403 - interview_system - INFO - None:0 - 📊 세션 등록 완료: 총 19개 질문으로 시작
+2025-07-29 08:26:32,405 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-29 08:42:07,085 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 08:42:07,142 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 08:42:48,903 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 받은 settings = {'company': '네이버', 'position': '백엔드 개발자', 'mode': 'ai_competition', 'difficulty': '중간', 'candidate_name': '김개발', 'documents': [], 'posting_id': None, 'use_interviewer_service': True}
+2025-07-29 08:42:48,907 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: use_interviewer_service = True
+2025-07-29 08:42:48,909 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 서비스에 전달할 settings_dict = {'company': '네이버', 'position': '백엔드 개발자', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 08:42:48,911 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '네이버', 'position': '백엔드 개발자', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 08:42:48,914 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = True (타입: <class 'bool'>)
+2025-07-29 08:42:48,916 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작
+2025-07-29 08:42:49,134 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작 완료: interviewer_comp_6192e28f
+2025-07-29 08:42:49,150 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 받은 settings = {'company': '네이버', 'position': '백엔드 개발자', 'mode': 'ai_competition', 'difficulty': '중간', 'candidate_name': '김개발', 'documents': [], 'posting_id': None, 'use_interviewer_service': True}
+2025-07-29 08:42:49,164 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: use_interviewer_service = True
+2025-07-29 08:42:49,167 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 서비스에 전달할 settings_dict = {'company': '네이버', 'position': '백엔드 개발자', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 08:42:49,170 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '네이버', 'position': '백엔드 개발자', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 08:42:49,174 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = True (타입: <class 'bool'>)
+2025-07-29 08:42:49,177 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작
+2025-07-29 08:42:49,305 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작 완료: interviewer_comp_6a33218d
+2025-07-29 08:42:51,154 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 08:42:51,223 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 08:44:04,151 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 받은 settings = {'company': '배달의민족', 'position': '백엔드 개발자', 'mode': 'ai_competition', 'difficulty': '중간', 'candidate_name': '김개발', 'documents': [], 'posting_id': None, 'use_interviewer_service': True}
+2025-07-29 08:44:04,153 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: use_interviewer_service = True
+2025-07-29 08:44:04,157 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 서비스에 전달할 settings_dict = {'company': '배달의민족', 'position': '백엔드 개발자', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 08:44:04,160 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '배달의민족', 'position': '백엔드 개발자', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 08:44:04,162 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = True (타입: <class 'bool'>)
+2025-07-29 08:44:04,165 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작
+2025-07-29 08:44:04,726 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작 완료: interviewer_comp_ba4cbedf
+2025-07-29 08:44:04,733 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 받은 settings = {'company': '배달의민족', 'position': '백엔드 개발자', 'mode': 'ai_competition', 'difficulty': '중간', 'candidate_name': '김개발', 'documents': [], 'posting_id': None, 'use_interviewer_service': True}
+2025-07-29 08:44:04,735 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: use_interviewer_service = True
+2025-07-29 08:44:04,737 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 서비스에 전달할 settings_dict = {'company': '배달의민족', 'position': '백엔드 개발자', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 08:44:04,739 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '배달의민족', 'position': '백엔드 개발자', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 08:44:04,741 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = True (타입: <class 'bool'>)
+2025-07-29 08:44:04,745 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작
+2025-07-29 08:44:04,890 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작 완료: interviewer_comp_0077aad4
+2025-07-29 08:44:21,861 - interview_system - INFO - None:0 - 🎯 InterviewerService 사용자 답변 제출: interviewer_comp_0077aad4
+2025-07-29 08:44:28,113 - interview_system - INFO - None:0 - 🎯 InterviewerService AI 답변 생성 완료: interviewer_comp_0077aad4
+2025-07-29 08:46:05,168 - interview_system - INFO - None:0 - 🎯 InterviewerService 사용자 답변 제출: interviewer_comp_0077aad4
+2025-07-29 08:46:10,357 - interview_system - INFO - None:0 - 🎯 InterviewerService AI 답변 생성 완료: interviewer_comp_0077aad4
+2025-07-29 08:46:10,373 - interview_system - ERROR - None:0 - ❌ InterviewerService 다음 질문 생성 실패: 회사 정보를 찾을 수 없습니다: baemin
+2025-07-29 08:47:37,867 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 08:47:37,962 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 08:48:00,347 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 받은 settings = {'company': '토스', 'position': '기획', 'mode': 'ai_competition', 'difficulty': '중간', 'candidate_name': '김개발', 'documents': [], 'posting_id': None, 'use_interviewer_service': True}
+2025-07-29 08:48:00,349 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: use_interviewer_service = True
+2025-07-29 08:48:00,353 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 서비스에 전달할 settings_dict = {'company': '토스', 'position': '기획', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 08:48:00,358 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '토스', 'position': '기획', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 08:48:00,366 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = True (타입: <class 'bool'>)
+2025-07-29 08:48:00,372 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작
+2025-07-29 08:48:19,393 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작 완료: interviewer_comp_c321b4d8
+2025-07-29 08:48:19,408 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 받은 settings = {'company': '토스', 'position': '기획', 'mode': 'ai_competition', 'difficulty': '중간', 'candidate_name': '김개발', 'documents': [], 'posting_id': None, 'use_interviewer_service': True}
+2025-07-29 08:48:19,408 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: use_interviewer_service = True
+2025-07-29 08:48:19,408 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 서비스에 전달할 settings_dict = {'company': '토스', 'position': '기획', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 08:48:19,425 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '토스', 'position': '기획', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 08:48:19,429 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = True (타입: <class 'bool'>)
+2025-07-29 08:48:19,430 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작
+2025-07-29 08:48:38,982 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작 완료: interviewer_comp_7962daac
+2025-07-29 08:48:38,996 - interview_system - INFO - None:0 - 🎯 InterviewerService 사용자 답변 제출: interviewer_comp_c321b4d8
+2025-07-29 08:48:44,106 - interview_system - INFO - None:0 - 🎯 InterviewerService AI 답변 생성 완료: interviewer_comp_c321b4d8
+2025-07-29 08:49:33,338 - interview_system - INFO - None:0 - 🎯 InterviewerService 사용자 답변 제출: interviewer_comp_7962daac
+2025-07-29 08:49:39,050 - interview_system - INFO - None:0 - 🎯 InterviewerService AI 답변 생성 완료: interviewer_comp_7962daac
+2025-07-29 08:55:54,691 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 08:55:54,987 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 08:56:18,796 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 받은 settings = {'company': '네이버', 'position': '백엔드 개발자', 'mode': 'ai_competition', 'difficulty': '중간', 'candidate_name': '김개발', 'documents': [], 'posting_id': None, 'use_interviewer_service': False}
+2025-07-29 08:56:18,798 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: use_interviewer_service = False
+2025-07-29 08:56:18,801 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 서비스에 전달할 settings_dict = {'company': '네이버', 'position': '백엔드 개발자', 'candidate_name': '김개발', 'use_interviewer_service': False}
+2025-07-29 08:56:18,804 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '네이버', 'position': '백엔드 개발자', 'candidate_name': '김개발', 'use_interviewer_service': False}
+2025-07-29 08:56:18,806 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = False (타입: <class 'bool'>)
+2025-07-29 08:56:18,808 - interview_system - INFO - None:0 - 📋 SessionManager 기반 비교면접 시작
+2025-07-29 08:56:18,809 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-29 08:56:18,811 - interview_system - INFO - None:0 - 🚀 비교 세션 생성: comp_d85f6fcd - 김개발 vs 춘식이
+2025-07-29 08:56:18,813 - interview_system - INFO - None:0 - 🎯 비교 면접 질문 계획 생성 시작: naver - 백엔드 개발자
+2025-07-29 08:56:18,815 - interview_system - INFO - None:0 - 🎯 질문 계획 생성 시작: naver - 백엔드 개발자 - 중간
+2025-07-29 08:56:18,886 - interview_system - INFO - None:0 - 📋 고정 질문 선별 완료: 7개
+2025-07-29 08:56:18,889 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 총 19개 질문
+2025-07-29 08:56:18,892 - interview_system - INFO - None:0 - 📊 구성: 고정 7개, 동적 12개
+2025-07-29 08:56:18,893 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 19개 질문
+2025-07-29 08:56:18,895 - interview_system - INFO - None:0 - 📊 세션 등록 완료: 총 19개 질문으로 시작
+2025-07-29 08:56:18,898 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-29 08:56:18,905 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 받은 settings = {'company': '네이버', 'position': '백엔드 개발자', 'mode': 'ai_competition', 'difficulty': '중간', 'candidate_name': '김개발', 'documents': [], 'posting_id': None, 'use_interviewer_service': False}
+2025-07-29 08:56:18,910 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: use_interviewer_service = False
+2025-07-29 08:56:18,914 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 서비스에 전달할 settings_dict = {'company': '네이버', 'position': '백엔드 개발자', 'candidate_name': '김개발', 'use_interviewer_service': False}
+2025-07-29 08:56:18,918 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '네이버', 'position': '백엔드 개발자', 'candidate_name': '김개발', 'use_interviewer_service': False}
+2025-07-29 08:56:18,922 - interview_system - INFO - None:0 - 🐛 DEBUG: use_interviewer_service = False (타입: <class 'bool'>)
+2025-07-29 08:56:18,926 - interview_system - INFO - None:0 - 📋 SessionManager 기반 비교면접 시작
+2025-07-29 08:56:18,930 - interview_system - INFO - None:0 - AI 비교 면접 시작
+2025-07-29 08:56:18,937 - interview_system - INFO - None:0 - 🚀 비교 세션 생성: comp_4a8cb36f - 김개발 vs 춘식이
+2025-07-29 08:56:18,943 - interview_system - INFO - None:0 - 🎯 비교 면접 질문 계획 생성 시작: naver - 백엔드 개발자
+2025-07-29 08:56:18,951 - interview_system - INFO - None:0 - 🎯 질문 계획 생성 시작: naver - 백엔드 개발자 - 중간
+2025-07-29 08:56:18,996 - interview_system - INFO - None:0 - 📋 고정 질문 선별 완료: 7개
+2025-07-29 08:56:18,998 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 총 19개 질문
+2025-07-29 08:56:18,999 - interview_system - INFO - None:0 - 📊 구성: 고정 7개, 동적 12개
+2025-07-29 08:56:19,001 - interview_system - INFO - None:0 - ✅ 질문 계획 생성 완료: 19개 질문
+2025-07-29 08:56:19,002 - interview_system - INFO - None:0 - 📊 세션 등록 완료: 총 19개 질문으로 시작
+2025-07-29 08:56:19,004 - interview_system - INFO - None:0 - 📝 질문 반환: 1/19 - INTRO - fixed
+2025-07-29 09:01:46,799 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 09:01:46,879 - interview_system - INFO - None:0 - 📋 채용공고 35개 조회 완료
+2025-07-29 09:02:16,314 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 받은 settings = {'company': '카카오', 'position': 'ai', 'mode': 'ai_competition', 'difficulty': '중간', 'candidate_name': '김개발', 'documents': [], 'posting_id': None, 'use_interviewer_service': True}
+2025-07-29 09:02:16,316 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: use_interviewer_service = True
+2025-07-29 09:02:16,320 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 서비스에 전달할 settings_dict = {'company': '카카오', 'position': 'ai', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 09:02:16,322 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '카카오', 'position': 'ai', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 09:02:16,326 - interview_system - INFO - None:0 - 🎯 DEBUG: InterviewerService 강제 사용 = True
+2025-07-29 09:02:16,329 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작 (강제 설정)
+2025-07-29 09:02:33,979 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작 완료: interviewer_comp_9f40d859
+2025-07-29 09:02:33,986 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 받은 settings = {'company': '카카오', 'position': 'ai', 'mode': 'ai_competition', 'difficulty': '중간', 'candidate_name': '김개발', 'documents': [], 'posting_id': None, 'use_interviewer_service': True}
+2025-07-29 09:02:33,995 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: use_interviewer_service = True
+2025-07-29 09:02:34,001 - interview_system - INFO - None:0 - 🐛 FastAPI DEBUG: 서비스에 전달할 settings_dict = {'company': '카카오', 'position': 'ai', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 09:02:34,006 - interview_system - INFO - None:0 - 🐛 DEBUG: 받은 설정값 = {'company': '카카오', 'position': 'ai', 'candidate_name': '김개발', 'use_interviewer_service': True}
+2025-07-29 09:02:34,016 - interview_system - INFO - None:0 - 🎯 DEBUG: InterviewerService 강제 사용 = True
+2025-07-29 09:02:34,020 - interview_system - INFO - None:0 - 🎯 InterviewerService 기반 비교면접 시작 (강제 설정)

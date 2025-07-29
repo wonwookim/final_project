@@ -83,6 +83,7 @@ class InterviewSettings(BaseModel):
     candidate_name: str
     documents: Optional[List[str]] = None
     posting_id: Optional[int] = None  # 🆕 채용공고 ID - 지정되면 실제 DB 데이터 사용
+    use_interviewer_service: Optional[bool] = False  # 🎯 InterviewerService 사용 플래그
 
 class QuestionRequest(BaseModel):
     """질문 요청 모델"""
@@ -292,6 +293,10 @@ async def start_ai_competition(
 ):
     """AI 지원자와의 경쟁 면접 시작"""
     try:
+        # 🐛 디버깅: FastAPI에서 받은 설정값 로깅
+        interview_logger.info(f"🐛 FastAPI DEBUG: 받은 settings = {settings.dict()}")
+        interview_logger.info(f"🐛 FastAPI DEBUG: use_interviewer_service = {settings.use_interviewer_service}")
+        
         # 🆕 posting_id가 있으면 DB에서 실제 채용공고 정보를 가져와서 사용
         if settings.posting_id:
             from database.services.existing_tables_service import existing_tables_service
@@ -308,22 +313,28 @@ async def start_ai_competition(
                     "candidate_name": settings.candidate_name,
                     "posting_id": settings.posting_id,
                     "company_id": posting_info.get('company_id'),
-                    "position_id": posting_info.get('position_id')
+                    "position_id": posting_info.get('position_id'),
+                    "use_interviewer_service": settings.use_interviewer_service  # 🎯 플래그 포함
                 }
             else:
                 interview_logger.warning(f"⚠️ 채용공고를 찾을 수 없음: posting_id={settings.posting_id}, fallback to original")
                 settings_dict = {
                     "company": settings.company,
                     "position": settings.position,
-                    "candidate_name": settings.candidate_name
+                    "candidate_name": settings.candidate_name,
+                    "use_interviewer_service": settings.use_interviewer_service  # 🎯 플래그 포함
                 }
         else:
             # 기존 방식: company/position 문자열 사용
             settings_dict = {
                 "company": settings.company,
                 "position": settings.position,
-                "candidate_name": settings.candidate_name
+                "candidate_name": settings.candidate_name,
+                "use_interviewer_service": settings.use_interviewer_service  # 🎯 플래그 포함
             }
+        
+        # 🐛 디버깅: 서비스에 전달할 settings_dict 로깅
+        interview_logger.info(f"🐛 FastAPI DEBUG: 서비스에 전달할 settings_dict = {settings_dict}")
         
         result = await service.start_ai_competition(settings_dict)
         return result

@@ -200,7 +200,24 @@ class InterviewService:
             raise Exception(f"결과를 조회하는 중 오류가 발생했습니다: {str(e)}")
     
     async def start_ai_competition(self, settings: Dict[str, Any]) -> Dict[str, Any]:
-        """AI 지원자와의 경쟁 면접 시작 (SessionManager 사용)"""
+        """AI 지원자와의 경쟁 면접 시작 - InterviewerService 강제 사용"""
+        # 🐛 디버깅: 받은 설정값 전체 로깅
+        interview_logger.info(f"🐛 DEBUG: 받은 설정값 = {settings}")
+        
+        # 🎯 무조건 InterviewerService 사용하도록 하드코딩
+        use_interviewer_service = True  # settings 값 무시하고 강제로 True
+        interview_logger.info(f"🎯 DEBUG: InterviewerService 강제 사용 = {use_interviewer_service}")
+        
+        if use_interviewer_service:  # 항상 True이므로 항상 InterviewerService 사용
+            interview_logger.info("🎯 InterviewerService 기반 비교면접 시작 (강제 설정)")
+            return await self._start_interviewer_based_comparison(settings)
+        else:
+            # 이 블록은 실행되지 않음 (use_interviewer_service가 항상 True)
+            interview_logger.info("📋 SessionManager 기반 비교면접 시작")
+            return await self._start_session_based_comparison(settings)
+    
+    async def _start_session_based_comparison(self, settings: Dict[str, Any]) -> Dict[str, Any]:
+        """기존 SessionManager 기반 비교면접 (현재 로직)"""
         try:
             interview_logger.info("AI 비교 면접 시작")
             
@@ -271,6 +288,85 @@ class InterviewService:
         except Exception as e:
             interview_logger.error(f"AI 경쟁 면접 시작 오류: {str(e)}")
             raise Exception(f"AI 경쟁 면접 시작 중 오류가 발생했습니다: {str(e)}")
+    
+    async def _start_interviewer_based_comparison(self, settings: Dict[str, Any]) -> Dict[str, Any]:
+        """InterviewerService 기반 비교면접"""
+        try:
+            company_id = self.get_company_id(settings['company'])
+            
+            # 1. InterviewerService 인스턴스 생성
+            interviewer_service = InterviewerService()
+            
+            # 2. 사용자 이력서 정보 준비 (임시 데이터)
+            user_resume = {
+                'name': settings['candidate_name'],
+                'career_years': settings.get('career_years', '3'),
+                'technical_skills': settings.get('technical_skills', ['Python', 'Django', 'React']),
+                'projects': settings.get('projects', [{'name': '웹 서비스 개발', 'description': 'REST API 개발'}]),
+                'experiences': settings.get('experiences', [{'company': '이전 회사', 'role': '백엔드 개발자'}])
+            }
+            
+            # 3. AI 페르소나 생성 (기존 ai_candidate_model 활용)
+            ai_persona = self.ai_candidate_model.create_persona_for_interview(
+                company_id, settings['position']
+            )
+            
+            # 4. 세션 ID 생성 및 상태 저장
+            session_id = f"interviewer_comp_{uuid.uuid4().hex[:8]}"
+            
+            # InterviewerService용 세션 상태 초기화
+            if not hasattr(self, 'interviewer_comparison_sessions'):
+                self.interviewer_comparison_sessions = {}
+            
+            self.interviewer_comparison_sessions[session_id] = {
+                "interviewer_service": interviewer_service,
+                "user_resume": user_resume,
+                "ai_persona": ai_persona,
+                "company_id": company_id,
+                "position": settings['position'],
+                "qa_history": [],
+                "current_interviewer": "HR",  # 첫 면접관은 HR
+                "questions_asked": 0,
+                "max_questions": 15,
+                "created_at": time.time()
+            }
+            
+            # 5. 첫 질문 생성 (자기소개)
+            first_question = interviewer_service.generate_next_question(
+                user_resume, ai_persona, company_id
+            )
+            
+            # AI 이름 가져오기
+            from llm.core.llm_manager import LLMProvider
+            ai_name = self.ai_candidate_model.get_ai_name(LLMProvider.OPENAI_GPT4O_MINI)
+            
+            interview_logger.info(f"🎯 InterviewerService 기반 비교면접 시작 완료: {session_id}")
+            
+            return {
+                "session_id": session_id,
+                "comparison_session_id": session_id,
+                "user_session_id": session_id + "_user",
+                "ai_session_id": session_id + "_ai",
+                "question": {
+                    "id": first_question.get("question_id", "q_1"),
+                    "question": first_question.get("question", "간단한 자기소개를 부탁드립니다."),
+                    "category": first_question.get("interviewer_type", "HR"),
+                    "time_limit": first_question.get("time_limit", 120),
+                    "keywords": first_question.get("keywords", [])
+                },
+                "current_phase": "user_turn",
+                "current_respondent": settings['candidate_name'],
+                "question_index": 1,
+                "total_questions": 15,  # InterviewerService는 15개 질문 기준
+                "ai_name": ai_name,
+                "starts_with_user": True,
+                "interviewer_type": first_question.get("interviewer_type", "HR"),
+                "message": f"InterviewerService 기반 면접이 시작되었습니다. {settings['candidate_name']}님부터 시작합니다"
+            }
+            
+        except Exception as e:
+            interview_logger.error(f"InterviewerService 기반 비교면접 시작 오류: {str(e)}")
+            raise Exception(f"InterviewerService 기반 면접 시작 중 오류가 발생했습니다: {str(e)}")
     
     async def get_ai_answer(self, session_id: str, question_id: str) -> Dict[str, Any]:
         """AI 지원자의 답변 생성"""
@@ -355,7 +451,17 @@ class InterviewService:
             raise Exception(f"AI 답변 생성 중 오류가 발생했습니다: {str(e)}")
     
     async def submit_comparison_user_turn(self, answer_data: Dict[str, Any]) -> Dict[str, Any]:
-        """비교 면접 사용자 턴 답변 제출 (SessionManager 사용)"""
+        """비교 면접 사용자 턴 답변 제출 - 두 가지 방식 지원"""
+        comparison_session_id = answer_data['comparison_session_id']
+        
+        # InterviewerService 기반 세션인지 확인
+        if hasattr(self, 'interviewer_comparison_sessions') and comparison_session_id in self.interviewer_comparison_sessions:
+            return await self._submit_interviewer_user_turn(answer_data)
+        else:
+            return await self._submit_session_user_turn(answer_data)
+    
+    async def _submit_session_user_turn(self, answer_data: Dict[str, Any]) -> Dict[str, Any]:
+        """기존 SessionManager 기반 사용자 턴 답변 제출"""
         try:
             comparison_session_id = answer_data['comparison_session_id']
             answer = answer_data['answer']
@@ -401,8 +507,65 @@ class InterviewService:
             interview_logger.error(f"사용자 턴 제출 오류: {str(e)}")
             raise Exception(f"답변 제출 중 오류가 발생했습니다: {str(e)}")
     
+    async def _submit_interviewer_user_turn(self, answer_data: Dict[str, Any]) -> Dict[str, Any]:
+        """InterviewerService 기반 사용자 턴 답변 제출"""
+        try:
+            comparison_session_id = answer_data['comparison_session_id']
+            answer = answer_data['answer']
+            
+            # 세션 정보 가져오기
+            session_data = self.interviewer_comparison_sessions[comparison_session_id]
+            interviewer_service = session_data['interviewer_service']
+            
+            # 사용자 답변을 QA 히스토리에 추가
+            if session_data['qa_history']:
+                # 마지막 질문에 사용자 답변 추가
+                session_data['qa_history'][-1]['user_answer'] = answer
+            
+            interview_logger.info(f"🎯 InterviewerService 사용자 답변 제출: {comparison_session_id}")
+            
+            # 면접 완료 확인 (15개 질문 기준)
+            if session_data['questions_asked'] >= session_data['max_questions']:
+                interview_logger.info(f"✅ InterviewerService 기반 면접 완료: {session_data['questions_asked']}/{session_data['max_questions']}")
+                return {
+                    "status": "success",
+                    "message": "InterviewerService 기반 비교 면접이 완료되었습니다",
+                    "next_phase": "completed",
+                    "interview_status": "completed",
+                    "progress": {
+                        "current": session_data['questions_asked'],
+                        "total": session_data['max_questions'],
+                        "percentage": 100
+                    }
+                }
+            
+            return {
+                "status": "success",
+                "message": "사용자 답변이 제출되었습니다 (InterviewerService)",
+                "next_phase": "ai_turn",
+                "progress": {
+                    "current": session_data['questions_asked'],
+                    "total": session_data['max_questions'],
+                    "percentage": (session_data['questions_asked'] / session_data['max_questions']) * 100
+                }
+            }
+            
+        except Exception as e:
+            interview_logger.error(f"InterviewerService 사용자 턴 제출 오류: {str(e)}")
+            raise Exception(f"InterviewerService 답변 제출 중 오류가 발생했습니다: {str(e)}")
+    
     async def process_comparison_ai_turn(self, ai_turn_data: Dict[str, Any]) -> Dict[str, Any]:
-        """비교 면접 AI 턴 처리 (SessionManager 사용)"""
+        """비교 면접 AI 턴 처리 - 두 가지 방식 지원"""
+        comparison_session_id = ai_turn_data['comparison_session_id']
+        
+        # InterviewerService 기반 세션인지 확인
+        if hasattr(self, 'interviewer_comparison_sessions') and comparison_session_id in self.interviewer_comparison_sessions:
+            return await self._process_interviewer_ai_turn(ai_turn_data)
+        else:
+            return await self._process_session_ai_turn(ai_turn_data)
+    
+    async def _process_session_ai_turn(self, ai_turn_data: Dict[str, Any]) -> Dict[str, Any]:
+        """기존 SessionManager 기반 AI 턴 처리"""
         try:
             comparison_session_id = ai_turn_data['comparison_session_id']
             step = ai_turn_data.get('step', 'question')
@@ -529,6 +692,142 @@ class InterviewService:
         except Exception as e:
             interview_logger.error(f"AI 턴 처리 오류: {str(e)}")
             raise Exception(f"AI 턴 처리 중 오류가 발생했습니다: {str(e)}")
+    
+    async def _process_interviewer_ai_turn(self, ai_turn_data: Dict[str, Any]) -> Dict[str, Any]:
+        """InterviewerService 기반 AI 턴 처리"""
+        try:
+            comparison_session_id = ai_turn_data['comparison_session_id']
+            step = ai_turn_data.get('step', 'answer')  # InterviewerService는 바로 답변 처리
+            
+            # 세션 정보 가져오기
+            session_data = self.interviewer_comparison_sessions[comparison_session_id]
+            interviewer_service = session_data['interviewer_service']
+            
+            # AI 답변 생성
+            from llm.candidate.model import AnswerRequest
+            from llm.shared.models import QuestionType
+            from llm.candidate.quality_controller import QualityLevel
+            from llm.core.llm_manager import LLMProvider
+            
+            # 현재 질문 가져오기
+            if session_data['qa_history']:
+                current_question_content = session_data['qa_history'][-1].get('question', '자기소개를 해주세요.')
+            else:
+                current_question_content = '자기소개를 해주세요.'
+            
+            answer_request = AnswerRequest(
+                question_content=current_question_content,
+                question_type=QuestionType.HR,
+                question_intent="AI 지원자 역량 평가",
+                company_id=session_data['company_id'],
+                position=session_data['position'],
+                quality_level=QualityLevel.GOOD,
+                llm_provider=LLMProvider.OPENAI_GPT4O_MINI
+            )
+            
+            # AI 페르소나를 이용한 답변 생성
+            ai_persona = session_data['ai_persona']
+            ai_answer_response = self.ai_candidate_model.generate_answer(answer_request, persona=ai_persona)
+            
+            if ai_answer_response.error:
+                interview_logger.error(f"❌ InterviewerService AI 답변 생성 실패: {ai_answer_response.error}")
+                raise Exception(f"AI 답변 생성 실패: {ai_answer_response.error}")
+            
+            # AI 답변을 QA 히스토리에 추가
+            if session_data['qa_history']:
+                session_data['qa_history'][-1]['ai_answer'] = ai_answer_response.answer_content
+            
+            interview_logger.info(f"🎯 InterviewerService AI 답변 생성 완료: {comparison_session_id}")
+            
+            # 다음 질문 생성 (InterviewerService의 generate_next_question 사용)
+            try:
+                user_answer = session_data['qa_history'][-1].get('user_answer', '') if session_data['qa_history'] else ''
+                ai_answer = ai_answer_response.answer_content
+                
+                next_question = interviewer_service.generate_next_question(
+                    session_data['user_resume'],
+                    session_data['ai_persona'],
+                    session_data['company_id'],
+                    session_data['qa_history'],
+                    user_answer,
+                    ai_answer
+                )
+                
+                # 질문 개수 증가
+                session_data['questions_asked'] += 1
+                
+                # 면접 완료 확인
+                if session_data['questions_asked'] >= session_data['max_questions'] or next_question.get('is_final'):
+                    interview_logger.info(f"✅ InterviewerService 기반 면접 완료: {session_data['questions_asked']}/{session_data['max_questions']}")
+                    return {
+                        "status": "success",
+                        "step": "answer_generated",
+                        "interview_status": "completed",
+                        "ai_answer": {
+                            "content": ai_answer_response.answer_content,
+                            "persona_name": ai_answer_response.persona_name,
+                            "confidence": ai_answer_response.confidence_score
+                        },
+                        "message": f"InterviewerService 기반 비교 면접이 완료되었습니다 ({session_data['questions_asked']}/{session_data['max_questions']} 질문 완료)"
+                    }
+                
+                # 새 질문을 QA 히스토리에 추가
+                session_data['qa_history'].append({
+                    'question': next_question.get('question', '다음 질문을 준비 중입니다.'),
+                    'interviewer_type': next_question.get('interviewer_type', 'HR')
+                })
+                
+                return {
+                    "status": "success",
+                    "step": "answer_generated",
+                    "interview_status": "continue",
+                    "ai_answer": {
+                        "content": ai_answer_response.answer_content,
+                        "persona_name": ai_answer_response.persona_name,
+                        "confidence": ai_answer_response.confidence_score
+                    },
+                    "next_question": {
+                        "id": next_question.get("question_id", f"q_{session_data['questions_asked'] + 1}"),
+                        "question": next_question.get("question", "다음 질문을 준비 중입니다."),
+                        "category": next_question.get("interviewer_type", "HR"),
+                        "time_limit": next_question.get("time_limit", 120),
+                        "keywords": next_question.get("keywords", [])
+                    },
+                    "next_user_question": {
+                        "id": next_question.get("question_id", f"q_{session_data['questions_asked'] + 1}"),
+                        "question": next_question.get("question", "다음 질문을 준비 중입니다."),
+                        "category": next_question.get("interviewer_type", "HR"),
+                        "time_limit": next_question.get("time_limit", 120),
+                        "keywords": next_question.get("keywords", [])
+                    },
+                    "next_phase": "user_turn",
+                    "interviewer_type": next_question.get("interviewer_type", "HR"),
+                    "progress": {
+                        "current": session_data['questions_asked'],
+                        "total": session_data['max_questions'],
+                        "percentage": (session_data['questions_asked'] / session_data['max_questions']) * 100
+                    },
+                    "message": f"InterviewerService AI 답변 완료. {next_question.get('interviewer_type', 'HR')} 면접관이 다음 질문을 준비했습니다."
+                }
+                
+            except Exception as next_q_error:
+                interview_logger.error(f"❌ InterviewerService 다음 질문 생성 실패: {next_q_error}")
+                # 다음 질문 생성 실패 시에도 AI 답변은 반환
+                return {
+                    "status": "success",
+                    "step": "answer_generated",
+                    "interview_status": "completed",  # 더 이상 진행할 수 없으므로 완료 처리
+                    "ai_answer": {
+                        "content": ai_answer_response.answer_content,
+                        "persona_name": ai_answer_response.persona_name,
+                        "confidence": ai_answer_response.confidence_score
+                    },
+                    "message": "AI 답변은 완료되었으나 다음 질문 생성에 실패하여 면접을 종료합니다."
+                }
+            
+        except Exception as e:
+            interview_logger.error(f"InterviewerService AI 턴 처리 오류: {str(e)}")
+            raise Exception(f"InterviewerService AI 턴 처리 중 오류가 발생했습니다: {str(e)}")
     
     async def get_interview_history(self, user_id: str = None) -> Dict[str, Any]:
         """면접 기록 조회 (SessionManager 사용)"""

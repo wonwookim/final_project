@@ -52,6 +52,7 @@ export interface InterviewSettings {
   candidate_name: string;
   documents?: string[];
   posting_id?: number;  // 🆕 채용공고 ID 추가
+  use_interviewer_service?: boolean;  // 🆕 InterviewerService 플래그 추가
 }
 
 export interface Question {
@@ -196,7 +197,17 @@ export const interviewApi = {
     starts_with_user: boolean;
     message: string;
   }> {
-    const response = await apiClient.post('/interview/ai/start', settings);
+    // 🎯 무조건 InterviewerService 사용하도록 하드코딩
+    console.log('🐛 DEBUG: API로 전송하는 원본 설정값:', settings);
+    
+    const finalSettings = {
+      ...settings,
+      use_interviewer_service: true  // 항상 InterviewerService 사용
+    };
+    
+    console.log('🎯 DEBUG: 최종 전송 설정값 (InterviewerService 강제):', finalSettings);
+    
+    const response = await apiClient.post('/interview/ai/start', finalSettings);
     return response.data as {
       session_id: string;
       comparison_session_id: string;
