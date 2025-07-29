@@ -125,7 +125,7 @@ export const interviewApi = {
     total_questions: number;
     message: string;
   }> {
-    const response = await apiClient.post('/api/interview/start', settings);
+    const response = await apiClient.post('/interview/start', settings);
     return response.data as {
       session_id: string;
       total_questions: number;
@@ -142,7 +142,7 @@ export const interviewApi = {
     const formData = new FormData();
     formData.append('file', file);
     
-    const response = await apiClient.post('/api/interview/upload', formData, {
+    const response = await apiClient.post('/interview/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -164,7 +164,7 @@ export const interviewApi = {
     completed?: boolean;
     message?: string;
   }> {
-    const response = await apiClient.get(`/api/interview/question?session_id=${sessionId}`);
+    const response = await apiClient.get(`/interview/question?session_id=${sessionId}`);
     return response.data as {
       question?: Question;
       question_index?: number;
@@ -181,7 +181,7 @@ export const interviewApi = {
     message: string;
     detailed_evaluation: string;
   }> {
-    const response = await apiClient.post('/api/interview/answer', answerData);
+    const response = await apiClient.post('/interview/answer', answerData);
     return response.data as {
       score: number;
       message: string;
@@ -191,14 +191,14 @@ export const interviewApi = {
 
   // 면접 결과 조회
   async getInterviewResults(sessionId: string): Promise<InterviewResult> {
-    const response = await apiClient.get(`/api/interview/results/${sessionId}`);
+    const response = await apiClient.get(`/interview/results/${sessionId}`);
     return response.data as InterviewResult;
   },
 
   // 면접 기록 조회
   async getInterviewHistory(userId?: string): Promise<InterviewHistory> {
     const params = userId ? { user_id: userId } : {};
-    const response = await apiClient.get('/api/interview/history', { params });
+    const response = await apiClient.get('/interview/history', { params });
     return response.data as InterviewHistory;
   },
 
@@ -228,7 +228,7 @@ export const interviewApi = {
     
     console.log('🎯 DEBUG: 최종 전송 설정값 (InterviewerService 강제):', finalSettings);
     
-    const response = await apiClient.post('/api/interview/ai/start', finalSettings);
+    const response = await apiClient.post('/interview/ai/start', finalSettings);
     return response.data as {
       session_id: string;
       comparison_session_id: string;
@@ -261,7 +261,7 @@ export const interviewApi = {
       percentage: number;
     };
   }> {
-    const response = await apiClient.post('/api/interview/comparison/turn', {
+    const response = await apiClient.post('/interview/comparison/turn', {
       comparison_session_id: comparisonSessionId,
       answer: answer
     });
@@ -293,7 +293,7 @@ export const interviewApi = {
     quality_level: string;
     persona_name: string;
   }> {
-    const response = await apiClient.get(`/api/interview/ai-answer/${sessionId}/${questionId}`);
+    const response = await apiClient.get(`/interview/ai-answer/${sessionId}/${questionId}`);
     return response.data as {
       question: string;
       questionType: string;
@@ -311,7 +311,7 @@ export const interviewApi = {
     status: string;
     timestamp: string;
   }> {
-    const response = await apiClient.get('/api/health');
+    const response = await apiClient.get('/health');
     return response.data as {
       status: string;
       timestamp: string;
@@ -349,7 +349,7 @@ export const postingAPI = {
   // 모든 채용공고 조회
   async getAllPostings(): Promise<JobPosting[]> {
     try {
-      const response = await apiClient.get('/api/postings');
+      const response = await apiClient.get('/posting');
       return (response.data as { postings: JobPosting[] }).postings;
     } catch (error) {
       console.error('채용공고 목록 조회 실패:', error);
@@ -361,7 +361,7 @@ export const postingAPI = {
   // 특정 채용공고 상세 조회
   async getPostingById(postingId: number): Promise<JobPosting | null> {
     try {
-      const response = await apiClient.get(`/api/postings/${postingId}`);
+      const response = await apiClient.get(`/posting/${postingId}`);
       return response.data as JobPosting;
     } catch (error) {
       console.error(`채용공고 상세 조회 실패 (ID: ${postingId}):`, error);

@@ -71,7 +71,8 @@ class InterviewerSession:
 
     def generate_and_record_ai_answer(self) -> str:
         """현재 질문에 대한 AI 답변을 생성하고 기록합니다."""
-        from llm.shared.models import AnswerRequest, QuestionType, QualityLevel, LLMProvider
+        from llm.shared.models import AnswerRequest, QuestionType
+        from llm.candidate.quality_controller import QualityLevel
 
         if not self.last_question:
             raise ValueError("AI의 답변을 생성할 질문이 없습니다.")
@@ -83,7 +84,7 @@ class InterviewerSession:
             company_id=self.company_id,
             position=self.position,
             quality_level=QualityLevel.GOOD,
-            llm_provider=LLMProvider.OPENAI_GPT4O_MINI
+            llm_provider="openai_gpt4o_mini"
         )
 
         response = self.ai_candidate_model.generate_answer(request, persona=self.ai_persona)

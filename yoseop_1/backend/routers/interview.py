@@ -1,0 +1,264 @@
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from typing import Optional
+import logging
+from typing import List
+from database.supabase_client import supabase_client
+
+from schemas.interview import InterviewHistoryResponse, InterviewSettings, QuestionRequest, AnswerSubmission, InterviewResult, ComparisonAnswerSubmission, AITurnRequest, CompetitionTurnSubmission
+from services.interview_service import InterviewService
+
+# 서비스 계층 사용
+interview_service = InterviewService()
+
+# 의존성 주입
+def get_interview_service():
+    return interview_service
+
+# 로거 설정
+interview_logger = logging.getLogger("interview_logger")
+
+# APIRouter 인스턴스 생성
+interview_router = APIRouter(
+    prefix="/interview",
+    tags=["Interview"],
+)
+
+@interview_router.post("/start")
+async def start_interview(
+    settings: InterviewSettings,
+    service: InterviewService = Depends(get_interview_service)
+):
+    """면접 시작 - 서비스 계층 사용"""
+    try:
+        settings_dict = {
+            "company": settings.company,
+            "position": settings.position,
+            "candidate_name": settings.candidate_name,
+            "documents": settings.documents
+        }
+        
+        result = await service.start_interview(settings_dict)
+        return result
+        
+    except Exception as e:
+        interview_logger.error(f"면접 시작 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@interview_router.post("/upload")
+async def upload_document(
+    file: UploadFile = File(...),
+    service: InterviewService = Depends(get_interview_service)
+):
+    """문서 업로드 및 분석"""
+    try:
+        content = await file.read()
+        file_data = {
+            "filename": file.filename,
+            "content": content
+        }
+        
+        result = await service.upload_document(file_data)
+        return result
+        
+    except Exception as e:
+        interview_logger.error(f"문서 업로드 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@interview_router.get("/question")
+async def get_next_question(
+    session_id: str,
+    service: InterviewService = Depends(get_interview_service)
+):
+    """다음 질문 가져오기 - 서비스 계층 사용"""
+    try:
+        result = await service.get_next_question(session_id)
+        return result
+        
+    except Exception as e:
+        interview_logger.error(f"질문 가져오기 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@interview_router.post("/answer")
+async def submit_answer(
+    answer_data: AnswerSubmission,
+    service: InterviewService = Depends(get_interview_service)
+):
+    """답변 제출 - 서비스 계층 사용"""
+    try:
+        answer_dict = {
+            "session_id": answer_data.session_id,
+            "answer": answer_data.answer,
+            "time_spent": answer_data.time_spent
+        }
+        
+        result = await service.submit_answer(answer_dict)
+        return result
+        
+    except Exception as e:
+        interview_logger.error(f"답변 제출 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@interview_router.get("/results/{session_id}")
+async def get_interview_results(
+    session_id: str,
+    service: InterviewService = Depends(get_interview_service)
+):
+    """면접 결과 조회"""
+    try:
+        result = await service.get_interview_results(session_id)
+        return result
+        
+    except Exception as e:
+        interview_logger.error(f"결과 조회 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# AI 경쟁 모드 엔드포인트
+
+@interview_router.post("/ai/start")
+async def start_ai_competition(
+    settings: InterviewSettings,
+    service: InterviewService = Depends(get_interview_service)
+):
+    """AI 지원자와의 경쟁 면접 시작"""
+    try:
+        # 🐛 디버깅: FastAPI에서 받은 설정값 로깅
+        interview_logger.info(f"🐛 FastAPI DEBUG: 받은 settings = {settings.dict()}")
+        interview_logger.info(f"🐛 FastAPI DEBUG: use_interviewer_service = {settings.use_interviewer_service}")
+        
+        # 🆕 posting_id가 있으면 DB에서 실제 채용공고 정보를 가져와서 사용
+        if settings.posting_id:
+            from database.services.existing_tables_service import existing_tables_service
+            posting_info = await existing_tables_service.get_posting_by_id(settings.posting_id)
+            
+            if posting_info:
+                interview_logger.info(f"📋 실제 채용공고 사용: posting_id={settings.posting_id}")
+                interview_logger.info(f"   회사: {posting_info.get('company', {}).get('name', 'Unknown')}")
+                interview_logger.info(f"   직무: {posting_info.get('position', {}).get('position_name', 'Unknown')}")
+                
+                settings_dict = {
+                    "company": posting_info.get('company', {}).get('name', settings.company),
+                    "position": posting_info.get('position', {}).get('position_name', settings.position),
+                    "candidate_name": settings.candidate_name,
+                    "posting_id": settings.posting_id,
+                    "company_id": posting_info.get('company_id'),
+                    "position_id": posting_info.get('position_id'),
+                    "use_interviewer_service": settings.use_interviewer_service  # 🎯 플래그 포함
+                }
+            else:
+                interview_logger.warning(f"⚠️ 채용공고를 찾을 수 없음: posting_id={settings.posting_id}, fallback to original")
+                settings_dict = {
+                    "company": settings.company,
+                    "position": settings.position,
+                    "candidate_name": settings.candidate_name,
+                    "use_interviewer_service": settings.use_interviewer_service  # 🎯 플래그 포함
+                }
+        else:
+            # 기존 방식: company/position 문자열 사용
+            settings_dict = {
+                "company": settings.company,
+                "position": settings.position,
+                "candidate_name": settings.candidate_name,
+                "use_interviewer_service": settings.use_interviewer_service  # 🎯 플래그 포함
+            }
+        
+        # 🐛 디버깅: 서비스에 전달할 settings_dict 로깅
+        interview_logger.info(f"🐛 FastAPI DEBUG: 서비스에 전달할 settings_dict = {settings_dict}")
+        
+        result = await service.start_ai_competition(settings_dict)
+        return result
+        
+    except Exception as e:
+        interview_logger.error(f"AI 경쟁 면접 시작 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@interview_router.get("/ai-answer/{session_id}/{question_id}")
+async def get_ai_answer(
+    session_id: str,
+    question_id: str,
+    service: InterviewService = Depends(get_interview_service)
+):
+    """AI 지원자의 답변 생성"""
+    try:
+        result = await service.get_ai_answer(session_id, question_id)
+        return result
+        
+    except Exception as e:
+        interview_logger.error(f"AI 답변 생성 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@interview_router.post("/comparison/turn")
+async def process_competition_turn(
+    submission: CompetitionTurnSubmission,
+    service: InterviewService = Depends(get_interview_service)
+):
+    """경쟁 면접 통합 턴 처리"""
+    try:
+        result = await service.process_competition_turn(
+            submission.comparison_session_id,
+            submission.answer
+        )
+        return result
+    except Exception as e:
+        interview_logger.error(f"경쟁 면접 턴 처리 API 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@interview_router.get("/history")
+async def get_interview_history(
+    user_id: Optional[str] = None,
+    service: InterviewService = Depends(get_interview_service)
+):
+    """면접 기록 조회"""
+    try:
+        result = await service.get_interview_history(user_id)
+        return result
+        
+    except Exception as e:
+        interview_logger.error(f"기록 조회 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 🚀 새로운 턴제 면접 엔드포인트
+
+@interview_router.post("/turn-based/start")
+async def start_turn_based_interview(
+    settings: InterviewSettings,
+    service: InterviewService = Depends(get_interview_service)
+):
+    """턴제 면접 시작 - 새로운 InterviewerService 사용"""
+    try:
+        settings_dict = {
+            "company": settings.company,
+            "position": settings.position,
+            "candidate_name": settings.candidate_name
+        }
+        
+        result = await service.start_turn_based_interview(settings_dict)
+        return result
+        
+    except Exception as e:
+        interview_logger.error(f"턴제 면접 시작 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@interview_router.get("/turn-based/question/{session_id}")
+async def get_turn_based_question(
+    session_id: str,
+    user_answer: Optional[str] = None,
+    service: InterviewService = Depends(get_interview_service)
+):
+    """턴제 면접 다음 질문 가져오기"""
+    try:
+        result = await service.get_turn_based_question(session_id, user_answer)
+        return result
+        
+    except Exception as e:
+        interview_logger.error(f"턴제 질문 가져오기 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# 🟢 GET /interview/history – 면접 히스토리 조회
+@interview_router.get("/history", response_model=List[InterviewHistoryResponse])
+def get_interview_history(interview_id: int):
+    res = supabase_client.table("interview_detail").select("*").eq("interview_id", interview_id).order("sequence").execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="No interview history found")
+    return res.data

@@ -10,8 +10,7 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
 
-# 기존 llm.core.llm_manager의 enum들 import
-from ..core.llm_manager import LLMProvider
+# 기존 llm.core.llm_manager의 enum들은 제거되었음 - 문자열 타입 사용
 from ..candidate.quality_controller import QualityLevel
 
 class QuestionType(Enum):
@@ -104,7 +103,7 @@ class AnswerRequest:
     company_id: str
     position: str
     quality_level: QualityLevel
-    llm_provider: LLMProvider
+    llm_provider: str
     additional_context: Optional[str] = None
 
 @dataclass
@@ -112,7 +111,7 @@ class AnswerResponse:
     """답변 생성 응답"""
     answer_content: str
     quality_level: QualityLevel
-    llm_provider: LLMProvider
+    llm_provider: str
     persona_name: str
     confidence_score: float
     response_time: float

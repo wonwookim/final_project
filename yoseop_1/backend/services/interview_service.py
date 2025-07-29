@@ -266,7 +266,6 @@ class InterviewService:
             from llm.candidate.model import AnswerRequest
             from llm.shared.models import QuestionType
             from llm.candidate.quality_controller import QualityLevel
-            from llm.core.llm_manager import LLMProvider
             
             # QuestionType 매핑
             question_type_map = {
@@ -284,7 +283,7 @@ class InterviewService:
                 company_id=company_id,
                 position=position,
                 quality_level=QualityLevel.GOOD,
-                llm_provider=LLMProvider.OPENAI_GPT4O_MINI
+                llm_provider="openai_gpt4o_mini"
             )
             
             # 🔄 단독 AI 답변 생성 (세션 없음 - 매번 새로운 페르소나)

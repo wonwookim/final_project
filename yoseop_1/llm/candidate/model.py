@@ -10,6 +10,7 @@ import sys
 import random
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
+from dataclasses import dataclass
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
@@ -24,11 +25,20 @@ except ImportError:
     print("⚠️ Supabase 클라이언트를 가져올 수 없습니다. 파일 기반 fallback만 사용됩니다.")
     get_supabase_client = None
 
-from ..core.llm_manager import LLMManager, LLMProvider, LLMResponse
+# llm.core imports removed - using alternative implementations
 from .quality_controller import AnswerQualityController, QualityLevel
 from ..shared.models import QuestionType, QuestionAnswer, AnswerRequest, AnswerResponse
 from ..session.models import InterviewSession
 from ..shared.utils import safe_json_load, get_fixed_questions
+
+# Simple replacement for LLMResponse
+@dataclass
+class SimpleLLMResponse:
+    """Simple LLM response replacement"""
+    content: str
+    provider: str
+    success: bool = True
+    error: Optional[str] = None
 
 # 직군 매핑 (position_name -> position_id)
 POSITION_MAPPING = {
@@ -96,14 +106,14 @@ class CandidatePersona(BaseModel):
     generated_by: str = "gpt-4o-mini"
     resume_id: int  # 원본 이력서 ID
 
-# 모델별 AI 지원자 이름 매핑 (호환성을 위해 유지)
+# 모델별 AI 지원자 이름 매핑 (호환성을 위해 유지) - 문자열 키 사용
 AI_CANDIDATE_NAMES = {
-    LLMProvider.OPENAI_GPT4: "춘식이",
-    LLMProvider.OPENAI_GPT35: "춘식이", 
-    LLMProvider.OPENAI_GPT4O_MINI: "춘식이",
-    LLMProvider.GOOGLE_GEMINI_PRO: "제미니",
-    LLMProvider.GOOGLE_GEMINI_FLASH: "제미니",
-    LLMProvider.KT_BELIEF: "믿음이"
+    "openai_gpt4": "춘식이",
+    "openai_gpt35": "춘식이", 
+    "openai_gpt4o_mini": "춘식이",
+    "google_gemini_pro": "제미니",
+    "google_gemini_flash": "제미니",
+    "kt_belief": "믿음이"
 }
 
 class AICandidateSession(InterviewSession):
@@ -175,7 +185,8 @@ class AICandidateModel:
     """AI 지원자 모델 메인 클래스"""
     
     def __init__(self, api_key: str = None):
-        self.llm_manager = LLMManager()
+        # LLMManager 제거 - 간단한 openai 클라이언트 사용
+        self.api_key = api_key
         self.quality_controller = AnswerQualityController()
         self.companies_data = self._load_companies_data()
         
@@ -190,12 +201,10 @@ class AICandidateModel:
         # API 키 자동 로드 (.env 파일에서)
         if not api_key:
             api_key = os.getenv('OPENAI_API_KEY')
-        
-        # 기본 OpenAI 모델 등록
+            
+        # OpenAI API 키 저장
         if api_key:
-            self.llm_manager.register_model(LLMProvider.OPENAI_GPT4O_MINI, api_key=api_key)
-            self.llm_manager.register_model(LLMProvider.OPENAI_GPT4, api_key=api_key)
-            self.llm_manager.register_model(LLMProvider.OPENAI_GPT35, api_key=api_key)
+            self.api_key = api_key
         else:
             print("⚠️ OpenAI API 키가 설정되지 않았습니다. .env 파일에 OPENAI_API_KEY를 추가하거나 직접 전달하세요.")
     
@@ -469,7 +478,7 @@ class AICandidateModel:
 4. 반드시 지정된 JSON 스키마에 맞춰 응답하세요.
 5. JSON 외의 다른 내용은 절대 출력하지 마세요."""
     
-    def _generate_persona_with_extended_tokens(self, prompt: str, system_prompt: str) -> LLMResponse:
+    def _generate_persona_with_extended_tokens(self, prompt: str, system_prompt: str) -> SimpleLLMResponse:
         """페르소나 생성용 확장된 토큰으로 LLM 호출"""
         import openai
         import os
@@ -479,9 +488,9 @@ class AICandidateModel:
             # OpenAI 클라이언트 직접 생성
             api_key = os.getenv('OPENAI_API_KEY')
             if not api_key:
-                return LLMResponse(
+                return SimpleLLMResponse(
                     content="",
-                    provider=LLMProvider.OPENAI_GPT4O_MINI,
+                    provider="openai_gpt4o_mini",
                     model_name="gpt-4o-mini",
                     error="OpenAI API 키가 설정되지 않았습니다."
                 )
@@ -505,18 +514,18 @@ class AICandidateModel:
             
             response_time = time.time() - start_time
             
-            return LLMResponse(
+            return SimpleLLMResponse(
                 content=response.choices[0].message.content.strip(),
-                provider=LLMProvider.OPENAI_GPT4O_MINI,
+                provider="openai_gpt4o_mini",
                 model_name="gpt-4o-mini",
                 token_count=response.usage.total_tokens if response.usage else None,
                 response_time=response_time
             )
             
         except Exception as e:
-            return LLMResponse(
+            return SimpleLLMResponse(
                 content="",
-                provider=LLMProvider.OPENAI_GPT4O_MINI,
+                provider="openai_gpt4o_mini",
                 model_name="gpt-4o-mini",
                 error=f"페르소나 생성 LLM 호출 실패: {str(e)}"
             )
@@ -695,7 +704,7 @@ class AICandidateModel:
         question_type = question_plan["type"]
         
         # AI 이름 가져오기 (춘식이)
-        ai_name = self.get_ai_name(LLMProvider.OPENAI_GPT35)
+        ai_name = self.get_ai_name("openai_gpt35")
         
         # 첫 두 질문은 완전히 고정 (AI 전용 - honorific 포함)
         if question_type == QuestionType.INTRO:
@@ -738,12 +747,12 @@ class AICandidateModel:
                 selected_question = available_questions[0]
             
             # 질문에 AI 이름 호칭 추가
-            ai_name = self.get_ai_name(LLMProvider.OPENAI_GPT35)
+            ai_name = self.get_ai_name("openai_gpt35")
             question_content = self._add_honorific_to_question(selected_question["content"], ai_name)
             return question_content, selected_question["intent"]
         
         # 폴백 질문
-        ai_name = self.get_ai_name(LLMProvider.OPENAI_GPT35)
+        ai_name = self.get_ai_name("openai_gpt35")
         return self._get_fallback_question(question_type, ai_name)
     
     def _generate_dynamic_question(self, ai_session: AICandidateSession, question_type: QuestionType) -> tuple[str, str]:
@@ -760,7 +769,7 @@ class AICandidateModel:
                     "이전 답변의 구체적인 사례나 경험의 디테일 탐구"
                 )
         
-        ai_name = self.get_ai_name(LLMProvider.OPENAI_GPT35)
+        ai_name = self.get_ai_name("openai_gpt35")
         return f"{ai_name}님에 대해 더 알고 싶습니다.", "일반적인 질문"
     
     def _get_fallback_question(self, question_type: QuestionType, persona_name: str) -> tuple[str, str]:
@@ -791,7 +800,7 @@ class AICandidateModel:
             return AnswerResponse(
                 answer_content="",
                 quality_level=QualityLevel(8),
-                llm_provider=LLMProvider.OPENAI_GPT4O_MINI,
+                llm_provider="openai_gpt4o_mini",
                 persona_name="Unknown",
                 confidence_score=0.0,
                 response_time=0.0,
@@ -818,7 +827,7 @@ class AICandidateModel:
             return AnswerResponse(
                 answer_content=f"안녕하세요. 저는 {ai_session.company_id}에 지원한 {ai_session.position} 개발자입니다. 3년간의 개발 경험을 바탕으로 {self._get_company_korean_name(ai_session.company_id)}에서 더 큰 성장을 이루고 싶어 지원하게 되었습니다. 새로운 기술 습득에 열정적이며, 팀워크를 중시하는 개발자입니다.",
                 quality_level=QualityLevel(8),
-                llm_provider=LLMProvider.OPENAI_GPT4O_MINI,
+                llm_provider="openai_gpt4o_mini",
                 persona_name=f"{self._get_company_korean_name(ai_session.company_id)} 지원자",
                 confidence_score=0.8,
                 response_time=0.5,
@@ -834,7 +843,7 @@ class AICandidateModel:
             company_id=ai_session.company_id,
             position=ai_session.position,
             quality_level=QualityLevel(8),  # 고품질 답변
-            llm_provider=LLMProvider.OPENAI_GPT4O_MINI,
+            llm_provider="openai_gpt4o_mini",
             additional_context=ai_session.get_previous_answers_context()
         )
         
@@ -1094,11 +1103,11 @@ class AICandidateModel:
                 return company
         return {}
     
-    def get_ai_name(self, llm_provider: LLMProvider) -> str:
+    def get_ai_name(self, llm_provider: str) -> str:
         """모델에 따른 AI 지원자 이름 반환"""
         return AI_CANDIDATE_NAMES.get(llm_provider, "춘식이")  # 기본값: 춘식이
     
-    def _build_system_prompt(self, persona: CandidatePersona, company_data: Dict, question_type: QuestionType, llm_provider: LLMProvider = LLMProvider.OPENAI_GPT35) -> str:
+    def _build_system_prompt(self, persona: CandidatePersona, company_data: Dict, question_type: QuestionType, llm_provider: str = "openai_gpt35") -> str:
         """질문 타입별 시스템 프롬프트 구성"""
         
         # AI 이름 결정 (모델에 따라 동적으로 설정)
@@ -1712,7 +1721,7 @@ class AICandidateModel:
         
         return prompt
     
-    def _calculate_confidence_score(self, llm_response: LLMResponse, quality_level: QualityLevel) -> float:
+    def _calculate_confidence_score(self, llm_response: SimpleLLMResponse, quality_level: QualityLevel) -> float:
         """답변 신뢰도 점수 계산"""
         if llm_response.error:
             return 0.0
@@ -1772,7 +1781,7 @@ class AICandidateModel:
         
         return results
     
-    def compare_llm_models(self, request: AnswerRequest, llm_providers: List[LLMProvider]) -> Dict[LLMProvider, AnswerResponse]:
+    def compare_llm_models(self, request: AnswerRequest, llm_providers: List[str]) -> Dict[str, AnswerResponse]:
         """여러 LLM 모델로 답변 생성 및 비교"""
         results = {}
         
@@ -1985,7 +1994,7 @@ if __name__ == "__main__":
                 company_id="naver",
                 position="백엔드 개발자",
                 quality_level=QualityLevel(8),
-                llm_provider=LLMProvider.OPENAI_GPT4O_MINI
+                llm_provider="openai_gpt4o_mini"
             )
             
             response = ai_candidate.generate_answer(test_request)

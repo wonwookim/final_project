@@ -16,7 +16,6 @@ load_dotenv()
 
 from ..shared.models import QuestionAnswer, QuestionType, CandidatePersona
 from ..session.models import InterviewSession
-from ..core.llm_manager import LLMManager, LLMProvider
 from ..shared.utils import safe_json_load
 
 class FeedbackService:
@@ -28,7 +27,7 @@ class FeedbackService:
             raise ValueError("OpenAI API 키가 설정되지 않았습니다.")
         
         self.client = openai.OpenAI(api_key=self.api_key)
-        self.llm_manager = LLMManager()
+        # LLMManager 제거 - 직접 OpenAI 클라이언트 사용
         self.companies_data = self._load_companies_data()
     
     def evaluate_answer(self, question_answer: QuestionAnswer, 
@@ -376,13 +375,16 @@ JSON 형식으로 응답:
 """
         
         try:
-            response = self.llm_manager.generate_response(
-                LLMProvider.OPENAI_GPT4O_MINI,
-                prompt,
-                "당신은 AI 지원자 답변을 평가하는 면접 평가 전문가입니다."
+            # LLMManager 대신 직접 OpenAI 클라이언트 사용
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "당신은 AI 지원자 답변을 평가하는 면접 평가 전문가입니다."},
+                    {"role": "user", "content": prompt}
+                ]
             )
             
-            result = response.content.strip()
+            result = response.choices[0].message.content.strip()
             
             # JSON 파싱
             start_idx = result.find('{')
@@ -446,13 +448,16 @@ AI 지원자의 답변 품질과 일관성을 평가하여 JSON 형식으로 응
 """
         
         try:
-            response = self.llm_manager.generate_response(
-                LLMProvider.OPENAI_GPT4O_MINI,
-                prompt,
-                f"{company_data.get('name', '')} AI 지원자 면접 평가 전문가입니다."
+            # LLMManager 대신 직접 OpenAI 클라이언트 사용
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": f"{company_data.get('name', '')} AI 지원자 면접 평가 전문가입니다."},
+                    {"role": "user", "content": prompt}
+                ]
             )
             
-            result = response.content.strip()
+            result = response.choices[0].message.content.strip()
             
             start_idx = result.find('{')
             end_idx = result.rfind('}') + 1
