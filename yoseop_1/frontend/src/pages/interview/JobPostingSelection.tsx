@@ -19,7 +19,7 @@ const JobPostingSelection: React.FC = () => {
     const logoMap: Record<string, string> = {
       '네이버': '/img/naver.png',
       '카카오': '/img/kakao.svg',
-      '라인': '/img/line.svg',
+      '라인플러스': '/img/line.svg',
       '쿠팡': '/img/coupang.svg',
       '배달의민족': '/img/baemin.svg',
       '배민': '/img/baemin.svg',
