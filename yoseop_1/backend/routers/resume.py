@@ -12,13 +12,14 @@ def get_resumes(user_id: int):
     if not res.data:
         raise HTTPException(status_code=404, detail="No resumes found")
     return res.data
-
+    
 # 🟡 POST /resume – 이력서 생성
 @resume_router.post("/", response_model=ResumeResponse)
 def create_resume(user_id: int, resume: ResumeCreate):
     data = {**resume.dict(), "user_id": user_id}
     res = supabase_client.client.from_("user_resume").insert(data).execute()
-    return res.data[0]
+    
+    return res.data[0]  
 
 # 🟢 GET /resume/{resume_id} – 이력서 상세 조회
 @resume_router.get("/{resume_id}", response_model=ResumeResponse)
