@@ -50,6 +50,8 @@ const InterviewActive: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [questionCount, setQuestionCount] = useState(0); // 질문 개수 추적
   const [showStartPopup, setShowStartPopup] = useState(false); // 면접 시작 팝업
+  const [showQuestionModal, setShowQuestionModal] = useState(false); // 질문 모달 표시
+  const [modalQuestion, setModalQuestion] = useState<any>(null); // 모달에서 표시할 임시 질문
 
   
   // 📹 비디오 스트림 관리 상태
@@ -465,21 +467,25 @@ const InterviewActive: React.FC = () => {
   };
 
   const handlePlayTTS = () => {
+    const questionForTTS = modalQuestion || currentQuestion;
+    
     console.log('🔊 TTS 재생 시도:', {
       currentQuestion: !!currentQuestion,
+      modalQuestion: !!modalQuestion,
+      questionForTTS: !!questionForTTS,
       ttsInstance: !!ttsInstance,
       isTTSActive,
-      questionText: currentQuestion?.question?.substring(0, 50)
+      questionText: questionForTTS?.question?.substring(0, 50)
     });
     
-    if (currentQuestion && ttsInstance && !isTTSActive) {
-      const interviewerType = mapQuestionCategoryToInterviewer(currentQuestion.category || '');
+    if (questionForTTS && ttsInstance && !isTTSActive) {
+      const interviewerType = mapQuestionCategoryToInterviewer(questionForTTS.category || '');
       
       // 🔍 디버깅: 수동 TTS 재생 시 질문 정보 로깅
       console.log('🔍 현재 질문 디버깅 (수동 TTS):', {
-        'currentQuestion.category': currentQuestion.category,
+        'questionForTTS.category': questionForTTS.category,
         'mapped interviewerType': interviewerType,
-        'currentQuestion 전체': currentQuestion
+        'questionForTTS 전체': questionForTTS
       });
       
       console.log('🎯 TTS 재생 시작:', interviewerType);
@@ -487,7 +493,7 @@ const InterviewActive: React.FC = () => {
       setIsTTSActive(true);
       setTtsType('question');
       setCurrentInterviewerType(interviewerType);
-      ttsInstance.speakAsInterviewer(currentQuestion.question, interviewerType)
+      ttsInstance.speakAsInterviewer(questionForTTS.question, interviewerType)
         .then(() => {
           console.log('✅ TTS 재생 완료');
           setIsTTSActive(false);
@@ -502,7 +508,9 @@ const InterviewActive: React.FC = () => {
         });
     } else {
       console.warn('⚠️ TTS 재생 조건 불충족:', {
-        hasQuestion: !!currentQuestion,
+        hasCurrentQuestion: !!currentQuestion,
+        hasModalQuestion: !!modalQuestion,
+        hasQuestionForTTS: !!questionForTTS,
         hasTTSInstance: !!ttsInstance,
         isTTSActive
       });
@@ -1191,6 +1199,107 @@ const InterviewActive: React.FC = () => {
     );
   };
 
+  // 질문 모달 컴포넌트
+  const renderQuestionModal = () => {
+    const questionToShow = modalQuestion || currentQuestion;
+    if (!showQuestionModal || !questionToShow) return null;
+
+    const getInterviewerInfo = (category: string) => {
+      if (category === '자기소개' || category === '지원동기' || category === 'HR' || category === '인사') {
+        return { icon: '👔', name: '인사 면접관', color: 'blue' };
+      } else if (category === '협업' || category === 'COLLABORATION') {
+        return { icon: '🤝', name: '협업 면접관', color: 'green' };
+      } else if (category === '기술' || category === 'TECH') {
+        return { icon: '💻', name: '기술 면접관', color: 'purple' };
+      } else {
+        return { icon: '❓', name: '면접관', color: 'gray' };
+      }
+    };
+
+    const interviewer = getInterviewerInfo(questionToShow.category || '일반');
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden transform transition-all duration-300">
+          {/* 헤더 */}
+          <div className={`p-6 border-b border-gray-200 bg-${interviewer.color}-50`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <div className={`w-12 h-12 bg-${interviewer.color}-100 rounded-full flex items-center justify-center mr-4`}>
+                  <span className="text-2xl">{interviewer.icon}</span>
+                </div>
+                <div>
+                  <h2 className={`text-xl font-bold text-${interviewer.color}-900`}>
+                    {interviewer.name}
+                  </h2>
+                  <p className={`text-sm text-${interviewer.color}-700`}>
+                    {questionToShow.category || '일반'} 질문
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowQuestionModal(false);
+                  setModalQuestion(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+
+          {/* 질문 내용 */}
+          <div className="p-6 overflow-y-auto max-h-60">
+            <div className="text-lg text-gray-900 leading-relaxed">
+              {questionToShow.question}
+            </div>
+            
+            {/* 키워드 힌트 (있는 경우) */}
+            {questionToShow.keywords && questionToShow.keywords.length > 0 && (
+              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm font-medium text-gray-700 mb-2">💡 키워드 힌트:</p>
+                <div className="flex flex-wrap gap-2">
+                  {questionToShow.keywords.map((keyword: string, index: number) => (
+                    <span
+                      key={index}
+                      className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
+                    >
+                      {keyword}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 액션 버튼들 */}
+          <div className="p-6 bg-gray-50 border-t border-gray-200">
+            <div className="flex gap-3">
+              <button
+                onClick={handlePlayTTS}
+                disabled={isTTSActive}
+                className={`flex-1 py-3 px-4 bg-${interviewer.color}-600 text-white rounded-lg font-medium hover:bg-${interviewer.color}-700 transition-colors flex items-center justify-center gap-2 disabled:bg-gray-400`}
+              >
+                <span>{isTTSActive ? '🔊' : '🎵'}</span>
+                {isTTSActive ? '재생 중...' : '질문 듣기'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowQuestionModal(false);
+                  setModalQuestion(null);
+                }}
+                className="flex-1 py-3 px-4 bg-gray-600 text-white rounded-lg font-medium hover:bg-gray-700 transition-colors"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Ready State
   if (interviewState === 'ready') {
     return (
@@ -1260,6 +1369,9 @@ const InterviewActive: React.FC = () => {
         
         {/* 면접 시작 팝업 */}
         {renderStartPopup()}
+        
+        {/* 질문 모달 */}
+        {renderQuestionModal()}
       </div>
     );
   }
@@ -1568,9 +1680,18 @@ const InterviewActive: React.FC = () => {
                       : '❓ 면접관'
                     }
                   </div>
-                  <div className="text-white text-lg leading-relaxed">
-                    {currentQuestion.question}
+                  <div className="text-white text-base leading-relaxed line-clamp-2 mb-3">
+                    {currentQuestion.question && currentQuestion.question.length > 60 
+                      ? `${currentQuestion.question.substring(0, 60)}...` 
+                      : currentQuestion.question
+                    }
                   </div>
+                  <button
+                    onClick={() => setShowQuestionModal(true)}
+                    className="px-3 py-1 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm font-medium transition-colors"
+                  >
+                    📋 전체 질문 보기
+                  </button>
                 </>
               ) : (
                 <div className="text-gray-500">질문을 불러오는 중...</div>
@@ -1670,6 +1791,8 @@ const InterviewActive: React.FC = () => {
           </div>
         </div>
 
+        {/* 질문 모달 */}
+        {renderQuestionModal()}
       </div>
     );
   }
@@ -1779,8 +1902,22 @@ const InterviewActive: React.FC = () => {
                         </span>
                         <span className="text-xs text-gray-500">#{index + 1}</span>
                       </div>
-                      <div className="mb-2 text-sm font-medium text-gray-700">
-                        ❓ {turn.question}
+                      <div 
+                        className="mb-2 text-sm font-medium text-gray-700 cursor-pointer hover:text-blue-600 transition-colors"
+                        onClick={() => {
+                          // 임시로 질문 정보를 설정하여 모달 표시
+                          const tempQuestion = {
+                            id: turn.id,
+                            question: turn.question,
+                            category: turn.questionType || '일반',
+                            time_limit: 120,
+                            keywords: []
+                          };
+                          setModalQuestion(tempQuestion);
+                          setShowQuestionModal(true);
+                        }}
+                      >
+                        ❓ {turn.question.length > 100 ? `${turn.question.substring(0, 100)}...` : turn.question}
                       </div>
                       {turn.answer ? (
                         <div className="text-sm text-gray-600">
@@ -1848,9 +1985,23 @@ const InterviewActive: React.FC = () => {
             </div>
             
             <div className="bg-gray-50 rounded-xl p-6">
-              <p className="text-lg text-gray-900 leading-relaxed">
-                {currentQuestion?.question}
-              </p>
+              <div className="flex items-center justify-between">
+                <div className="flex-1 pr-4">
+                  <p className="text-lg text-gray-900 leading-relaxed line-clamp-2">
+                    {currentQuestion?.question && currentQuestion.question.length > 80 
+                      ? `${currentQuestion.question.substring(0, 80)}...` 
+                      : currentQuestion?.question
+                    }
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowQuestionModal(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2 whitespace-nowrap"
+                >
+                  <span>📋</span>
+                  질문 보기
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1953,6 +2104,9 @@ const InterviewActive: React.FC = () => {
           </div>
         </div>
       </div>
+      
+      {/* 질문 모달 */}
+      {renderQuestionModal()}
     </div>
   );
 };
