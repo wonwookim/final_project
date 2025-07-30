@@ -13,14 +13,15 @@ def test_import_structure():
     
     try:
         # LLM 시스템 임포트 테스트
-        from llm.shared.config import config
-        from llm.interviewer.service import PersonalizedInterviewSystem
+        from llm.interviewer.service import InterviewerService
         from llm.candidate.model import AICandidateModel
+        from llm.session.interviewer_session import InterviewerSession
         print("✅ LLM 모듈 import 성공")
         
         # 기본 객체 생성 테스트
-        interview_system = PersonalizedInterviewSystem()
+        interviewer_service = InterviewerService()
         ai_candidate = AICandidateModel()
+        interviewer_session = InterviewerSession("naver", "백엔드 개발자", "테스트유저")
         print("✅ 객체 생성 성공")
         
         return True

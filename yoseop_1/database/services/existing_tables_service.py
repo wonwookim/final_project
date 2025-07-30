@@ -238,31 +238,34 @@ class ExistingTablesService:
     async def find_posting_by_company_position(self, company_name: str, position_name: str) -> Optional[Dict[str, Any]]:
         """회사명과 직무명으로 채용공고 찾기"""
         try:
-            # 먼저 회사명으로 company_id 찾기
+            # 1단계: 회사명으로 company_id 찾기
             company_result = self.client.table('company').select('company_id').ilike('name', f'%{company_name}%').execute()
             if not company_result.data:
                 logger.warning(f"회사를 찾을 수 없음: {company_name}")
                 return None
             
             company_id = company_result.data[0]['company_id']
+            logger.info(f"✅ 회사 매핑 성공: {company_name} -> company_id={company_id}")
             
-            # 해당 회사의 포지션에서 직무명 찾기
-            position_result = self.client.table('position').select('position_id').eq('company_id', company_id).ilike('position_name', f'%{position_name}%').execute()
+            # 2단계: 직무명으로 position_id 찾기 (⚠️ company_id 제약 조건 제거)
+            position_result = self.client.table('position').select('position_id').ilike('position_name', f'%{position_name}%').execute()
             if not position_result.data:
-                logger.warning(f"직무를 찾을 수 없음: {position_name} (회사: {company_name})")
+                logger.warning(f"직무를 찾을 수 없음: {position_name}")
                 return None
             
             position_id = position_result.data[0]['position_id']
+            logger.info(f"✅ 직무 매핑 성공: {position_name} -> position_id={position_id}")
             
-            # 채용공고 찾기
+            # 3단계: posting 테이블에서 company_id + position_id로 채용공고 찾기
             posting_result = self.client.table('posting').select(
                 '*, company(company_id, name), position(position_id, position_name)'
             ).eq('company_id', company_id).eq('position_id', position_id).execute()
             
             if posting_result.data:
+                logger.info(f"✅ 채용공고 매칭 성공: {company_name} - {position_name}")
                 return posting_result.data[0]  # 첫 번째 매칭되는 채용공고 반환
             else:
-                logger.warning(f"채용공고를 찾을 수 없음: {company_name} - {position_name}")
+                logger.warning(f"채용공고를 찾을 수 없음: {company_name} - {position_name} (company_id={company_id}, position_id={position_id})")
                 return None
                 
         except Exception as e:

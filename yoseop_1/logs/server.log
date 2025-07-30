@@ -14,3 +14,4 @@
 2025-07-24 10:34:51,091 - interview_system - INFO - None:0 - AI 비교 면접 시작
 2025-07-24 10:35:05,347 - interview_system - ERROR - None:0 - 사용자 턴 제출 오류: 잘못된 답변 타입: user
 2025-07-24 10:35:05,348 - interview_system - ERROR - None:0 - 사용자 턴 제출 오류: 답변 제출 중 오류가 발생했습니다: 잘못된 답변 타입: user
+2025-07-30 11:51:19,103 - interview_system - INFO - None:0 - 🎭 [STANDALONE AI] 단독 AI 답변 생성 (세션 무관): naver - 백엔드개발

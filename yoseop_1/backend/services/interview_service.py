@@ -240,14 +240,17 @@ class InterviewService:
             company_id = session_parts[0] if len(session_parts) > 0 else "naver"
             position = "_".join(session_parts[1:-1]) if len(session_parts) > 2 else "백엔드 개발"
             
-            # AI 세션 시작하고 질문 가져오기
-            ai_session_id = self.ai_candidate_model.start_ai_interview(company_id, position)
-            ai_question_data = self.ai_candidate_model.get_ai_next_question(ai_session_id)
+            # ✅ 올바른 방식: InterviewerService를 통해 질문 생성
+            from llm.session.interviewer_session import InterviewerSession
             
-            if ai_question_data:
-                question_content = ai_question_data["question_content"]
-                question_intent = ai_question_data["question_intent"]
-                question_type = ai_question_data["question_type"]
+            # InterviewerSession 임시 생성하여 질문 가져오기
+            temp_session = InterviewerSession(company_id, position, "춘식이")
+            first_question_data = temp_session.start()
+            
+            if first_question_data:
+                question_content = first_question_data["question"]
+                question_intent = first_question_data.get("intent", "일반적인 평가")
+                question_type = first_question_data.get("interviewer_type", "HR")
             else:
                 # 폴백 질문
                 if question_id == "q_1":

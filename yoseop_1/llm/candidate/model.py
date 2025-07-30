@@ -287,13 +287,26 @@ class AICandidateModel:
             if company_name and get_supabase_client:
                 from database.services.existing_tables_service import existing_tables_service
                 import asyncio
+                import concurrent.futures
                 
-                # 비동기 함수를 동기로 실행
+                # 스레드에서 안전하게 비동기 함수 실행
+                def run_async_safely():
+                    """새 이벤트 루프에서 비동기 함수 실행"""
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        return loop.run_until_complete(
+                            existing_tables_service.find_posting_by_company_position(company_name, position_name)
+                        )
+                    finally:
+                        loop.close()
+                
                 try:
-                    loop = asyncio.get_event_loop()
-                    posting_info = loop.run_until_complete(
-                        existing_tables_service.find_posting_by_company_position(company_name, position_name)
-                    )
+                    # ThreadPoolExecutor로 안전하게 실행
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(run_async_safely)
+                        posting_info = future.result(timeout=10)  # 10초 타임아웃
+                    
                     if posting_info and posting_info.get('position', {}).get('position_id'):
                         position_id = posting_info['position']['position_id']
                         print(f"✅ [DB] 직군 매핑 성공: {position_name} -> position_id={position_id}")
@@ -674,136 +687,9 @@ class AICandidateModel:
         """고정 질문 데이터 로드"""
         return get_fixed_questions()
     
-    def start_ai_interview(self, company_id: str, position: str) -> str:
-        """AI 지원자 면접 시작 (면접자와 동일한 플로우)"""
-        persona = self.get_persona(company_id)
-        if not persona:
-            raise ValueError(f"회사 {company_id}의 AI 지원자 페르소나를 찾을 수 없습니다.")
-        
-        # AI 세션 생성
-        ai_session = AICandidateSession(company_id, position, persona)
-        self.ai_sessions[ai_session.session_id] = ai_session
-        
-        return ai_session.session_id
     
-    def get_ai_next_question(self, ai_session_id: str) -> Optional[Dict[str, Any]]:
-        """AI 지원자 다음 질문 가져오기 (면접자와 동일한 구조)"""
-        ai_session = self.ai_sessions.get(ai_session_id)
-        if not ai_session or ai_session.is_complete():
-            return None
-        
-        # 현재 질문 계획 가져오기
-        question_plan = ai_session.get_next_question_plan()
-        if not question_plan:
-            return None
-        
-        # 면접자와 동일한 질문 생성 로직
-        question_content, question_intent = self._generate_ai_question(
-            ai_session, question_plan
-        )
-        
-        return {
-            "question_id": f"ai_q_{ai_session.current_question_count + 1}",
-            "question_type": question_plan["type"].value,
-            "question_content": question_content,
-            "question_intent": question_intent,
-            "progress": f"{ai_session.current_question_count + 1}/{len(ai_session.question_plan)}",
-            "personalized": False  # AI는 표준 질문 사용
-        }
     
-    def _generate_ai_question(self, ai_session: AICandidateSession, question_plan: Dict) -> tuple[str, str]:
-        """AI 지원자용 질문 생성 (면접자와 동일한 로직)"""
-        question_type = question_plan["type"]
-        
-        # AI 이름 가져오기 (춘식이)
-        ai_name = self.get_ai_name(LLMProvider.OPENAI_GPT35)
-        
-        # 첫 두 질문은 완전히 고정 (AI 전용 - honorific 포함)
-        if question_type == QuestionType.INTRO:
-            return (
-                f"{ai_name}님, 자기소개를 부탁드립니다.",
-                "지원자의 기본 배경, 경력, 성격을 파악하여 면접 분위기를 조성"
-            )
-        elif question_type == QuestionType.MOTIVATION:
-            company_data = self._get_company_data(ai_session.company_id)
-            return (
-                f"{ai_name}님께서 {company_data.get('name', '저희 회사')}에 지원하게 된 동기는 무엇인가요?",
-                "회사에 대한 관심도, 지원 의지, 회사 이해도를 평가"
-            )
-        
-        # 고정 질문 풀에서 선택
-        if question_type == QuestionType.HR:
-            questions = self.fixed_questions.get("hr_questions", [])
-        elif question_type == QuestionType.TECH:
-            questions = self.fixed_questions.get("technical_questions", [])
-        elif question_type == QuestionType.COLLABORATION:
-            questions = self.fixed_questions.get("collaboration_questions", [])
-        else:
-            # FOLLOWUP이나 기타 질문은 동적 생성
-            return self._generate_dynamic_question(ai_session, question_type)
-        
-        # 이미 사용된 질문 제외
-        used_questions = set()
-        for qa in ai_session.ai_answers:
-            used_questions.add(qa.question_content)
-        
-        # 사용 가능한 질문 필터링
-        available_questions = [q for q in questions if q["content"] not in used_questions]
-        
-        if available_questions:
-            # 레벨에 따라 정렬된 질문 선택
-            current_question_index = ai_session.current_question_count
-            if current_question_index < len(available_questions):
-                selected_question = available_questions[current_question_index % len(available_questions)]
-            else:
-                selected_question = available_questions[0]
-            
-            # 질문에 AI 이름 호칭 추가
-            ai_name = self.get_ai_name(LLMProvider.OPENAI_GPT35)
-            question_content = self._add_honorific_to_question(selected_question["content"], ai_name)
-            return question_content, selected_question["intent"]
-        
-        # 폴백 질문
-        ai_name = self.get_ai_name(LLMProvider.OPENAI_GPT35)
-        return self._get_fallback_question(question_type, ai_name)
     
-    def _generate_dynamic_question(self, ai_session: AICandidateSession, question_type: QuestionType) -> tuple[str, str]:
-        """동적 질문 생성 (심화 질문 등)"""
-        context = ai_session.get_previous_answers_context()
-        company_data = self._get_company_data(ai_session.company_id)
-        
-        if question_type == QuestionType.FOLLOWUP:
-            # 이전 답변을 바탕으로 한 심화 질문
-            if ai_session.ai_answers:
-                last_answer = ai_session.ai_answers[-1]
-                return (
-                    f"방금 말씀하신 {last_answer.question_content[:30]}... 부분에 대해 좀 더 자세히 설명해 주실 수 있나요?",
-                    "이전 답변의 구체적인 사례나 경험의 디테일 탐구"
-                )
-        
-        ai_name = self.get_ai_name(LLMProvider.OPENAI_GPT35)
-        return f"{ai_name}님에 대해 더 알고 싶습니다.", "일반적인 질문"
-    
-    def _get_fallback_question(self, question_type: QuestionType, persona_name: str) -> tuple[str, str]:
-        """폴백 질문 (면접자와 동일)"""
-        fallback_questions = {
-            QuestionType.INTRO: (f"{persona_name}님, 간단한 자기소개 부탁드립니다.", "기본 배경 파악"),
-            QuestionType.MOTIVATION: (f"{persona_name}님이 저희 회사에 지원하게 된 동기가 궁금합니다.", "지원 동기 파악"),
-            QuestionType.HR: (f"{persona_name}님의 장점과 성장하고 싶은 부분은 무엇인가요?", "개인적 특성 평가"),
-            QuestionType.TECH: (f"{persona_name}님의 기술적 경험에 대해 말씀해 주세요.", "기술 역량 평가"),
-            QuestionType.COLLABORATION: (f"{persona_name}님의 팀 협업 경험을 공유해 주세요.", "협업 능력 평가"),
-            QuestionType.FOLLOWUP: (f"{persona_name}님이 가장 자신 있는 경험을 더 자세히 설명해 주세요.", "심화 탐구")
-        }
-        return fallback_questions.get(question_type, (f"{persona_name}님, 본인에 대해 말씀해 주세요.", "일반적인 질문"))
-    
-    def _add_honorific_to_question(self, question_content: str, ai_name: str) -> str:
-        """질문에 AI 이름 호칭 추가"""
-        # 이미 호칭이 포함된 경우 그대로 반환
-        if "님" in question_content or ai_name in question_content:
-            return question_content
-        
-        # 질문 앞에 호칭 추가
-        return f"{ai_name}님, {question_content}"
 
     def generate_ai_answer_for_question(self, ai_session_id: str, question_data: Dict[str, Any]) -> AnswerResponse:
         """특정 질문에 대한 AI 답변 생성 (일관성 유지)"""
