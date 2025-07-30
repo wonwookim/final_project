@@ -1,75 +1,105 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../../components/common/Header';
 import StepIndicator from '../../components/interview/StepIndicator';
 import NavigationButtons from '../../components/interview/NavigationButtons';
 import { useInterview } from '../../contexts/InterviewContext';
+import { resumeApi, positionApi, ResumeResponse, Position, handleApiError } from '../../services/api';
+import { useAuth } from '../../hooks/useAuth';
 
-interface Resume {
-  id: string;
+// Extended Resume interface combining backend data with user info
+interface ExtendedResume extends ResumeResponse {
   name: string;
   email: string;
   phone: string;
-  academic_record: string;
-  career: string;
-  tech: string;
-  activities: string;
-  certificate: string;
-  awards: string;
-  created_at: string;
-  updated_at: string;
+  position_name?: string;
+}
+
+interface LoadingState {
+  resumes: boolean;
+  positions: boolean;
+}
+
+interface ErrorState {
+  resumes: string | null;
+  positions: string | null;
 }
 
 const ResumeSelection: React.FC = () => {
   const navigate = useNavigate();
   const { state, dispatch } = useInterview();
-  const [selectedResume, setSelectedResume] = useState<string | null>(null);
+  const { user, isAuthenticated } = useAuth();
+  const [selectedResume, setSelectedResume] = useState<number | null>(null);
+  const [resumes, setResumes] = useState<ExtendedResume[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [loading, setLoading] = useState<LoadingState>({
+    resumes: true,
+    positions: true
+  });
+  const [error, setError] = useState<ErrorState>({
+    resumes: null,
+    positions: null
+  });
 
-  // Mock 이력서 데이터 (실제로는 ProfilePage의 이력서 데이터를 API로 가져와야 함)
-  const mockResumes: Resume[] = [
-    {
-      id: '1',
-      name: '김개발',
-      email: 'kim@example.com',
-      phone: '010-1234-5678',
-      academic_record: '2020년 서울대학교 컴퓨터공학과 졸업 (학점: 3.8/4.5)',
-      career: '2021-2023 네이버 - 프론트엔드 개발자\n• React 기반 웹 서비스 개발\n• 사용자 경험 개선으로 전환율 20% 향상\n• 팀 내 코드 리뷰 문화 정착',
-      tech: 'JavaScript, React, TypeScript, Node.js, Python, Docker, AWS',
-      activities: '2020-2021 SOPT 개발 동아리 활동\n2021 해커톤 대상 수상\n개인 프로젝트: 음식 추천 웹 서비스 개발 (1만 사용자)',
-      certificate: '정보처리기사 (2020.05)\nAWS Solutions Architect Associate (2022.03)',
-      awards: '2021 대학교 졸업작품 우수상\n2022 해커톤 대상',
-      created_at: '2025-01-15',
-      updated_at: '2025-01-20'
-    },
-    {
-      id: '2',
-      name: '김개발',
-      email: 'kim@example.com',
-      phone: '010-1234-5678',
-      academic_record: '2019년 연세대학교 컴퓨터공학과 졸업 (학점: 3.9/4.5)',
-      career: '2020-2024 카카오 - 백엔드 개발자\n• Spring Boot 기반 API 서버 개발\n• 대용량 트래픽 처리 시스템 구축\n• MSA 아키텍처 설계 및 구현',
-      tech: 'Java, Spring Boot, MySQL, Redis, Kafka, Kubernetes, Jenkins',
-      activities: '오픈소스 프로젝트 기여 (Spring Boot Contributors)\n기술 블로그 운영 (월 1만 방문자)\n개발자 컨퍼런스 발표 경험',
-      certificate: '정보처리기사 (2019.11)\nCKA (Certified Kubernetes Administrator) (2023.06)',
-      awards: '2023 카카오 사내 해커톤 최우수상\n2024 개발자 컨퍼런스 베스트 스피커',
-      created_at: '2025-01-10',
-      updated_at: '2025-01-18'
-    }
-  ];
+  // API에서 이력서 목록 가져오기
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!isAuthenticated || !user) {
+        setLoading({ resumes: false, positions: false });
+        return;
+      }
+
+      try {
+        // 이력서와 직군 정보를 병렬로 가져오기
+        const [resumesData, positionsData] = await Promise.all([
+          resumeApi.getResumes(),
+          positionApi.getPositions()
+        ]);
+
+        setPositions(positionsData);
+        
+        // 이력서 데이터에 사용자 정보와 직군명 추가
+        const extendedResumes: ExtendedResume[] = resumesData.map(resume => ({
+          ...resume,
+          name: user.name,
+          email: user.email,
+          phone: '', // 사용자 프로필에 전화번호가 없어서 빈 문자열
+          position_name: positionsData.find(p => p.position_id === resume.position_id)?.position_name || '미지정'
+        }));
+
+        setResumes(extendedResumes);
+        setLoading({ resumes: false, positions: false });
+      } catch (err) {
+        console.error('데이터 로딩 실패:', err);
+        const errorMessage = handleApiError(err);
+        setError({ resumes: errorMessage, positions: errorMessage });
+        setLoading({ resumes: false, positions: false });
+      }
+    };
+
+    fetchData();
+  }, [isAuthenticated, user]);
 
   const steps = ['공고 선택', '이력서 선택', '면접 모드 선택', 'AI 설정', '환경 체크'];
 
-  const calculateCompletionRate = (resume: Resume): number => {
-    const fields = ['name', 'academic_record', 'career', 'tech'];
-    const filledFields = fields.filter(field => resume[field as keyof Resume]?.toString().trim());
+  const calculateCompletionRate = (resume: ExtendedResume): number => {
+    const fields = ['academic_record', 'career', 'tech', 'activities'];
+    const filledFields = fields.filter(field => {
+      const value = resume[field as keyof ExtendedResume];
+      return value && value.toString().trim() !== '';
+    });
     return Math.round((filledFields.length / fields.length) * 100);
   };
 
   const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleDateString('ko-KR');
+    try {
+      return new Date(dateString).toLocaleDateString('ko-KR');
+    } catch {
+      return '날짜 없음';
+    }
   };
 
-  const handleSelectResume = (resumeId: string) => {
+  const handleSelectResume = (resumeId: number) => {
     setSelectedResume(resumeId);
   };
 
@@ -80,12 +110,27 @@ const ResumeSelection: React.FC = () => {
   const handleNext = () => {
     if (!selectedResume) return;
     
-    const selectedResumeData = mockResumes.find(resume => resume.id === selectedResume);
+    const selectedResumeData = resumes.find(resume => resume.user_resume_id === selectedResume);
     if (selectedResumeData) {
-      // Context에 선택된 이력서 정보 저장
+      // Context에 선택된 이력서 정보 저장 (기존 인터페이스에 맞게 변환)
+      const resumeForContext = {
+        id: selectedResumeData.user_resume_id.toString(),
+        name: selectedResumeData.name,
+        email: selectedResumeData.email,
+        phone: selectedResumeData.phone,
+        academic_record: selectedResumeData.academic_record,
+        career: selectedResumeData.career,
+        tech: selectedResumeData.tech,
+        activities: selectedResumeData.activities,
+        certificate: selectedResumeData.certificate,
+        awards: selectedResumeData.awards,
+        created_at: selectedResumeData.created_date,
+        updated_at: selectedResumeData.updated_date
+      };
+      
       dispatch({ 
         type: 'SET_RESUME', 
-        payload: selectedResumeData
+        payload: resumeForContext
       });
       
       navigate('/interview/interview-mode-selection');
@@ -96,7 +141,89 @@ const ResumeSelection: React.FC = () => {
     navigate('/profile', { state: { activeTab: 'resume', action: 'create' } });
   };
 
-  const selectedResumeData = mockResumes.find(resume => resume.id === selectedResume);
+  const selectedResumeData = resumes.find(resume => resume.user_resume_id === selectedResume);
+
+  // 로딩 상태 처리
+  if (loading.resumes || loading.positions) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+        <Header 
+          title="면접 준비"
+          subtitle="사용할 이력서를 선택해주세요"
+        />
+        <main className="container mx-auto px-6 py-8">
+          <StepIndicator currentStep={2} totalSteps={5} steps={steps} />
+          <div className="max-w-6xl mx-auto">
+            <div className="text-center py-16">
+              <div className="text-8xl mb-6">🔄</div>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">이력서 로딩 중...</h3>
+              <p className="text-slate-600">잠시만 기다려주세요.</p>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // 인증되지 않은 사용자 처리
+  if (!isAuthenticated || !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+        <Header 
+          title="면접 준비"
+          subtitle="로그인이 필요합니다"
+        />
+        <main className="container mx-auto px-6 py-8">
+          <div className="max-w-6xl mx-auto">
+            <div className="text-center py-16">
+              <div className="text-8xl mb-6">🔒</div>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">로그인이 필요합니다</h3>
+              <p className="text-slate-600 mb-6">이력서를 보려면 먼저 로그인해주세요.</p>
+              <button
+                onClick={() => navigate('/login')}
+                className="bg-blue-600 text-white px-6 py-3 rounded-lg text-lg hover:bg-blue-700 transition-colors"
+              >
+                로그인하러 가기
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // 에러 상태 처리
+  if (error.resumes) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+        <Header 
+          title="면접 준비"
+          subtitle="이력서 로딩 오류"
+        />
+        <main className="container mx-auto px-6 py-8">
+          <div className="max-w-6xl mx-auto">
+            <div className="text-center py-16">
+              <div className="text-8xl mb-6">⚠️</div>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">이력서를 불러올 수 없습니다</h3>
+              <p className="text-slate-600 mb-6">{error.resumes}</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="bg-blue-600 text-white px-6 py-3 rounded-lg text-lg hover:bg-blue-700 transition-colors mr-4"
+              >
+                다시 시도
+              </button>
+              <button
+                onClick={() => navigate('/profile')}
+                className="bg-slate-100 text-slate-600 px-6 py-3 rounded-lg text-lg hover:bg-slate-200 transition-colors"
+              >
+                마이페이지로 가기
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
@@ -118,7 +245,7 @@ const ResumeSelection: React.FC = () => {
             </p>
           </div>
 
-          {mockResumes.length === 0 ? (
+          {resumes.length === 0 ? (
             // 이력서가 없는 경우
             <div className="text-center py-16">
               <div className="text-8xl mb-6">📄</div>
@@ -137,21 +264,23 @@ const ResumeSelection: React.FC = () => {
             <>
               {/* 이력서 목록 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                {mockResumes.map(resume => {
+                {resumes.map(resume => {
                   const completionRate = calculateCompletionRate(resume);
                   return (
                     <div
-                      key={resume.id}
-                      onClick={() => handleSelectResume(resume.id)}
+                      key={resume.user_resume_id}
+                      onClick={() => handleSelectResume(resume.user_resume_id)}
                       className={`bg-white/80 backdrop-blur-sm rounded-2xl p-6 border-2 cursor-pointer transition-all duration-300 hover:shadow-lg ${
-                        selectedResume === resume.id
+                        selectedResume === resume.user_resume_id
                           ? 'border-blue-500 bg-gradient-to-r from-blue-50 to-purple-50 transform scale-105'
                           : 'border-slate-200 hover:border-slate-300'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-semibold text-slate-900 truncate">{resume.name}_이력서</h3>
-                        <span className="text-xs text-slate-500">{formatDate(resume.updated_at)}</span>
+                        <h3 className="font-semibold text-slate-900 truncate">
+                          {resume.position_name || '미지정'} 이력서
+                        </h3>
+                        <span className="text-xs text-slate-500">{formatDate(resume.updated_date)}</span>
                       </div>
                       
                       <div className="mb-4">
@@ -186,9 +315,15 @@ const ResumeSelection: React.FC = () => {
                             {resume.career ? resume.career.split('\n')[0] : '경력 미입력'}
                           </span>
                         </div>
+                        <div className="flex items-center gap-2">
+                          <span>🏆</span>
+                          <span className="truncate">
+                            {resume.position_name ? `${resume.position_name} 직군` : '직군 미지정'}
+                          </span>
+                        </div>
                       </div>
 
-                      {selectedResume === resume.id && (
+                      {selectedResume === resume.user_resume_id && (
                         <div className="mt-4 pt-4 border-t border-slate-200">
                           <div className="flex items-center gap-2 text-blue-600">
                             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -223,24 +358,27 @@ const ResumeSelection: React.FC = () => {
                       <div className="space-y-1 text-sm text-slate-600">
                         <div>이름: {selectedResumeData.name}</div>
                         <div>이메일: {selectedResumeData.email}</div>
-                        <div>연락처: {selectedResumeData.phone}</div>
+                        <div>직군: {selectedResumeData.position_name || '미지정'}</div>
+                        <div>작성일: {formatDate(selectedResumeData.created_date)}</div>
                       </div>
                     </div>
                     <div>
                       <h4 className="font-medium text-slate-700 mb-2">주요 기술스택</h4>
                       <div className="flex flex-wrap gap-1">
-                        {selectedResumeData.tech.split(',').slice(0, 5).map((tech, idx) => (
+                        {selectedResumeData.tech ? selectedResumeData.tech.split(',').slice(0, 5).map((tech, idx) => (
                           <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
                             {tech.trim()}
                           </span>
-                        ))}
+                        )) : (
+                          <span className="text-slate-400 text-xs">기술스택 미입력</span>
+                        )}
                       </div>
                     </div>
                   </div>
                   <div className="mt-4">
                     <h4 className="font-medium text-slate-700 mb-2">주요 경력</h4>
                     <p className="text-sm text-slate-600 line-clamp-2">
-                      {selectedResumeData.career.split('\n')[0]}
+                      {selectedResumeData.career ? selectedResumeData.career.split('\n')[0] : '경력 정보가 없습니다.'}
                     </p>
                   </div>
                 </div>
