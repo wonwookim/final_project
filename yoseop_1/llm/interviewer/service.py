@@ -14,7 +14,7 @@ import json
 import random
 import os
 import sys
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import openai
 from dotenv import load_dotenv
 
@@ -133,6 +133,7 @@ class InterviewerService:
         if self.questions_asked_count == 0:
             self.questions_asked_count += 1
             print(f"📝 [InterviewerService] 1번째 질문 생성: 자기소개")
+            # 자기소개는 이름을 모르는 상황이므로 이름 호명 없이 진행
             return {
                 'question': '자기소개를 부탁드립니다.',
                 'intent': '지원자의 기본 정보와 성격, 역량을 파악',
@@ -144,8 +145,14 @@ class InterviewerService:
             company_name = company_info.get('name', '저희 회사')
             self.questions_asked_count += 1
             print(f"📝 [InterviewerService] 2번째 질문 생성: 지원동기 ({company_name})")
+            
+            # 지원동기 질문에 이름 호명 추가 (자기소개 후이므로 이름을 알고 있음)
+            base_question = f'저희 {company_name}에 지원하신 동기를 말씀해 주세요.'
+            candidate_name = user_resume.get('name', '지원자') if user_resume else '지원자'
+            question_with_name = self._add_candidate_name_to_question(base_question, candidate_name)
+            
             return {
-                'question': f'저희 {company_name}에 지원하신 동기를 말씀해 주세요.',
+                'question': question_with_name,
                 'intent': '회사에 대한 관심도와 지원 동기 파악',
                 'interviewer_type': 'HR'
             }
@@ -246,7 +253,7 @@ class InterviewerService:
                 
                 return self._generate_follow_up_question(
                     previous_question, user_answer, chun_sik_answer, 
-                    company_info, interviewer_role
+                    company_info, interviewer_role, user_resume
                 )
             else:
                 # 꼬리 질문을 생성하지 않고 턴 종료, 다음 면접관으로 넘김
@@ -287,30 +294,118 @@ class InterviewerService:
     
     def _generate_main_question(self, user_resume: Dict, chun_sik_persona: CandidatePersona,
                                company_info: Dict, interviewer_role: str) -> Dict:
-        """메인 질문 생성 - 다양한 주제 풀에서 선택하여 참조/생성 혼합"""
+        """메인 질문 생성 - 다양한 주제 풀에서 선택하여 참조/생성 혼합 (폴백 방지)"""
         
         # 면접관 역할에 맞는 주제 목록 선택
         topic_pool = self.topic_pools.get(interviewer_role, [])
         if not topic_pool:
-            # 폴백: 기본 질문
-            return self._get_fallback_question(interviewer_role)
+            print(f"⚠️ [InterviewerService] {interviewer_role} 주제 풀이 비어있음. 일반 주제로 시도")
+            topic_pool = ['일반']
         
         # 랜덤하게 주제 선택
         selected_topic = random.choice(topic_pool)
         
         # 50% 확률로 DB 템플릿 또는 LLM 생성 방식 선택
-        use_db_template = random.choice([True, False])
+        use_db_first = random.choice([True, False])
         
-        if use_db_template:
-            # DB 템플릿 기반 생성 (기존 로직 활용)
-            return self._generate_from_db_template_with_topic(
+        question_result = None
+        
+        if use_db_first:
+            print(f"🎯 [InterviewerService] DB 템플릿 우선 시도: {selected_topic}")
+            # 1차: DB 템플릿 기반 생성 시도
+            question_result = self._try_generate_from_db_template(
                 user_resume, company_info, interviewer_role, selected_topic
             )
+            
+            if question_result:
+                return question_result
+            
+            print(f"❌ [InterviewerService] DB 템플릿 실패. LLM 생성으로 전환")
+            # 2차: DB 실패 시 LLM 생성 시도 
+            question_result = self._try_generate_from_llm(
+                user_resume, company_info, interviewer_role, selected_topic
+            )
+            
+            if question_result:
+                return question_result
+                
         else:
-            # LLM 기반 생성 (주제 특화)
-            return self._generate_from_llm_with_topic(
+            print(f"🤖 [InterviewerService] LLM 생성 우선 시도: {selected_topic}")
+            # 1차: LLM 기반 생성 시도
+            question_result = self._try_generate_from_llm(
                 user_resume, company_info, interviewer_role, selected_topic
             )
+            
+            if question_result:
+                return question_result
+            
+            print(f"❌ [InterviewerService] LLM 생성 실패. DB 템플릿으로 전환")
+            # 2차: LLM 실패 시 DB 템플릿 시도
+            question_result = self._try_generate_from_db_template(
+                user_resume, company_info, interviewer_role, selected_topic
+            )
+            
+            if question_result:
+                return question_result
+        
+        # 최종 폴백: 둘 다 실패 시 일반적인 질문 (장점/단점 아님)
+        print(f"🚨 [InterviewerService] 모든 질문 생성 실패. 일반 질문으로 폴백")
+        candidate_name = user_resume.get('name', '지원자') if user_resume else '지원자'
+        return self._get_generic_question(interviewer_role, selected_topic, candidate_name)
+    
+    def _try_generate_from_db_template(self, user_resume: Dict, company_info: Dict, 
+                                     interviewer_role: str, topic: str) -> Optional[Dict]:
+        """DB 템플릿 기반 질문 생성 시도 (실패 시 None 반환)"""
+        try:
+            return self._generate_from_db_template_with_topic(
+                user_resume, company_info, interviewer_role, topic
+            )
+        except Exception as e:
+            print(f"❌ [InterviewerService] DB 템플릿 생성 중 예외: {e}")
+            return None
+    
+    def _try_generate_from_llm(self, user_resume: Dict, company_info: Dict, 
+                             interviewer_role: str, topic: str) -> Optional[Dict]:
+        """LLM 기반 질문 생성 시도 (실패 시 None 반환)"""
+        try:
+            return self._generate_from_llm_with_topic(
+                user_resume, company_info, interviewer_role, topic
+            )
+        except Exception as e:
+            print(f"❌ [InterviewerService] LLM 생성 중 예외: {e}")
+            return None
+    
+    def _get_generic_question(self, interviewer_role: str, topic: str, candidate_name: str = None) -> Dict:
+        """최종 폴백: 일반적인 질문 (장점/단점 아님)"""
+        generic_questions = {
+            'HR': {
+                'question': f'{topic} 관련해서 본인의 경험을 자유롭게 말씀해 주세요.',
+                'intent': '지원자의 경험과 역량 파악'
+            },
+            'TECH': {
+                'question': f'{topic} 분야에서 본인이 해결한 문제나 경험을 설명해 주세요.',
+                'intent': '기술적 문제 해결 능력 평가'
+            },
+            'COLLABORATION': {
+                'question': f'{topic}과 관련된 팀 협업 경험을 말씀해 주세요.',
+                'intent': '협업 능력과 소통 역량 평가'
+            }
+        }
+        
+        fallback = generic_questions.get(interviewer_role, generic_questions['HR'])
+        
+        # 이름 호명 추가
+        question_with_name = self._add_candidate_name_to_question(
+            fallback['question'], candidate_name
+        )
+        
+        return {
+            'question': question_with_name,
+            'intent': fallback['intent'],
+            'interviewer_type': interviewer_role,
+            'topic': topic,
+            'question_source': 'generic_fallback'
+        }
     
     def _generate_from_db_template_with_topic(self, user_resume: Dict, company_info: Dict, 
                                             interviewer_role: str, topic: str) -> Dict:
@@ -326,7 +421,7 @@ class InterviewerService:
         ]
         
         if not filtered_questions:
-            return self._get_fallback_question(interviewer_role)
+            raise ValueError(f"DB에 {interviewer_role} 역할(question_type={question_type_id})의 질문이 없습니다.")
         
         # 랜덤 템플릿 선택
         selected_template = random.choice(filtered_questions)
@@ -338,8 +433,12 @@ class InterviewerService:
             company_info
         )
         
+        # 이름 호명 추가
+        candidate_name = user_resume.get('name', '지원자') if user_resume else '지원자'
+        question_with_name = self._add_candidate_name_to_question(question_content, candidate_name)
+        
         return {
-            'question': question_content,
+            'question': question_with_name,
             'intent': f"{topic} 관련 {selected_template.get('question_intent', f'{interviewer_role} 역량 평가')}",
             'interviewer_type': interviewer_role,
             'topic': topic,
@@ -360,7 +459,20 @@ class InterviewerService:
             response = self.openai_client.chat.completions.create(
                 model=GPT_MODEL,
                 messages=[
-                    {"role": "system", "content": "당신은 전문 면접관입니다. 반드시 다음과 같은 JSON 형식으로만 응답하세요: {\"question\": \"질문 내용\", \"intent\": \"질문 의도\"}"},
+                    {"role": "system", "content": """당신은 전문 면접관입니다. 
+
+🚨 **절대 준수 사항** 🚨
+- 오직 아래 JSON 형식으로만 응답하세요
+- 다른 어떤 텍스트, 설명, 주석도 절대 포함하지 마세요
+- JSON 앞뒤에 ```json이나 기타 텍스트 금지
+
+**필수 응답 형식:**
+{"question": "질문 내용", "intent": "질문 의도"}
+
+**예시:**
+{"question": "프로젝트에서 가장 어려웠던 기술적 도전은 무엇이었나요?", "intent": "문제 해결 능력과 기술적 역량 평가"}
+
+위 형식만 사용하세요. 다른 형태의 응답은 시스템 오류를 발생시킵니다."""},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=MAX_TOKENS,
@@ -379,6 +491,10 @@ class InterviewerService:
             if not result.get('question'):
                 raise ValueError("question 필드가 비어있습니다")
             
+            # 이름 호명 추가
+            candidate_name = user_resume.get('name', '지원자') if user_resume else '지원자'
+            result['question'] = self._add_candidate_name_to_question(result['question'], candidate_name)
+            
             result['interviewer_type'] = interviewer_role
             result['topic'] = topic
             result['question_source'] = 'llm_generated'
@@ -386,7 +502,7 @@ class InterviewerService:
             
         except Exception as e:
             print(f"❌ LLM 메인 질문 생성 실패: {e}")
-            return self._get_fallback_question(interviewer_role)
+            raise  # 예외를 다시 발생시켜 상위 함수에서 처리하도록 함
     
     def _build_topic_specific_prompt(self, user_resume: Dict, company_info: Dict, 
                                    interviewer_role: str, topic: str) -> str:
@@ -510,7 +626,7 @@ class InterviewerService:
     
     def _generate_follow_up_question(self, previous_question: str, user_answer: str, 
                                    chun_sik_answer: str, company_info: Dict, 
-                                   interviewer_role: str) -> Dict:
+                                   interviewer_role: str, user_resume: Dict = None) -> Dict:
         """동적 꼬리 질문 생성 - 답변 기반 실시간 심층 탐구"""
         
         company_name = company_info.get('name', '회사')
@@ -547,7 +663,20 @@ class InterviewerService:
             response = self.openai_client.chat.completions.create(
                 model=GPT_MODEL,
                 messages=[
-                    {"role": "system", "content": "당신은 경험 많은 전문 면접관입니다. 지원자들의 답변을 분석하여 핵심을 파고드는 날카로운 꼬리 질문을 생성합니다. 반드시 JSON 형식으로만 응답하세요."},
+                    {"role": "system", "content": """당신은 경험 많은 전문 면접관입니다. 지원자들의 답변을 분석하여 핵심을 파고드는 날카로운 꼬리 질문을 생성합니다.
+
+🚨 **절대 준수 사항** 🚨
+- 오직 아래 JSON 형식으로만 응답하세요
+- 다른 어떤 텍스트, 설명, 주석도 절대 포함하지 마세요
+- JSON 앞뒤에 ```json이나 기타 텍스트 금지
+
+**필수 응답 형식:**
+{"question": "질문 내용", "intent": "질문 의도"}
+
+**예시:**
+{"question": "방금 말씀하신 성능 최적화 방법에서 가장 효과적이었던 부분은 무엇인가요?", "intent": "구체적인 기술적 성과와 판단 근거 확인"}
+
+위 형식만 사용하세요. 다른 형태의 응답은 시스템 오류를 발생시킵니다."""},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=MAX_TOKENS,
@@ -576,6 +705,10 @@ class InterviewerService:
             if not result.get('question'):
                 raise ValueError("question 필드가 비어있습니다")
             
+            # 이름 호명 추가
+            candidate_name = user_resume.get('name', '지원자') if user_resume else '지원자'
+            result['question'] = self._add_candidate_name_to_question(result['question'], candidate_name)
+            
             result['interviewer_type'] = interviewer_role
             result['question_type'] = 'follow_up'
             result['question_source'] = 'llm_follow_up'
@@ -584,9 +717,9 @@ class InterviewerService:
         except Exception as e:
             print(f"❌ 꼬리 질문 생성 실패: {e}")
             # 폴백 꼬리 질문
-            return self._get_fallback_follow_up_question(interviewer_role, previous_question)
+            return self._get_fallback_follow_up_question(interviewer_role, previous_question, user_resume)
     
-    def _get_fallback_follow_up_question(self, interviewer_role: str, previous_question: str) -> Dict:
+    def _get_fallback_follow_up_question(self, interviewer_role: str, previous_question: str, user_resume: Dict = None) -> Dict:
         """꼬리 질문 생성 실패 시 폴백 질문"""
         
         fallback_follow_ups = {
@@ -605,11 +738,41 @@ class InterviewerService:
         }
         
         fallback = fallback_follow_ups.get(interviewer_role, fallback_follow_ups['HR'])
+        
+        # 이름 호명 추가
+        candidate_name = user_resume.get('name', '지원자') if user_resume else '지원자'
+        fallback['question'] = self._add_candidate_name_to_question(fallback['question'], candidate_name)
+        
         fallback['interviewer_type'] = interviewer_role
         fallback['question_type'] = 'follow_up'
         fallback['question_source'] = 'fallback'
         
         return fallback
+    
+    def _add_candidate_name_to_question(self, question: str, candidate_name: str, is_intro_question: bool = False) -> str:
+        """질문에 지원자 이름 호명 추가"""
+        if not candidate_name or candidate_name == '지원자':
+            return question
+        
+        # 자기소개 질문인 경우 특별 처리 (이미 이름을 모르는 상황)
+        if is_intro_question:
+            return question
+        
+        # 이름 호명 패턴들 (자연스러운 다양성 확보)
+        name_patterns = [
+            f"{candidate_name}님, {question}",
+            f"{candidate_name}님께서는 {question}",
+            f"{candidate_name}님, {question}",
+            f"그렇다면 {candidate_name}님, {question}",
+            f"{candidate_name}님의 경우 {question}"
+        ]
+        
+        # 랜덤하게 패턴 선택 (80% 확률로 이름 호명)
+        if random.random() < 0.8:
+            selected_pattern = random.choice(name_patterns[:3])  # 기본 패턴 우선 사용
+            return selected_pattern
+        else:
+            return question  # 20%는 이름 없이 (자연스러운 다양성)
     
     def _inject_data_to_template(self, template: str, user_resume: Dict, company_info: Dict) -> str:
         """템플릿에 실제 데이터 동적 주입"""
@@ -631,26 +794,6 @@ class InterviewerService:
         
         return result
     
-    def _get_fallback_question(self, interviewer_role: str) -> Dict:
-        """폴백 질문 (오류 시 사용)"""
-        fallback_questions = {
-            'HR': {
-                'question': '본인의 장점과 단점은 무엇인가요?',
-                'intent': '자기 인식과 성찰 능력 평가',
-                'interviewer_type': 'HR'
-            },
-            'TECH': {
-                'question': '본인이 가장 자신 있는 기술 스택은 무엇인가요?',
-                'intent': '기술적 전문성 평가',
-                'interviewer_type': 'TECH'
-            },
-            'COLLABORATION': {
-                'question': '팀 프로젝트에서 본인의 역할은 주로 무엇인가요?',
-                'intent': '협업 능력 평가',
-                'interviewer_type': 'COLLABORATION'
-            }
-        }
-        return fallback_questions.get(interviewer_role, fallback_questions['HR'])
 
 def main():
     """턴제 면접 시스템 테스트"""
