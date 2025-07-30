@@ -246,6 +246,23 @@ const EnvironmentCheck: React.FC = () => {
       payload: sessionId
     });
     
+    // 면접 설정을 localStorage에 저장 (새로고침 시 복원용)
+    try {
+      const stateToSave = {
+        jobPosting: state.jobPosting,
+        resume: state.resume,
+        interviewMode: state.interviewMode,
+        aiSettings: state.aiSettings,
+        settings: finalSettings,
+        sessionId: sessionId,
+        interviewStatus: 'ready'
+      };
+      localStorage.setItem('interview_state', JSON.stringify(stateToSave));
+      console.log('💾 면접 설정을 localStorage에 저장 완료');
+    } catch (error) {
+      console.error('❌ localStorage 저장 실패:', error);
+    }
+    
     // 카메라 스트림을 Context에 저장
     if (stream) {
       const videoTracks = stream.getVideoTracks();

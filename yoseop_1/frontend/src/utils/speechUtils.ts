@@ -276,10 +276,54 @@ export class TextToSpeech {
   }
 
   stop() {
-    if (this.synthesis.speaking) {
+    console.log('🔇 TTS stop() 호출 - 강제 정리 시작');
+    
+    // 현재 재생 중인 utterance가 있으면 중단
+    if (this.currentUtterance) {
+      console.log('🛑 현재 utterance 중단');
+      this.currentUtterance.onend = null; // 이벤트 핸들러 제거
+      this.currentUtterance.onerror = null;
+      this.currentUtterance = null;
+    }
+    
+    // speechSynthesis 전체 중단
+    if (this.synthesis.speaking || this.synthesis.pending) {
+      console.log('🔇 speechSynthesis.cancel() 호출');
       this.synthesis.cancel();
     }
-    this.currentUtterance = null;
+    
+    // 추가적인 강제 정리 (브라우저별 호환성)
+    try {
+      // Chrome, Edge 등에서 때때로 필요한 추가 정리
+      if (this.synthesis.paused) {
+        this.synthesis.resume();
+        this.synthesis.cancel();
+      }
+    } catch (error) {
+      console.warn('⚠️ TTS 추가 정리 중 오류 (무시 가능):', error);
+    }
+  }
+
+  // 페이지 새로고침/닫기 시 강제 정리용 메서드
+  forceStop() {
+    console.log('💥 TTS forceStop() 호출 - 모든 음성 강제 중단');
+    
+    this.stop();
+    
+    // 전역 speechSynthesis도 강제 정리
+    try {
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        // 일부 브라우저에서는 여러 번 호출이 필요할 수 있음
+        setTimeout(() => {
+          if (window.speechSynthesis.speaking) {
+            window.speechSynthesis.cancel();
+          }
+        }, 10);
+      }
+    } catch (error) {
+      console.warn('⚠️ 전역 speechSynthesis 정리 실패 (무시 가능):', error);
+    }
   }
 
   pause() {

@@ -79,6 +79,44 @@ const InterviewActive: React.FC = () => {
   // Initialize interview if not already set
   useEffect(() => {
     if (!state.sessionId || !state.settings) {
+      // localStorage에서 복원 시도
+      console.log('🔄 면접 상태가 없음 - localStorage에서 복원 시도');
+      const savedState = localStorage.getItem('interview_state');
+      
+      if (savedState) {
+        try {
+          const parsedState = JSON.parse(savedState);
+          console.log('✅ localStorage에서 면접 상태 복원:', parsedState);
+          
+          // 복원된 데이터로 Context 상태 업데이트
+          if (parsedState.jobPosting) {
+            dispatch({ type: 'SET_JOB_POSTING', payload: parsedState.jobPosting });
+          }
+          if (parsedState.resume) {
+            dispatch({ type: 'SET_RESUME', payload: parsedState.resume });
+          }
+          if (parsedState.interviewMode) {
+            dispatch({ type: 'SET_INTERVIEW_MODE', payload: parsedState.interviewMode });
+          }
+          if (parsedState.aiSettings) {
+            dispatch({ type: 'SET_AI_SETTINGS', payload: parsedState.aiSettings });
+          }
+          if (parsedState.settings) {
+            dispatch({ type: 'SET_SETTINGS', payload: parsedState.settings });
+          }
+          
+          // 새로운 면접 시작
+          console.log('🚀 복원된 설정으로 새로운 면접 시작');
+          restartInterviewFromLocalStorage(parsedState.settings);
+          return;
+        } catch (error) {
+          console.error('❌ localStorage 복원 실패:', error);
+          localStorage.removeItem('interview_state');
+        }
+      }
+      
+      // localStorage 복원 실패 시 기존 로직
+      console.log('❌ localStorage 복원 실패 - 면접 설정 페이지로 이동');
       navigate('/interview/setup');
       return;
     }
@@ -452,6 +490,122 @@ const InterviewActive: React.FC = () => {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 빈 의존성 배열로 마운트/언마운트 시에만 실행
+
+  // 페이지 새로고침/닫기 시 경고 및 정리
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // 면접이 진행 중일 때만 경고 표시
+      if (interviewState === 'active' || interviewState === 'ai_answering') {
+        e.preventDefault();
+        e.returnValue = '면접이 진행 중입니다. 새로고침하면 현재 진행 상황이 모두 삭제되고 새로운 면접이 시작됩니다.';
+        
+        // TTS 강제 정리
+        if (ttsInstance) {
+          console.log('🔇 beforeunload - TTS 강제 정리');
+          ttsInstance.forceStop();
+        } else if (window.speechSynthesis && window.speechSynthesis.speaking) {
+          console.log('🔇 beforeunload - 전역 speechSynthesis 정리');
+          window.speechSynthesis.cancel();
+        }
+        
+        // 현재 상태를 localStorage에 저장
+        try {
+          const currentState = {
+            jobPosting: state.jobPosting,
+            resume: state.resume,
+            interviewMode: state.interviewMode,
+            aiSettings: state.aiSettings,
+            settings: state.settings,
+            sessionId: state.sessionId,
+            interviewStatus: state.interviewStatus
+          };
+          localStorage.setItem('interview_state', JSON.stringify(currentState));
+          console.log('💾 beforeunload - 면접 상태 localStorage에 저장');
+        } catch (error) {
+          console.error('❌ beforeunload - localStorage 저장 실패:', error);
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [interviewState, ttsInstance, state.jobPosting, state.resume, state.interviewMode, state.aiSettings, state.settings, state.sessionId, state.interviewStatus]);
+
+  // localStorage에서 복원된 설정으로 새로운 면접 시작
+  const restartInterviewFromLocalStorage = async (settings: any) => {
+    if (!settings) {
+      console.error('❌ restartInterviewFromLocalStorage - settings가 없음');
+      return;
+    }
+
+    try {
+      console.log('🔄 새로운 면접 시작 중...', settings);
+      
+      // Context 상태 초기화
+      dispatch({ type: 'RESET_INTERVIEW' });
+      
+      // 설정 다시 적용
+      dispatch({ type: 'SET_SETTINGS', payload: settings });
+      
+      // 로딩 상태 설정
+      setIsLoading(true);
+      setInterviewState('ready');
+      
+      // 면접 모드에 따라 API 호출
+      if (settings.mode === 'ai_competition') {
+        // AI 경쟁 모드
+        console.log('🤖 AI 경쟁 모드로 새 면접 시작');
+        const response = await interviewApi.startAICompetition(settings);
+        
+        // 새로운 세션 정보 설정
+        dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
+        setComparisonSessionId(response.comparison_session_id);
+        
+        // 첫 번째 질문 추가
+        if (response.question) {
+          dispatch({ type: 'ADD_QUESTION', payload: response.question });
+          setCurrentInterviewerType(mapQuestionCategoryToInterviewer(response.question.category));
+        }
+        
+        // AI 경쟁 모드 상태 설정
+        setComparisonMode(true);
+        initializationRef.current = true;
+        setHasInitialized(true);
+        
+        console.log('✅ AI 경쟁 모드 새 면접 시작 완료');
+      } else {
+        // 일반 모드
+        console.log('👤 일반 모드로 새 면접 시작');
+        const response = await interviewApi.startInterview(settings);
+        
+        // 새로운 세션 ID 설정
+        dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
+        
+        // 첫 번째 질문 로드
+        await loadFirstQuestion();
+        
+        console.log('✅ 일반 모드 새 면접 시작 완료');
+      }
+      
+      // 면접 시작 팝업 표시
+      setShowStartPopup(true);
+      
+      // localStorage 정리 (새로운 면접이므로)
+      localStorage.removeItem('interview_state');
+      
+    } catch (error) {
+      console.error('❌ 새로운 면접 시작 실패:', error);
+      setIsLoading(false);
+      
+      // API 실패 시 면접 설정 페이지로 이동
+      navigate('/interview/setup');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // STT/TTS 관련 함수들
   const handleStartSTT = () => {
