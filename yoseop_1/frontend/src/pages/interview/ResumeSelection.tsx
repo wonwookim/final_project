@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../../components/common/Header';
 import StepIndicator from '../../components/interview/StepIndicator';
 import NavigationButtons from '../../components/interview/NavigationButtons';
 import { useInterview } from '../../contexts/InterviewContext';
-import { resumeApi, positionApi, ResumeResponse, Position, handleApiError } from '../../services/api';
+import { ResumeResponse } from '../../services/api';
 import { useAuth } from '../../hooks/useAuth';
+import { useResumes } from '../../hooks/useResumes';
+import { usePositions } from '../../hooks/usePositions';
 
 // Extended Resume interface combining backend data with user info
 interface ExtendedResume extends ResumeResponse {
@@ -15,70 +17,33 @@ interface ExtendedResume extends ResumeResponse {
   position_name?: string;
 }
 
-interface LoadingState {
-  resumes: boolean;
-  positions: boolean;
-}
-
-interface ErrorState {
-  resumes: string | null;
-  positions: string | null;
-}
 
 const ResumeSelection: React.FC = () => {
   const navigate = useNavigate();
   const { state, dispatch } = useInterview();
   const { user, isAuthenticated } = useAuth();
   const [selectedResume, setSelectedResume] = useState<number | null>(null);
-  const [resumes, setResumes] = useState<ExtendedResume[]>([]);
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [loading, setLoading] = useState<LoadingState>({
-    resumes: true,
-    positions: true
-  });
-  const [error, setError] = useState<ErrorState>({
-    resumes: null,
-    positions: null
-  });
+  
+  // 커스텀 훅 사용
+  const { resumes: resumesData, loading: resumesLoading, error: resumesError } = useResumes();
+  const { positions, loading: positionsLoading, error: positionsError } = usePositions();
 
-  // API에서 이력서 목록 가져오기
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!isAuthenticated || !user) {
-        setLoading({ resumes: false, positions: false });
-        return;
-      }
+  // 이력서 데이터에 사용자 정보와 직군명 추가
+  const extendedResumes: ExtendedResume[] = useMemo(() => {
+    if (!user || !resumesData || !positions) return [];
+    
+    return resumesData.map(resume => ({
+      ...resume,
+      name: user.name,
+      email: user.email,
+      phone: '', // 사용자 프로필에 전화번호가 없어서 빈 문자열
+      position_name: positions.find(p => p.position_id === resume.position_id)?.position_name || '미지정'
+    }));
+  }, [resumesData, positions, user]);
 
-      try {
-        // 이력서와 직군 정보를 병렬로 가져오기
-        const [resumesData, positionsData] = await Promise.all([
-          resumeApi.getResumes(),
-          positionApi.getPositions()
-        ]);
-
-        setPositions(positionsData);
-        
-        // 이력서 데이터에 사용자 정보와 직군명 추가
-        const extendedResumes: ExtendedResume[] = resumesData.map(resume => ({
-          ...resume,
-          name: user.name,
-          email: user.email,
-          phone: '', // 사용자 프로필에 전화번호가 없어서 빈 문자열
-          position_name: positionsData.find(p => p.position_id === resume.position_id)?.position_name || '미지정'
-        }));
-
-        setResumes(extendedResumes);
-        setLoading({ resumes: false, positions: false });
-      } catch (err) {
-        console.error('데이터 로딩 실패:', err);
-        const errorMessage = handleApiError(err);
-        setError({ resumes: errorMessage, positions: errorMessage });
-        setLoading({ resumes: false, positions: false });
-      }
-    };
-
-    fetchData();
-  }, [isAuthenticated, user]);
+  // 로딩 및 에러 상태 통합
+  const loading = resumesLoading || positionsLoading;
+  const error = resumesError || positionsError;
 
   const steps = ['공고 선택', '이력서 선택', '면접 모드 선택', 'AI 설정', '환경 체크'];
 
@@ -110,7 +75,7 @@ const ResumeSelection: React.FC = () => {
   const handleNext = () => {
     if (!selectedResume) return;
     
-    const selectedResumeData = resumes.find(resume => resume.user_resume_id === selectedResume);
+    const selectedResumeData = extendedResumes.find(resume => resume.user_resume_id === selectedResume);
     if (selectedResumeData) {
       // Context에 선택된 이력서 정보 저장 (기존 인터페이스에 맞게 변환)
       const resumeForContext = {
@@ -141,10 +106,10 @@ const ResumeSelection: React.FC = () => {
     navigate('/profile', { state: { activeTab: 'resume', action: 'create' } });
   };
 
-  const selectedResumeData = resumes.find(resume => resume.user_resume_id === selectedResume);
+  const selectedResumeData = extendedResumes.find(resume => resume.user_resume_id === selectedResume);
 
   // 로딩 상태 처리
-  if (loading.resumes || loading.positions) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
         <Header 
@@ -193,7 +158,7 @@ const ResumeSelection: React.FC = () => {
   }
 
   // 에러 상태 처리
-  if (error.resumes) {
+  if (error) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
         <Header 
@@ -205,7 +170,7 @@ const ResumeSelection: React.FC = () => {
             <div className="text-center py-16">
               <div className="text-8xl mb-6">⚠️</div>
               <h3 className="text-xl font-bold text-slate-900 mb-2">이력서를 불러올 수 없습니다</h3>
-              <p className="text-slate-600 mb-6">{error.resumes}</p>
+              <p className="text-slate-600 mb-6">{error}</p>
               <button
                 onClick={() => window.location.reload()}
                 className="bg-blue-600 text-white px-6 py-3 rounded-lg text-lg hover:bg-blue-700 transition-colors mr-4"
@@ -245,7 +210,7 @@ const ResumeSelection: React.FC = () => {
             </p>
           </div>
 
-          {resumes.length === 0 ? (
+          {extendedResumes.length === 0 ? (
             // 이력서가 없는 경우
             <div className="text-center py-16">
               <div className="text-8xl mb-6">📄</div>
@@ -264,7 +229,7 @@ const ResumeSelection: React.FC = () => {
             <>
               {/* 이력서 목록 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                {resumes.map(resume => {
+                {extendedResumes.map(resume => {
                   const completionRate = calculateCompletionRate(resume);
                   return (
                     <div

@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { InterviewSettings, Question, InterviewResult } from '../services/api';
+import React, { createContext, useContext, useReducer, useEffect, useRef, ReactNode } from 'react';
+import { InterviewSettings, Question, InterviewResult, interviewApi } from '../services/api';
 
 // JobPosting 타입 정의 - 실제 DB 구조에 맞게 최종 단순화
 interface JobPosting {
@@ -34,6 +34,30 @@ interface AISettings {
     name: string;
     role: string;
   }>;
+}
+
+// 면접 기록 타입 정의
+interface InterviewRecord {
+  session_id: string;
+  company: string;
+  position: string;
+  date: string;
+  time: string;
+  duration: string;
+  score: number;
+  mode: string;
+  status: string;
+  settings: InterviewSettings;
+  completed_at: string;
+}
+
+// 면접 통계 타입 정의
+interface InterviewStats {
+  totalInterviews: number;
+  averageScore: number;
+  aiCompetitionCount: number;
+  recentImprovement: number;
+  lastInterviewDate: string | null;
 }
 
 // 상태 타입 정의
@@ -93,6 +117,12 @@ interface InterviewState {
   
   // 진행률
   progress: number;
+  
+  // 면접 기록 관리
+  interviewHistory: InterviewRecord[];
+  historyStats: InterviewStats;
+  historyLoading: boolean;
+  historyError: string | null;
 }
 
 // 액션 타입 정의
@@ -116,7 +146,14 @@ type InterviewAction =
   | { type: 'SET_ERROR'; payload: string | null }
   | { type: 'SET_TIME_LEFT'; payload: number }
   | { type: 'SET_PROGRESS'; payload: number }
-  | { type: 'RESET_INTERVIEW' };
+  | { type: 'RESET_INTERVIEW' }
+  | { type: 'SET_INTERVIEW_HISTORY'; payload: InterviewRecord[] }
+  | { type: 'ADD_INTERVIEW_RECORD'; payload: InterviewRecord }
+  | { type: 'SET_HISTORY_LOADING'; payload: boolean }
+  | { type: 'SET_HISTORY_ERROR'; payload: string | null }
+  | { type: 'LOAD_INTERVIEW_HISTORY_START' }
+  | { type: 'LOAD_INTERVIEW_HISTORY_SUCCESS'; payload: InterviewRecord[] }
+  | { type: 'LOAD_INTERVIEW_HISTORY_ERROR'; payload: string };
 
 // 초기 상태
 const initialState: InterviewState = {
@@ -138,6 +175,16 @@ const initialState: InterviewState = {
   error: null,
   timeLeft: 0,
   progress: 0,
+  interviewHistory: [],
+  historyStats: {
+    totalInterviews: 0,
+    averageScore: 0,
+    aiCompetitionCount: 0,
+    recentImprovement: 0,
+    lastInterviewDate: null
+  },
+  historyLoading: false,
+  historyError: null,
 };
 
 // 리듀서 함수
@@ -237,23 +284,175 @@ function interviewReducer(state: InterviewState, action: InterviewAction): Inter
     case 'RESET_INTERVIEW':
       return initialState;
     
+    case 'SET_INTERVIEW_HISTORY':
+      return {
+        ...state,
+        interviewHistory: action.payload,
+        historyStats: calculateInterviewStats(action.payload)
+      };
+    
+    case 'ADD_INTERVIEW_RECORD':
+      const newHistory = [action.payload, ...state.interviewHistory];
+      return {
+        ...state,
+        interviewHistory: newHistory,
+        historyStats: calculateInterviewStats(newHistory)
+      };
+    
+    case 'SET_HISTORY_LOADING':
+      return { ...state, historyLoading: action.payload };
+    
+    case 'SET_HISTORY_ERROR':
+      return { ...state, historyError: action.payload };
+    
+    case 'LOAD_INTERVIEW_HISTORY_START':
+      return { 
+        ...state, 
+        historyLoading: true, 
+        historyError: null 
+      };
+    
+    case 'LOAD_INTERVIEW_HISTORY_SUCCESS':
+      return {
+        ...state,
+        historyLoading: false,
+        historyError: null,
+        interviewHistory: action.payload,
+        historyStats: calculateInterviewStats(action.payload)
+      };
+    
+    case 'LOAD_INTERVIEW_HISTORY_ERROR':
+      return {
+        ...state,
+        historyLoading: false,
+        historyError: action.payload
+      };
+    
     default:
       return state;
   }
+}
+
+// 통계 계산 함수
+function calculateInterviewStats(interviews: InterviewRecord[]): InterviewStats {
+  const totalInterviews = interviews.length;
+  const averageScore = totalInterviews > 0 
+    ? Math.round(interviews.reduce((sum, interview) => sum + interview.score, 0) / totalInterviews)
+    : 0;
+  const aiCompetitionCount = interviews.filter(i => i.mode === 'ai_competition').length;
+  const lastInterviewDate = totalInterviews > 0 ? interviews[0].completed_at : null;
+  
+  // 최근 향상도 계산 (최근 3개와 이전 3개 비교)
+  let recentImprovement = 0;
+  if (totalInterviews >= 3) {
+    const recent3 = interviews.slice(0, 3);
+    const previous3 = interviews.slice(3, 6);
+    
+    if (previous3.length > 0) {
+      const recentAvg = recent3.reduce((sum, i) => sum + i.score, 0) / recent3.length;
+      const previousAvg = previous3.reduce((sum, i) => sum + i.score, 0) / previous3.length;
+      recentImprovement = Math.round(recentAvg - previousAvg);
+    }
+  }
+
+  return {
+    totalInterviews,
+    averageScore,
+    aiCompetitionCount,
+    recentImprovement,
+    lastInterviewDate
+  };
 }
 
 // Context 생성
 const InterviewContext = createContext<{
   state: InterviewState;
   dispatch: React.Dispatch<InterviewAction>;
+  loadInterviewHistory: () => Promise<void>;
 } | null>(null);
 
 // Provider 컴포넌트
 export function InterviewProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(interviewReducer, initialState);
+  const hasInitialized = useRef(false);
+  
+  // 면접 기록 로드 함수
+  const loadInterviewHistory = async () => {
+    if (state.historyLoading) return; // 이미 로딩 중이면 중복 실행 방지
+    
+    dispatch({ type: 'LOAD_INTERVIEW_HISTORY_START' });
+    
+    try {
+      const response = await interviewApi.getInterviewHistory();
+      
+      const processedInterviews: InterviewRecord[] = response.interviews.map(interview => {
+        const date = new Date(interview.completed_at);
+        return {
+          session_id: interview.session_id,
+          company: interview.settings.company,
+          position: interview.settings.position,
+          date: date.toLocaleDateString('ko-KR'),
+          time: date.toLocaleTimeString('ko-KR', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          }),
+          duration: `${Math.floor(Math.random() * 20 + 15)}분 ${Math.floor(Math.random() * 60)}초`,
+          score: interview.total_score,
+          mode: interview.settings.mode,
+          status: '완료',
+          settings: interview.settings,
+          completed_at: interview.completed_at
+        };
+      });
+
+      // 최신순으로 정렬
+      processedInterviews.sort((a, b) => new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime());
+      
+      dispatch({ 
+        type: 'LOAD_INTERVIEW_HISTORY_SUCCESS', 
+        payload: processedInterviews 
+      });
+      
+    } catch (error) {
+      console.error('면접 기록 로드 실패:', error);
+      dispatch({ 
+        type: 'LOAD_INTERVIEW_HISTORY_ERROR', 
+        payload: '면접 기록을 불러오는데 실패했습니다.' 
+      });
+      
+      // 에러 발생 시 기본 데이터 설정
+      const fallbackData: InterviewRecord[] = [
+        {
+          session_id: '1',
+          company: '네이버',
+          position: '백엔드 개발자',
+          date: '2024-01-16',
+          time: '14:00',
+          duration: '18분 32초',
+          score: 85,
+          mode: 'ai_competition',
+          status: '완료',
+          settings: { company: '네이버', position: '백엔드 개발자', mode: 'ai_competition', difficulty: '중간', candidate_name: '홍길동' },
+          completed_at: '2024-01-16T14:00:00Z'
+        }
+      ];
+      
+      dispatch({ 
+        type: 'LOAD_INTERVIEW_HISTORY_SUCCESS', 
+        payload: fallbackData 
+      });
+    }
+  };
+
+  // 컴포넌트 마운트 시 면접 기록 로드 (React Strict Mode 중복 방지)
+  useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+    loadInterviewHistory();
+  }, []);
   
   return (
-    <InterviewContext.Provider value={{ state, dispatch }}>
+    <InterviewContext.Provider value={{ state, dispatch, loadInterviewHistory }}>
       {children}
     </InterviewContext.Provider>
   );

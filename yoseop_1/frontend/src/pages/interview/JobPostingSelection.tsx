@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../../components/common/Header';
 import StepIndicator from '../../components/interview/StepIndicator';
@@ -13,6 +13,7 @@ const JobPostingSelection: React.FC = () => {
   const [jobPostings, setJobPostings] = useState<JobPosting[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const hasInitialized = useRef(false);
 
   // 회사 로고 매핑 함수
   const getCompanyLogo = (companyName: string): string => {
@@ -31,8 +32,11 @@ const JobPostingSelection: React.FC = () => {
     return logoMap[companyName] || '/img/default-company.png'; // fallback 이미지
   };
 
-  // 🆕 API에서 채용공고 데이터 로딩
+  // 🆕 API에서 채용공고 데이터 로딩 (React Strict Mode 중복 방지)
   useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+    
     const loadJobPostings = async () => {
       try {
         setIsLoading(true);

@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import { interviewApi, InterviewSettings } from '../services/api';
+import { useInterviewHistory } from '../hooks/useInterviewHistory';
+import { InterviewSettings } from '../services/api';
 
 interface InterviewRecord {
   session_id: string;
@@ -19,126 +20,16 @@ interface InterviewRecord {
 
 const InterviewHistory: React.FC = () => {
   const navigate = useNavigate();
-  
   const [selectedFilter, setSelectedFilter] = useState('all');
-  const [interviews, setInterviews] = useState<InterviewRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [statistics, setStatistics] = useState({
-    totalInterviews: 0,
-    averageScore: 0,
-    aiCompetitionCount: 0,
-    recentImprovement: 0
-  });
+  
+  // Context에서 면접 기록 데이터 가져오기
+  const { interviews, stats, isLoading, error } = useInterviewHistory();
 
-  // 면접 기록 로드
-  useEffect(() => {
-    loadInterviewHistory();
-  }, []);
-
-  const loadInterviewHistory = async () => {
-    try {
-      setIsLoading(true);
-      const response = await interviewApi.getInterviewHistory();
-      
-      const processedInterviews: InterviewRecord[] = response.interviews.map(interview => {
-        const date = new Date(interview.completed_at);
-        return {
-          session_id: interview.session_id,
-          company: interview.settings.company,
-          position: interview.settings.position,
-          date: date.toLocaleDateString('ko-KR'),
-          time: date.toLocaleTimeString('ko-KR', { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-          }),
-          duration: `${Math.floor(Math.random() * 20 + 15)}분 ${Math.floor(Math.random() * 60)}초`, // API에서 제공되지 않으므로 임시
-          score: interview.total_score,
-          mode: interview.settings.mode,
-          status: '완료',
-          settings: interview.settings
-        };
-      });
-
-      setInterviews(processedInterviews);
-      
-      // 통계 계산
-      const totalInterviews = processedInterviews.length;
-      const averageScore = totalInterviews > 0 
-        ? Math.round(processedInterviews.reduce((sum, interview) => sum + interview.score, 0) / totalInterviews)
-        : 0;
-      const aiCompetitionCount = processedInterviews.filter(i => i.mode === 'ai_competition').length;
-      
-      setStatistics({
-        totalInterviews,
-        averageScore,
-        aiCompetitionCount,
-        recentImprovement: Math.floor(Math.random() * 15) + 5 // 임시 데이터
-      });
-      
-    } catch (error) {
-      console.error('면접 기록 로드 실패:', error);
-      
-      // 기본 데이터 표시 (API 연결 실패 시)
-      setInterviews([
-        {
-          session_id: '1',
-          company: '네이버',
-          position: '백엔드 개발자',
-          date: '2024-01-16',
-          time: '14:00',
-          duration: '18분 32초',
-          score: 85,
-          mode: 'ai_competition',
-          status: '완료',
-          settings: { company: '네이버', position: '백엔드 개발자', mode: 'ai_competition', difficulty: '중간', candidate_name: '홍길동' }
-        },
-        {
-          session_id: '2',
-          company: '카카오',
-          position: '프론트엔드 개발자',
-          date: '2024-01-15',
-          time: '10:30',
-          duration: '22분 18초',
-          score: 78,
-          mode: 'personalized',
-          status: '완료',
-          settings: { company: '카카오', position: '프론트엔드 개발자', mode: 'personalized', difficulty: '중간', candidate_name: '홍길동' }
-        },
-        {
-          session_id: '3',
-          company: '라인',
-          position: '풀스택 개발자',
-          date: '2024-01-14',
-          time: '16:45',
-          duration: '25분 41초',
-          score: 92,
-          mode: 'ai_competition',
-          status: '완료',
-          settings: { company: '라인', position: '풀스택 개발자', mode: 'ai_competition', difficulty: '어려움', candidate_name: '홍길동' }
-        },
-        {
-          session_id: '4',
-          company: '쿠팡',
-          position: '백엔드 개발자',
-          date: '2024-01-13',
-          time: '11:00',
-          duration: '19분 55초',
-          score: 81,
-          mode: 'standard',
-          status: '완료',
-          settings: { company: '쿠팡', position: '백엔드 개발자', mode: 'standard', difficulty: '중간', candidate_name: '홍길동' }
-        }
-      ]);
-      
-      setStatistics({
-        totalInterviews: 4,
-        averageScore: 84,
-        aiCompetitionCount: 2,
-        recentImprovement: 12
-      });
-    } finally {
-      setIsLoading(false);
-    }
+  const statistics = {
+    totalInterviews: stats.totalInterviews,
+    averageScore: stats.averageScore,
+    aiCompetitionCount: stats.aiCompetitionCount,
+    recentImprovement: stats.recentImprovement
   };
 
   const filterOptions = [

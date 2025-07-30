@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { useAuth } from '../hooks/useAuth';
-import { positionApi, resumeApi, Position, ResumeResponse, ResumeCreate } from '../services/api';
+import { usePositions } from '../hooks/usePositions';
+import { useResumes } from '../hooks/useResumes';
+import { Position, ResumeResponse, ResumeCreate } from '../services/api';
 
 interface InterviewRecord {
   id: string;
@@ -26,19 +28,18 @@ const ProfilePage: React.FC = () => {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('resume');
   const [currentView, setCurrentView] = useState<'list' | 'create' | 'edit' | 'view'>('list');
-  const [isLoading, setIsLoading] = useState(false);
   const [editingResumeId, setEditingResumeId] = useState<number | null>(null);
   
-  // 🆕 Position 관련 상태
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [positionsLoading, setPositionsLoading] = useState(false);
+  // 커스텀 훅들 사용
+  const { positions, loading: positionsLoading } = usePositions();
+  const { resumes: resumesData, loading: resumesLoading, error: resumesError, createResume, updateResume, deleteResume } = useResumes();
   const [userInfo, setUserInfo] = useState({
     name: user?.name || '',
     email: user?.email || '',
     profileImage: null as string | null
   });
 
-  const [interviewHistory, setInterviewHistory] = useState<InterviewRecord[]>([
+  const [interviewHistory] = useState<InterviewRecord[]>([
     {
       id: '1',
       company: '네이버',
@@ -65,7 +66,6 @@ const ProfilePage: React.FC = () => {
     }
   ]);
 
-  const [resumeList, setResumeList] = useState<UserResume[]>([]);
 
   const [currentResume, setCurrentResume] = useState<UserResume>({
     user_resume_id: 0,
@@ -90,48 +90,22 @@ const ProfilePage: React.FC = () => {
     { id: 'personal-info', label: '개인정보 관리', icon: '👤', color: 'text-orange-600' }
   ];
 
-  // 🆕 Position 목록 로딩 함수
-  const loadPositions = async () => {
-    try {
-      setPositionsLoading(true);
-      const positionsData = await positionApi.getPositions();
-      setPositions(positionsData);
-    } catch (error) {
-      console.error('직군 목록 조회 실패:', error);
-    } finally {
-      setPositionsLoading(false);
-    }
-  };
-
-  // 🆕 이력서 목록 로딩 함수
-  const loadResumes = async () => {
-    try {
-      setIsLoading(true);
-      const resumesData = await resumeApi.getResumes();
-      
-      // position_name 매핑 추가
-      const resumesWithPositionName = resumesData.map(resume => ({
-        ...resume,
-        position_name: positions.find(p => p.position_id === resume.position_id)?.position_name || '직군 미정',
-        displayName: generateResumeTitle(resume, positions)
-      }));
-      
-      setResumeList(resumesWithPositionName);
-    } catch (error) {
-      console.error('이력서 목록 조회 실패:', error);
-      // 에러 시 빈 배열로 설정 (404는 정상적인 경우)
-      setResumeList([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   // 🆕 이력서 제목 생성 함수
   const generateResumeTitle = (resume: ResumeResponse, positions: Position[]): string => {
     const position = positions.find(p => p.position_id === resume.position_id);
     const positionName = position?.position_name || '일반';
     return `${user?.name || '사용자'}_${positionName}_이력서`;
   };
+
+  // 이력서 목록을 positions와 함께 계산된 값으로 처리
+  const resumeList: UserResume[] = resumesData.map(resume => ({
+    ...resume,
+    position_name: positions.find(p => p.position_id === resume.position_id)?.position_name || '직군 미정',
+    displayName: generateResumeTitle(resume, positions)
+  }));
+
+  // 로딩 상태 통합
+  const isLoading = resumesLoading || positionsLoading;
 
   // 사용자 정보가 로드되면 상태 업데이트 및 데이터 로딩
   useEffect(() => {
@@ -150,17 +124,7 @@ const ProfilePage: React.FC = () => {
     }
   }, [user]);
 
-  // 컴포넌트 마운트 시 Position 목록 로딩
-  useEffect(() => {
-    loadPositions();
-  }, []);
 
-  // Position이 로드되고 사용자가 있으면 이력서 목록 로딩
-  useEffect(() => {
-    if (user && positions.length > 0 && activeTab === 'resume') {
-      loadResumes();
-    }
-  }, [user, positions, activeTab]);
 
   // 이력서 관련 유틸리티 함수들
   const calculateCompletionRate = (resume: UserResume): number => {
@@ -245,7 +209,6 @@ const ProfilePage: React.FC = () => {
       return;
     }
 
-    setIsLoading(true);
     try {
       // API 요청용 데이터 준비 (UI용 필드 제외)
       const resumeData: ResumeCreate = {
@@ -259,19 +222,17 @@ const ProfilePage: React.FC = () => {
       };
 
       if (currentView === 'create') {
-        // 🆕 새 이력서 생성 API 호출
-        const createdResume = await resumeApi.createResume(resumeData);
-        alert('이력서가 생성되었습니다.');
-        
-        // 목록 새로고침
-        await loadResumes();
+        // 🆕 새 이력서 생성
+        const createdResume = await createResume(resumeData);
+        if (createdResume) {
+          alert('이력서가 생성되었습니다.');
+        }
       } else if (currentView === 'edit' && editingResumeId) {
-        // ✏️ 기존 이력서 수정 API 호출
-        const updatedResume = await resumeApi.updateResume(editingResumeId, resumeData);
-        alert('이력서가 수정되었습니다.');
-        
-        // 목록 새로고침
-        await loadResumes();
+        // ✏️ 기존 이력서 수정
+        const updatedResume = await updateResume(editingResumeId, resumeData);
+        if (updatedResume) {
+          alert('이력서가 수정되었습니다.');
+        }
       }
       
       handleBackToList();
@@ -279,36 +240,27 @@ const ProfilePage: React.FC = () => {
       console.error('이력서 저장 실패:', error);
       const errorMessage = error.response?.data?.detail || '이력서 저장에 실패했습니다.';
       alert(errorMessage);
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const handleDeleteResume = async (resumeId: number) => {
     if (window.confirm('정말로 이 이력서를 삭제하시겠습니까?')) {
       try {
-        setIsLoading(true);
-        
-        // 🗑️ 이력서 삭제 API 호출
-        await resumeApi.deleteResume(resumeId);
-        alert('이력서가 삭제되었습니다.');
-        
-        // 목록 새로고침
-        await loadResumes();
+        // 🗑️ 이력서 삭제
+        const success = await deleteResume(resumeId);
+        if (success) {
+          alert('이력서가 삭제되었습니다.');
+        }
       } catch (error: any) {
         console.error('이력서 삭제 실패:', error);
         const errorMessage = error.response?.data?.detail || '이력서 삭제에 실패했습니다.';
         alert(errorMessage);
-      } finally {
-        setIsLoading(false);
       }
     }
   };
 
   const handleCopyResume = async (resume: UserResume) => {
     try {
-      setIsLoading(true);
-      
       // 📋 이력서 복사용 데이터 준비 (ID 관련 필드 제외)
       const copyData: ResumeCreate = {
         academic_record: resume.academic_record,
@@ -320,18 +272,15 @@ const ProfilePage: React.FC = () => {
         awards: resume.awards
       };
       
-      // API 호출로 새 이력서 생성
-      await resumeApi.createResume(copyData);
-      alert('이력서가 복사되었습니다.');
-      
-      // 목록 새로고침
-      await loadResumes();
+      // 새 이력서 생성
+      const copiedResume = await createResume(copyData);
+      if (copiedResume) {
+        alert('이력서가 복사되었습니다.');
+      }
     } catch (error: any) {
       console.error('이력서 복사 실패:', error);
       const errorMessage = error.response?.data?.detail || '이력서 복사에 실패했습니다.';
       alert(errorMessage);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -380,7 +329,20 @@ const ProfilePage: React.FC = () => {
                 )}
               </div>
 
-              {resumeList.length === 0 ? (
+              {resumesError ? (
+                // 에러 상태
+                <div className="text-center py-16">
+                  <div className="text-8xl mb-6">⚠️</div>
+                  <h3 className="text-xl font-bold text-slate-900 mb-2">데이터 로딩에 실패했습니다</h3>
+                  <p className="text-slate-600 mb-6">{resumesError}</p>
+                  <button
+                    onClick={handleCreateResume}
+                    className="bg-blue-600 text-white px-6 py-3 rounded-lg text-lg hover:bg-blue-700 transition-colors"
+                  >
+                    📝 새 이력서 만들기
+                  </button>
+                </div>
+              ) : resumeList.length === 0 ? (
                 // 빈 상태
                 <div className="text-center py-16">
                   <div className="text-8xl mb-6">📄</div>
@@ -622,10 +584,10 @@ const ProfilePage: React.FC = () => {
                 <div className="flex-1" />
                 <button
                   onClick={handleResumeSave}
-                  disabled={isLoading}
+                  disabled={resumesLoading}
                   className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isLoading ? (
+                  {resumesLoading ? (
                     <div className="flex items-center gap-2">
                       <LoadingSpinner size="sm" color="white" />
                       저장 중...

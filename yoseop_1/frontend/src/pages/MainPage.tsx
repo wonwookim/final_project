@@ -1,41 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import { interviewApi } from '../services/api';
+import { useInterviewStats } from '../hooks/useInterviewHistory';
 
 const MainPage: React.FC = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
-  const [stats, setStats] = useState({
-    totalInterviews: 1,
-    averageScore: 87,
-    lastInterviewDate: '2025-07-25' as string | null
-  });
-
-  useEffect(() => {
-    loadStats();
-  }, []);
-
-  const loadStats = async () => {
-    try {
-      const history = await interviewApi.getInterviewHistory();
-      const totalInterviews = 1
-      const averageScore = history.interviews.length > 0 
-        ? Math.round(history.interviews.reduce((sum, interview) => sum + interview.total_score, 0) / history.interviews.length)
-        : 87;
-      const lastInterviewDate = history.interviews.length > 0 
-        ? history.interviews[0].completed_at
-        : null;
-
-      setStats({
-        totalInterviews,
-        averageScore,
-        lastInterviewDate
-      });
-    } catch (error) {
-      console.error('통계 로드 실패:', error);
-    }
+  
+  // Context에서 통계 데이터 가져오기
+  const { totalInterviews, averageScore, lastInterviewDate, isLoading: statsLoading } = useInterviewStats();
+  
+  const stats = {
+    totalInterviews: totalInterviews || 1,
+    averageScore: averageScore || 87,
+    lastInterviewDate: lastInterviewDate || '2025-07-25'
   };
 
   const handleStartInterview = () => {
