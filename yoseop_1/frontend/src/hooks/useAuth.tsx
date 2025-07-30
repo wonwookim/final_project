@@ -69,6 +69,9 @@ export const useAuth = () => {
       return { success: true };
     } catch (error: any) {
       setAuthState(prev => ({ ...prev, isLoading: false }));
+      
+      // 에러를 완전히 잡아서 절대 다시 throw하지 않음
+      console.error('Login error:', error);
       const errorMessage = handleApiError(error);
       return { success: false, error: errorMessage };
     }

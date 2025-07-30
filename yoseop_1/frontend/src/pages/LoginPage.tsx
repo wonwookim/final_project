@@ -28,26 +28,60 @@ const LoginPage: React.FC = () => {
     setError(''); // 입력 변경 시 에러 메시지 초기화
   };
 
+  // 폼 유효성 검증 함수
+  const validateForm = () => {
+    const { email, password } = formData;
+    
+    if (!email.trim()) {
+      setError('이메일을 입력해주세요.');
+      return false;
+    }
+    
+    if (!email.includes('@') || !email.includes('.')) {
+      setError('올바른 이메일 주소를 입력해주세요.');
+      return false;
+    }
+    
+    if (!password.trim()) {
+      setError('비밀번호를 입력해주세요.');
+      return false;
+    }
+    
+    if (password.length < 6) {
+      setError('비밀번호는 6자 이상 입력해주세요.');
+      return false;
+    }
+    
+    return true;
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     setError('');
 
+    // 서버 요청 전 미리 검증
+    if (!validateForm()) {
+      return;
+    }
+
+    setIsLoading(true);
+
     try {
-      // useAuth의 login 함수 사용 (redirect 경로 전달)
       const { email, password } = formData;
       const result = await login(email, password, redirectPath);
 
       if (!result.success) {
-        // 에러 처리 (성공 시에는 useAuth에서 자동으로 리다이렉트됨)
-        setError(result.error || '로그인에 실패했습니다.');
+        // 에러 메시지를 사용자 친화적으로 변환
+        const userFriendlyError = result.error?.includes('validation')
+          ? '이메일 형식이 올바르지 않거나 비밀번호가 너무 짧습니다.'
+          : result.error || '로그인에 실패했습니다.';
+        
+        setError(userFriendlyError);
       }
-      
     } catch (error: any) {
-      // 예상치 못한 에러 처리
-      const errorMessage = handleApiError(error);
-      setError(errorMessage);
-      console.error('로그인 실패:', error);
+      // 혹시 모를 예외도 완전히 차단
+      console.error('Unexpected login error:', error);
+      setError('로그인 중 오류가 발생했습니다. 다시 시도해주세요.');
     } finally {
       setIsLoading(false);
     }

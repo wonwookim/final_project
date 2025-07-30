@@ -321,9 +321,35 @@ export const interviewApi = {
 
 // 에러 처리 유틸리티
 export const handleApiError = (error: any): string => {
+  console.log('API Error:', error); // 디버깅용
+  
   if (error.response) {
-    // 서버 응답 에러
-    return error.response.data?.detail || '서버 오류가 발생했습니다.';
+    const status = error.response.status;
+    const data = error.response.data;
+    
+    switch (status) {
+      case 422:
+        // 유효성 검증 실패 - 구체적 메시지
+        if (data?.detail && Array.isArray(data.detail)) {
+          return data.detail.map((err: any) => err.msg).join(', ');
+        }
+        return data?.detail || '입력한 정보가 올바르지 않습니다.';
+      
+      case 401:
+        return '이메일 또는 비밀번호가 올바르지 않습니다.';
+      
+      case 400:
+        return data?.detail || '잘못된 요청입니다.';
+      
+      case 404:
+        return data?.detail || '요청한 정보를 찾을 수 없습니다.';
+      
+      case 500:
+        return '서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+      
+      default:
+        return data?.detail || '서버 오류가 발생했습니다.';
+    }
   } else if (error.request) {
     // 네트워크 에러
     return '네트워크 연결을 확인해주세요.';
