@@ -88,7 +88,7 @@ def load_fixed_questions_from_supabase() -> Dict[str, Any]:
     """Supabase에서 고정 질문을 로드합니다"""
     try:
         client = get_supabase_client()
-        result = client.table('fix_question').select('*').execute()
+        result = client.from_('fix_question').select('*').execute()
         questions_raw = result.data if result.data else []
         
         # JSON 구조로 변환 (기존 JSON 파일 형식과 호환)

@@ -98,9 +98,9 @@ if DATABASE_ENABLED:
     app.include_router(company_router)
     app.include_router(posting_router)
     app.include_router(position_router)
+    app.include_router(interview_router)
     # app.include_router(migration_router)
     # app.include_router(database_router)
-    app.include_router(interview_router)
 
     print("="*100)
     print("API 라우터 등록 완료")
