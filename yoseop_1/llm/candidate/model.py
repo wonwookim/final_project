@@ -654,6 +654,7 @@ class AICandidateModel:
             "kakao": "카카오", 
             "toss": "토스",
             "line": "라인",
+            "라인플러스": "라인플러스",
             "coupang": "쿠팡",
             "baemin": "배달의민족",
             "daangn": "당근마켓",

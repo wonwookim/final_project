@@ -220,7 +220,7 @@ class SessionManager:
             '네이버': 'naver',
             '카카오': 'kakao', 
             '라인': 'line',
-            '라인플러스': 'line',
+            '라인플러스': '라인플러스',
             '쿠팡': 'coupang',
             '배달의민족': 'baemin',
             '당근마켓': 'daangn',
