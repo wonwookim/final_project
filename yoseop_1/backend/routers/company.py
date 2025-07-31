@@ -1,4 +1,4 @@
-from database.services.existing_tables_service import existing_tables_service
+from backend.services.existing_tables_service import existing_tables_service
 import sys
 import os
 
@@ -6,7 +6,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from fastapi import APIRouter, HTTPException, Depends
-from database.supabase_client import supabase_client
+from backend.services.supabase_client import supabase_client
 from backend.schemas.company import CompanyResponse
 from typing import List
 

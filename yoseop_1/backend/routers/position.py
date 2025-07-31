@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
-from database.supabase_client import supabase_client
+from backend.services.supabase_client import supabase_client
 from backend.schemas.position import PositionResponse
 
 position_router = APIRouter(prefix="/position", tags=["Position"])

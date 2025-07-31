@@ -24,7 +24,7 @@ load_dotenv()
 # 프로젝트 루트 경로 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from database.supabase_client import get_supabase_client
+from backend.services.supabase_client import get_supabase_client
 from llm.shared.constants import GPT_MODEL, MAX_TOKENS, TEMPERATURE
 from llm.candidate.model import CandidatePersona
 

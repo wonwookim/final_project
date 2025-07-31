@@ -3,7 +3,7 @@ import os
 from fastapi import APIRouter, HTTPException
 from typing import List
 from backend.schemas.posting import PostingResponse
-from database.services.existing_tables_service import existing_tables_service
+from backend.services.existing_tables_service import existing_tables_service
 
 # 프로젝트 루트 경로 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
