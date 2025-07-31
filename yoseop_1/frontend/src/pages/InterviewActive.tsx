@@ -107,6 +107,17 @@ const InterviewActive: React.FC = () => {
       interviewStatus: state.interviewStatus
     });
     
+    // 🚨 중요한 상태를 큰 글씨로 출력
+    if (!state.cameraStream) {
+      console.error('🚨 [CRITICAL] CAMERA STREAM이 NULL입니다!');
+    } else if (!state.cameraStream.active) {
+      console.error('🚨 [CRITICAL] CAMERA STREAM이 비활성화되어 있습니다!');
+    } else if (state.cameraStream.getVideoTracks().length === 0) {
+      console.error('🚨 [CRITICAL] VIDEO TRACKS가 없습니다!');
+    } else {
+      console.log('✅ [SUCCESS] CAMERA STREAM 기본 상태 정상');
+    }
+    
     if (state.cameraStream) {
       const videoTracks = state.cameraStream.getVideoTracks();
       if (videoTracks.length > 0) {
@@ -119,6 +130,15 @@ const InterviewActive: React.FC = () => {
           label: track.label,
           kind: track.kind
         });
+        
+        // 🚨 트랙 상태 확인
+        if (track.readyState === 'ended') {
+          console.error('🚨 [CRITICAL] VIDEO TRACK이 ENDED 상태입니다!');
+        } else if (!track.enabled) {
+          console.error('🚨 [CRITICAL] VIDEO TRACK이 DISABLED 상태입니다!');
+        } else {
+          console.log('✅ [SUCCESS] VIDEO TRACK 상태 정상');
+        }
       }
     }
 
@@ -501,6 +521,15 @@ const InterviewActive: React.FC = () => {
           streamId: currentStream.id
         });
         
+        // 🚨 srcObject 설정 검증
+        if (!videoRef.current.srcObject) {
+          console.error('🚨 [CRITICAL] srcObject 설정 실패!');
+        } else if (videoRef.current.srcObject !== currentStream) {
+          console.error('🚨 [CRITICAL] srcObject가 다른 스트림으로 설정됨!');
+        } else {
+          console.log('✅ [SUCCESS] srcObject 정상 설정됨');
+        }
+        
         // 📹 개선된 비디오 재생 설정
         const playVideo = () => {
           return new Promise<void>((resolve, reject) => {
@@ -529,6 +558,15 @@ const InterviewActive: React.FC = () => {
                   videoWidth: videoRef.current!.videoWidth,
                   videoHeight: videoRef.current!.videoHeight
                 });
+                
+                // 🚨 최종 비디오 상태 검증
+                if (videoRef.current!.videoWidth === 0 || videoRef.current!.videoHeight === 0) {
+                  console.error('🚨 [CRITICAL] 비디오 크기가 0입니다! (스트림 연결 실패)');
+                } else if (videoRef.current!.paused) {
+                  console.warn('⚠️ [WARNING] 비디오가 일시정지 상태입니다');
+                } else {
+                  console.log('✅ [SUCCESS] 비디오 재생 및 표시 정상!');
+                }
                 resolve();
               } catch (error) {
                 if (error instanceof Error && error.name === 'AbortError') {
