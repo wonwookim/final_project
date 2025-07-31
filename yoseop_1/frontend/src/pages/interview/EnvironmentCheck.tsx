@@ -255,10 +255,12 @@ const EnvironmentCheck: React.FC = () => {
         aiSettings: state.aiSettings,
         settings: finalSettings,
         sessionId: sessionId,
-        interviewStatus: 'ready'
+        interviewStatus: 'ready',
+        fromEnvironmentCheck: true, // EnvironmentCheck에서 온 것임을 표시
+        needsApiCall: true // API 호출이 필요함을 표시
       };
       localStorage.setItem('interview_state', JSON.stringify(stateToSave));
-      console.log('💾 면접 설정을 localStorage에 저장 완료');
+      console.log('💾 면접 설정을 localStorage에 저장 완료 (EnvironmentCheck)');
     } catch (error) {
       console.error('❌ localStorage 저장 실패:', error);
     }

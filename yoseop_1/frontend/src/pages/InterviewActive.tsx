@@ -6,6 +6,7 @@ import VoiceControls from '../components/voice/VoiceControls';
 import SpeechIndicator from '../components/voice/SpeechIndicator';
 import { useInterview } from '../contexts/InterviewContext';
 import { interviewApi, handleApiError } from '../services/api';
+import { useInterviewStart } from '../hooks/useInterviewStart';
 import { 
   createSTT, 
   createTTS, 
@@ -14,9 +15,13 @@ import {
   TextToSpeech
 } from '../utils/speechUtils';
 
+// 페이지 레벨 초기화 플래그 (컴포넌트 외부)
+let pageInitialized = false;
+
 const InterviewActive: React.FC = () => {
   const navigate = useNavigate();
   const { state, dispatch } = useInterview();
+  const { startInterview: startInterviewAPI, isStarting } = useInterviewStart();
 
   // 난이도별 AI 지원자 이미지 매핑 함수
   const getAICandidateImage = (level: number): string => {
@@ -75,20 +80,76 @@ const InterviewActive: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const isSettingUpRef = useRef<boolean>(false);  // 스트림 설정 중 플래그
   const lastTTSQuestionRef = useRef<string>('');  // 마지막 TTS 재생한 질문 추적
+  const useEffectExecutedRef = useRef<boolean>(false); // React.StrictMode 중복 실행 방지
 
-  // Initialize interview if not already set
+  // Initialize interview - simplified to always restart from localStorage
   useEffect(() => {
+    // 페이지 레벨 중복 실행 방지 (최우선)
+    if (pageInitialized) {
+      console.log('⚠️ 페이지 이미 초기화됨 - 중복 실행 방지');
+      return;
+    }
+    pageInitialized = true;
+    
+    // React.StrictMode 중복 실행 방지
+    if (useEffectExecutedRef.current) {
+      console.log('⚠️ useEffect 이미 실행됨 - StrictMode 중복 방지');
+      return;
+    }
+    useEffectExecutedRef.current = true;
+
+    // 🔍 카메라 스트림 상태 디버깅
+    console.log('🔍 [DEBUG] InterviewActive 초기화 시작 - Context 상태:', {
+      hasCameraStream: !!state.cameraStream,
+      streamActive: state.cameraStream ? state.cameraStream.active : 'N/A',
+      videoTracks: state.cameraStream ? state.cameraStream.getVideoTracks().length : 0,
+      sessionId: state.sessionId,
+      interviewStatus: state.interviewStatus
+    });
+    
+    if (state.cameraStream) {
+      const videoTracks = state.cameraStream.getVideoTracks();
+      if (videoTracks.length > 0) {
+        const track = videoTracks[0];
+        console.log('🔍 [DEBUG] 비디오 트랙 상세 정보:', {
+          readyState: track.readyState,
+          enabled: track.enabled,
+          muted: track.muted,
+          id: track.id,
+          label: track.label,
+          kind: track.kind
+        });
+      }
+    }
+
     if (!state.sessionId || !state.settings) {
-      // localStorage에서 복원 시도
-      console.log('🔄 면접 상태가 없음 - localStorage에서 복원 시도');
+      // localStorage 확인
+      console.log('🔄 면접 상태가 없음 - localStorage 확인');
       const savedState = localStorage.getItem('interview_state');
       
       if (savedState) {
         try {
           const parsedState = JSON.parse(savedState);
-          console.log('✅ localStorage에서 면접 상태 복원:', parsedState);
+          console.log('✅ localStorage에서 설정 발견:', parsedState);
           
-          // 복원된 데이터로 Context 상태 업데이트
+          // 데이터 유효성 검증 (최소한만)
+          if (!parsedState.settings) {
+            console.error('❌ localStorage 데이터 불완전 - settings 누락');
+            localStorage.removeItem('interview_state');
+            navigate('/interview/setup');
+            return;
+          }
+          
+          // 면접 모드 유효성 검증
+          const validModes = ['ai_competition', 'personalized', 'standard'];
+          if (!validModes.includes(parsedState.settings.mode)) {
+            console.error('❌ 유효하지 않은 면접 모드:', parsedState.settings.mode);
+            localStorage.removeItem('interview_state');
+            navigate('/interview/setup');
+            return;
+          }
+          
+          // Context 상태 업데이트 (기본 설정만)
           if (parsedState.jobPosting) {
             dispatch({ type: 'SET_JOB_POSTING', payload: parsedState.jobPosting });
           }
@@ -101,28 +162,25 @@ const InterviewActive: React.FC = () => {
           if (parsedState.aiSettings) {
             dispatch({ type: 'SET_AI_SETTINGS', payload: parsedState.aiSettings });
           }
-          if (parsedState.settings) {
-            dispatch({ type: 'SET_SETTINGS', payload: parsedState.settings });
-          }
           
-          // 새로운 면접 시작
-          console.log('🚀 복원된 설정으로 새로운 면접 시작');
-          restartInterviewFromLocalStorage(parsedState.settings);
+          // 무조건 새로운 면접 재시작
+          console.log('🚀 localStorage 설정으로 새로운 면접 재시작');
+          handleInterviewRestartFromLocalStorage(parsedState.settings);
           return;
+          
         } catch (error) {
-          console.error('❌ localStorage 복원 실패:', error);
+          console.error('❌ localStorage 파싱 실패:', error);
           localStorage.removeItem('interview_state');
         }
       }
       
-      // localStorage 복원 실패 시 기존 로직
-      console.log('❌ localStorage 복원 실패 - 면접 설정 페이지로 이동');
+      // localStorage 없음 - 면접 설정 페이지로 이동
+      console.log('❌ localStorage 없음 - 면접 설정 페이지로 이동');
       navigate('/interview/setup');
       return;
     }
     
-    
-    // AI 경쟁 모드: 초기화되지 않았을 때만 initializeComparisonMode 호출
+    // 일반 초기화 로직 (기존 state가 있을 때만 실행)
     if (
       state.settings?.mode === 'ai_competition' &&
       !initializationRef.current
@@ -130,9 +188,8 @@ const InterviewActive: React.FC = () => {
       initializationRef.current = true;
       setHasInitialized(true);
       setComparisonMode(true);
-      // 면접 시작 팝업 표시
       setShowStartPopup(true);
-      initializeComparisonMode();
+      handleNewInterviewStart(state.settings);
     } else if (state.settings?.mode !== 'ai_competition' && !initializationRef.current) {
       initializationRef.current = true;
       setHasInitialized(true);
@@ -145,11 +202,10 @@ const InterviewActive: React.FC = () => {
           setTimeLeft(currentQuestion.time_limit || 120);
         }
       }
-      // 면접 시작 팝업 표시
       setShowStartPopup(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.settings, comparisonMode, comparisonSessionId, isLoading, state.questions, state.currentQuestionIndex, navigate]);
+  }, []); // 빈 배열로 한 번만 실행
 
   // STT/TTS 초기화
   useEffect(() => {
@@ -316,8 +372,21 @@ const InterviewActive: React.FC = () => {
 
   // 📹 개선된 카메라 스트림 연결
   useEffect(() => {
+    // 🔍 [DEBUG] 카메라 설정 useEffect 진입
+    console.log('🔍 [DEBUG] 카메라 설정 useEffect 실행:', {
+      isSettingUp: isSettingUpRef.current,
+      hasCameraStream: !!state.cameraStream,
+      streamActive: state.cameraStream?.active,
+      hasVideoRef: !!videoRef.current
+    });
+
     // 이미 설정 중이거나 스트림이 없으면 리턴
     if (isSettingUpRef.current || !state.cameraStream) {
+      console.log('🔍 [DEBUG] 카메라 설정 중단:', {
+        reason: isSettingUpRef.current ? '이미 설정 중' : '스트림 없음',
+        isSettingUp: isSettingUpRef.current,
+        hasCameraStream: !!state.cameraStream
+      });
       return;
     }
     
@@ -328,6 +397,7 @@ const InterviewActive: React.FC = () => {
         return;
       }
       
+      console.log('🔍 [DEBUG] setupCamera 함수 시작');
       isSettingUpRef.current = true;
       
       try {
@@ -341,17 +411,35 @@ const InterviewActive: React.FC = () => {
         console.log('🎥 카메라 설정 시작...', {
           hasStream: !!currentStream,
           hasVideoRef: !!videoRef.current,
-          tracksCount: currentStream.getVideoTracks().length || 0
+          tracksCount: currentStream.getVideoTracks().length || 0,
+          streamId: currentStream.id,
+          streamActive: currentStream.active
         });
         
         // 스트림 유효성 검증
         const videoTracks = currentStream.getVideoTracks();
+        console.log('🔍 [DEBUG] 스트림 유효성 검증 시작:', {
+          videoTracksCount: videoTracks.length,
+          streamId: currentStream.id,
+          streamActive: currentStream.active
+        });
+        
         if (videoTracks.length === 0) {
           console.warn('⚠️ 비디오 트랙이 없습니다');
           return;
         }
         
         const track = videoTracks[0];
+        console.log('🔍 [DEBUG] 비디오 트랙 상세 검증:', {
+          readyState: track.readyState,
+          enabled: track.enabled,
+          muted: track.muted,
+          id: track.id,
+          label: track.label,
+          kind: track.kind,
+          settings: track.getSettings ? track.getSettings() : 'N/A'
+        });
+        
         if (track.readyState === 'ended') {
           console.warn('⚠️ 비디오 트랙이 종료되었습니다. 새 스트림을 생성합니다...');
           const success = await createNewStream();
@@ -381,9 +469,22 @@ const InterviewActive: React.FC = () => {
         
         console.log('🎥 비디오 ref 준비 완료, 스트림 연결 중...');
         
+        // 🔍 [DEBUG] 스트림 연결 전 상태
+        console.log('🔍 [DEBUG] 스트림 연결 시작:', {
+          currentVideoRef: !!videoRef.current,
+          currentSrcObject: !!videoRef.current?.srcObject,
+          streamToConnect: currentStream.id,
+          streamActive: currentStream.active,
+          videoTracks: currentStream.getVideoTracks().length
+        });
+        
         // 이전 스트림 정리
         if (videoRef.current.srcObject) {
           const prevStream = videoRef.current.srcObject as MediaStream;
+          console.log('🔍 [DEBUG] 이전 스트림 정리:', {
+            prevStreamId: prevStream.id,
+            sameName: prevStream === currentStream
+          });
           videoRef.current.srcObject = null;
           // 이전 스트림이 현재 스트림과 다른 경우에만 정리
           if (prevStream !== currentStream) {
@@ -393,20 +494,41 @@ const InterviewActive: React.FC = () => {
         }
         
         // 새 스트림 연결
+        console.log('🔍 [DEBUG] 새 스트림 연결 시도...');
         videoRef.current.srcObject = currentStream;
+        console.log('🔍 [DEBUG] srcObject 설정 완료:', {
+          assignedStream: !!videoRef.current.srcObject,
+          streamId: currentStream.id
+        });
         
         // 📹 개선된 비디오 재생 설정
         const playVideo = () => {
           return new Promise<void>((resolve, reject) => {
             if (!videoRef.current) {
+              console.log('🔍 [DEBUG] playVideo 실패: videoRef.current가 null');
               reject(new Error('Video ref is null'));
               return;
             }
+
+            console.log('🔍 [DEBUG] playVideo 시작:', {
+              videoRefReady: !!videoRef.current,
+              srcObject: !!videoRef.current.srcObject,
+              readyState: videoRef.current.readyState,
+              videoWidth: videoRef.current.videoWidth,
+              videoHeight: videoRef.current.videoHeight
+            });
             
             const onLoadedData = async () => {
               try {
+                console.log('🔍 [DEBUG] onLoadedData 이벤트 발생');
                 await videoRef.current!.play();
                 console.log('✅ 비디오 재생 시작됨');
+                console.log('🔍 [DEBUG] 재생 후 상태:', {
+                  paused: videoRef.current!.paused,
+                  currentTime: videoRef.current!.currentTime,
+                  videoWidth: videoRef.current!.videoWidth,
+                  videoHeight: videoRef.current!.videoHeight
+                });
                 resolve();
               } catch (error) {
                 if (error instanceof Error && error.name === 'AbortError') {
@@ -494,8 +616,17 @@ const InterviewActive: React.FC = () => {
   // 페이지 새로고침/닫기 시 경고 및 정리
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      // 면접이 진행 중일 때만 경고 표시
-      if (interviewState === 'active' || interviewState === 'ai_answering') {
+      // 디버깅: 현재 상태 로깅
+      console.log('🔍 beforeunload 이벤트 발생:', {
+        interviewState,
+        sessionId: state.sessionId,
+        hasSettings: !!state.settings,
+        questionsLength: state.questions.length
+      });
+      
+      // 면접 관련 데이터가 있으면 경고 표시 (조건 완화)
+      if (state.sessionId && state.settings) {
+        console.log('⚠️ beforeunload - 면접 진행 중 감지, 경고 표시');
         e.preventDefault();
         e.returnValue = '면접이 진행 중입니다. 새로고침하면 현재 진행 상황이 모두 삭제되고 새로운 면접이 시작됩니다.';
         
@@ -533,6 +664,119 @@ const InterviewActive: React.FC = () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [interviewState, ttsInstance, state.jobPosting, state.resume, state.interviewMode, state.aiSettings, state.settings, state.sessionId, state.interviewStatus]);
+
+  // 추가 페이지 이탈 감지 이벤트들 (beforeunload 보완)
+  useEffect(() => {
+    const handlePageHide = (e: PageTransitionEvent) => {
+      console.log('🔍 pagehide 이벤트 발생:', { persisted: e.persisted });
+      
+      if (state.sessionId && state.settings) {
+        console.log('🔇 pagehide - TTS 강제 정리 및 상태 저장');
+        
+        // TTS 강제 정리
+        if (ttsInstance) {
+          ttsInstance.forceStop();
+        } else if (window.speechSynthesis && window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+        }
+        
+        // 상태 저장
+        try {
+          const currentState = {
+            jobPosting: state.jobPosting,
+            resume: state.resume,
+            interviewMode: state.interviewMode,
+            aiSettings: state.aiSettings,
+            settings: state.settings,
+            sessionId: state.sessionId,
+            interviewStatus: state.interviewStatus
+          };
+          localStorage.setItem('interview_state', JSON.stringify(currentState));
+          console.log('💾 pagehide - localStorage 저장 완료');
+        } catch (error) {
+          console.error('❌ pagehide - localStorage 저장 실패:', error);
+        }
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      console.log('🔍 visibilitychange 이벤트 발생:', { 
+        hidden: document.hidden,
+        visibilityState: document.visibilityState 
+      });
+      
+      // 페이지가 숨겨질 때 (탭 변경, 최소화 등)
+      if (document.hidden && state.sessionId && state.settings) {
+        console.log('👁️ 페이지 숨김 감지 - 상태 저장');
+        
+        try {
+          const currentState = {
+            jobPosting: state.jobPosting,
+            resume: state.resume,
+            interviewMode: state.interviewMode,
+            aiSettings: state.aiSettings,
+            settings: state.settings,
+            sessionId: state.sessionId,
+            interviewStatus: state.interviewStatus
+          };
+          localStorage.setItem('interview_state', JSON.stringify(currentState));
+          console.log('💾 visibilitychange - localStorage 저장 완료');
+        } catch (error) {
+          console.error('❌ visibilitychange - localStorage 저장 실패:', error);
+        }
+      }
+    };
+
+    // 이벤트 리스너 등록
+    window.addEventListener('pagehide', handlePageHide);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [ttsInstance, state.jobPosting, state.resume, state.interviewMode, state.aiSettings, state.settings, state.sessionId, state.interviewStatus]);
+
+  // 상태 기반 자동 저장 (면접 진행 중 실시간 저장)
+  useEffect(() => {
+    // 면접 관련 데이터가 있고, 면접이 시작된 상태에서만 자동 저장
+    if (state.sessionId && state.settings && (interviewState === 'active' || interviewState === 'ai_answering' || interviewState === 'ready')) {
+      console.log('💾 상태 변경 감지 - 자동 저장:', { 
+        interviewState, 
+        questionsLength: state.questions.length,
+        answersLength: state.answers.length
+      });
+      
+      try {
+        const currentState = {
+          jobPosting: state.jobPosting,
+          resume: state.resume,
+          interviewMode: state.interviewMode,
+          aiSettings: state.aiSettings,
+          settings: state.settings,
+          sessionId: state.sessionId,
+          interviewStatus: state.interviewStatus,
+          questions: state.questions,
+          answers: state.answers,
+          currentQuestionIndex: state.currentQuestionIndex,
+          interviewState: interviewState,
+          lastUpdated: new Date().toISOString()
+        };
+        localStorage.setItem('interview_state', JSON.stringify(currentState));
+        console.log('✅ 자동 저장 완료');
+      } catch (error) {
+        console.error('❌ 자동 저장 실패:', error);
+      }
+    }
+  }, [
+    interviewState, 
+    state.sessionId, 
+    state.settings, 
+    state.questions.length, 
+    state.answers.length, 
+    state.currentQuestionIndex,
+    currentAnswer // 답변 입력 중에도 저장
+  ]);
 
   // localStorage에서 복원된 설정으로 새로운 면접 시작
   const restartInterviewFromLocalStorage = async (settings: any) => {
@@ -602,6 +846,195 @@ const InterviewActive: React.FC = () => {
       
       // API 실패 시 면접 설정 페이지로 이동
       navigate('/interview/setup');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // localStorage 설정으로 새로운 면접 재시작 핸들러
+  const handleInterviewRestartFromLocalStorage = async (settings: any) => {
+    if (!settings) {
+      console.error('❌ handleInterviewRestartFromLocalStorage - settings가 없음');
+      navigate('/interview/setup');
+      return;
+    }
+
+    try {
+      console.log('🔄 localStorage 설정으로 새로운 면접 재시작 중...', settings);
+      
+      // 기존 localStorage 정리 - 새로운 면접이므로
+      localStorage.removeItem('interview_state');
+      
+      // Context 상태 완전 초기화
+      dispatch({ type: 'RESET_INTERVIEW' });
+      dispatch({ type: 'SET_SETTINGS', payload: settings });
+      
+      setIsLoading(true);
+      setInterviewState('ready');
+      
+      // Hook을 사용한 API 호출 (완전히 새로운 면접)
+      const response = await startInterviewAPI(settings, 'restart');
+      
+      if (!response) {
+        console.log('⚠️ API 호출이 차단됨 (중복 방지) - 잠시 후 다시 시도');
+        setIsLoading(false);
+        
+        // 잠시 후 다시 시도하거나 설정 페이지로 이동
+        setTimeout(() => {
+          console.log('🔄 면접 설정 페이지로 이동');
+          navigate('/interview/setup');
+        }, 2000);
+        return;
+      }
+      
+      if (response) {
+        console.log('✅ 새로운 면접 재시작 성공:', response);
+        
+        // 새로운 세션 정보 설정
+        dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
+        
+        if (settings.mode === 'ai_competition') {
+          // AI 경쟁 모드 설정
+          setComparisonSessionId(response.comparison_session_id);
+          setComparisonMode(true);
+          setCurrentPhase('user_turn');
+          
+          // 첫 번째 질문 추가
+          if (response.question) {
+            dispatch({ type: 'ADD_QUESTION', payload: response.question });
+            setCurrentInterviewerType(mapQuestionCategoryToInterviewer(response.question.category));
+            
+            // 타임라인 설정
+            const firstTurn = {
+              id: `interviewer_${Date.now()}`,
+              type: 'interviewer' as const,
+              question: response.question.question,
+              questionType: response.question.category
+            };
+            setTimeline([firstTurn]);
+          }
+          
+          // 면접 시작 팝업 표시
+          setShowStartPopup(true);
+          
+          console.log('🤖 AI 경쟁 모드 재시작 완료');
+        } else {
+          // 일반 모드 설정
+          if (response.question) {
+            dispatch({ type: 'ADD_QUESTION', payload: response.question });
+          }
+          setShowStartPopup(true);
+          
+          console.log('👤 일반 모드 재시작 완료');
+        }
+        
+        // 초기화 플래그 설정
+        initializationRef.current = true;
+        setHasInitialized(true);
+      }
+      
+    } catch (error) {
+      console.error('❌ localStorage 면접 재시작 실패:', error);
+      setIsLoading(false);
+      
+      // 사용자에게 에러 메시지 표시
+      const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
+      alert(`면접 재시작 중 오류가 발생했습니다: ${errorMessage}\n\n면접 설정 페이지로 이동합니다.`);
+      
+      // 재시작 실패 시 면접 설정 페이지로 이동
+      navigate('/interview/setup');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // EnvironmentCheck에서 온 새로운 면접 시작 핸들러
+  const handleInterviewStartFromEnvironment = async (settings: any) => {
+    if (!settings) {
+      console.error('❌ handleInterviewStartFromEnvironment - settings가 없음');
+      return;
+    }
+
+    try {
+      console.log('🚀 EnvironmentCheck에서 새로운 면접 시작', settings);
+      
+      // Context 상태 초기화
+      dispatch({ type: 'RESET_INTERVIEW' });
+      dispatch({ type: 'SET_SETTINGS', payload: settings });
+      
+      setIsLoading(true);
+      setInterviewState('ready');
+      
+      // Hook을 사용한 API 호출
+      const response = await startInterviewAPI(settings, 'environment');
+      
+      if (response) {
+        // 세션 정보 설정
+        dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
+        setComparisonSessionId(response.comparison_session_id);
+        
+        // 첫 번째 질문 추가
+        if (response.question) {
+          dispatch({ type: 'ADD_QUESTION', payload: response.question });
+          setCurrentInterviewerType(mapQuestionCategoryToInterviewer(response.question.category));
+        }
+        
+        // AI 경쟁 모드 상태 설정
+        setComparisonMode(true);
+        initializationRef.current = true;
+        setHasInitialized(true);
+        setShowStartPopup(true);
+        
+        // localStorage 상태 업데이트 (API 호출 완료됨을 표시)
+        const updatedState = JSON.parse(localStorage.getItem('interview_state') || '{}');
+        updatedState.needsApiCall = false;
+        updatedState.sessionId = response.session_id;
+        localStorage.setItem('interview_state', JSON.stringify(updatedState));
+        
+        console.log('✅ EnvironmentCheck 면접 시작 완료');
+      }
+      
+    } catch (error) {
+      console.error('❌ EnvironmentCheck 면접 시작 실패:', error);
+      setIsLoading(false);
+      navigate('/interview/setup');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 일반적인 새로운 면접 시작 핸들러
+  const handleNewInterviewStart = async (settings: any) => {
+    if (!settings) {
+      console.error('❌ handleNewInterviewStart - settings가 없음');
+      return;
+    }
+
+    try {
+      console.log('🆕 새로운 면접 시작', settings);
+      
+      setIsLoading(true);
+      
+      // Hook을 사용한 API 호출
+      const response = await startInterviewAPI(settings, 'new');
+      
+      if (response) {
+        // 세션 정보 설정
+        dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
+        setComparisonSessionId(response.comparison_session_id);
+        
+        // 첫 번째 질문 추가
+        if (response.question) {
+          dispatch({ type: 'ADD_QUESTION', payload: response.question });
+          setCurrentInterviewerType(mapQuestionCategoryToInterviewer(response.question.category));
+        }
+        
+        console.log('✅ 새로운 면접 시작 완료');
+      }
+      
+    } catch (error) {
+      console.error('❌ 새로운 면접 시작 실패:', error);
+      alert(`면접 시작 실패: ${handleApiError(error)}`);
     } finally {
       setIsLoading(false);
     }
@@ -720,53 +1153,54 @@ const InterviewActive: React.FC = () => {
     if (!state.settings) return;
     
     // 이미 초기화 중이거나 완료된 경우 중단
-    if (isLoading || comparisonSessionId) {
+    if (isStarting || isLoading || comparisonSessionId) {
       console.log('🚫 이미 초기화 중이거나 완료됨, 중단');
       return;
     }
     
     try {
       setIsLoading(true);
-      console.log('🔄 AI 경쟁 면접 모드 초기화 시작');
+      console.log('🔄 AI 경쟁 면접 모드 초기화 시작 (Hook 사용)');
       
-      // AI 경쟁 면접 시작
-      const response = await interviewApi.startAICompetition(state.settings);
+      // Hook을 사용한 AI 경쟁 면접 시작
+      const response = await startInterviewAPI(state.settings, 'new');
       
-      console.log('✅ AI 경쟁 면접 응답:', response);
-      
-      // 상태 업데이트
-      setComparisonSessionId(response.comparison_session_id);
-      setCurrentPhase('user_turn');
-      
-      // 세션 ID 업데이트
-      dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
-      
-      // 첫 번째 질문 처리
-      if (response.question) {
-        const questionData = response.question as any;
-        const normalizedQuestion = {
-          id: questionData.question_id || `q_${Date.now()}`,
-          question: questionData.question_content || questionData.question || '질문을 불러올 수 없습니다',
-          category: questionData.question_type || questionData.category || '일반',
-          time_limit: questionData.time_limit || 120,
-          keywords: questionData.keywords || []
-        };
+      if (response) {
+        console.log('✅ AI 경쟁 면접 응답:', response);
         
-        dispatch({ type: 'ADD_QUESTION', payload: normalizedQuestion });
-        setTimeLeft(normalizedQuestion.time_limit || 120);
-        setInterviewState('comparison_mode');
-        setQuestionCount(1); // 첫 번째 질문 카운트
+        // 상태 업데이트
+        setComparisonSessionId(response.comparison_session_id);
+        setCurrentPhase('user_turn');
         
-        // 첫 번째 질문을 타임라인에 직접 추가
-        const firstTurn = {
-          id: `interviewer_${Date.now()}`,
-          type: 'interviewer' as const,
-          question: normalizedQuestion.question,
-          questionType: normalizedQuestion.category
-        };
+        // 세션 ID 업데이트
+        dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
         
-        setTimeline([firstTurn]);
-        
+        // 첫 번째 질문 처리
+        if (response.question) {
+          const questionData = response.question as any;
+          const normalizedQuestion = {
+            id: questionData.question_id || `q_${Date.now()}`,
+            question: questionData.question_content || questionData.question || '질문을 불러올 수 없습니다',
+            category: questionData.question_type || questionData.category || '일반',
+            time_limit: questionData.time_limit || 120,
+            keywords: questionData.keywords || []
+          };
+          
+          dispatch({ type: 'ADD_QUESTION', payload: normalizedQuestion });
+          setTimeLeft(normalizedQuestion.time_limit || 120);
+          setInterviewState('comparison_mode');
+          setQuestionCount(1); // 첫 번째 질문 카운트
+          
+          // 첫 번째 질문을 타임라인에 직접 추가
+          const firstTurn = {
+            id: `interviewer_${Date.now()}`,
+            type: 'interviewer' as const,
+            question: normalizedQuestion.question,
+            questionType: normalizedQuestion.category
+          };
+          
+          setTimeline([firstTurn]);
+        }
       }
       
     } catch (error) {
@@ -1503,7 +1937,9 @@ const InterviewActive: React.FC = () => {
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
                 <LoadingSpinner />
-                <span className="ml-3 text-gray-600">면접 준비 중...</span>
+                <span className="ml-3 text-gray-600">
+                  {state.sessionId ? '면접 준비 중...' : '면접 재시작 중...'}
+                </span>
               </div>
             ) : (
               <div className="space-y-4">
