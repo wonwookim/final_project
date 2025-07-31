@@ -1,4 +1,3 @@
-from database.services.existing_tables_service import existing_tables_service
 import sys
 import os
 import logging
@@ -8,9 +7,8 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
-from database.supabase_client import supabase_client
 from backend.schemas.company import CompanyResponse
-from database.services.data_migration_service import migration_service
+# from database.services.data_migration_service import migration_service
 from schemas.migration import MigrationRequest, MigrationStatus, migration_status
 from typing import List
 

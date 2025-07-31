@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 # 라우터 생성
 database_router = APIRouter(prefix="/database", tags=["Database"])
+
 # ===================
 # 사용자 관련 엔드포인트
 # ===================
