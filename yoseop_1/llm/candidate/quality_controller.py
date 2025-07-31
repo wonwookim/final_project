@@ -37,6 +37,7 @@ class QualityConfig:
     include_challenges: bool
     temperature: float
     additional_instructions: List[str]
+    model_name: str
 
 class AnswerQualityController:
     """답변 품질 제어 컨트롤러"""
@@ -65,7 +66,8 @@ class AnswerQualityController:
                     "문제 해결 과정과 결과를 상세히 설명하세요",
                     "전문적인 용어를 적절히 사용하되 이해하기 쉽게 설명하세요",
                     "회사의 가치와 연결지어 답변하세요"
-                ]
+                ],
+                model_name="gpt-4o"
             ),
             
             QualityLevel.VERY_GOOD: QualityConfig(
@@ -85,7 +87,8 @@ class AnswerQualityController:
                     "성과나 결과를 수치로 표현하세요",
                     "전문적이면서도 자연스러운 톤을 유지하세요",
                     "논리적인 구조로 답변을 구성하세요"
-                ]
+                ],
+                model_name="gpt-4o"
             ),
             
             QualityLevel.GOOD: QualityConfig(
@@ -104,7 +107,8 @@ class AnswerQualityController:
                     "관련 경험을 예시로 들어 설명하세요",
                     "명확하고 체계적으로 답변하세요",
                     "적절한 전문성을 보여주세요"
-                ]
+                ],
+                model_name="gpt-4o"
             ),
             
             QualityLevel.ABOVE_AVERAGE: QualityConfig(
@@ -123,7 +127,8 @@ class AnswerQualityController:
                     "기본적인 내용을 충실히 포함하세요",
                     "간단한 예시를 들어 설명하세요",
                     "성실한 태도를 보여주세요"
-                ]
+                ],
+                model_name="gpt-4o-mini"
             ),
             
             QualityLevel.AVERAGE: QualityConfig(
@@ -142,7 +147,8 @@ class AnswerQualityController:
                     "질문에 직접적으로 답변하세요",
                     "기본적인 내용을 포함하세요",
                     "자연스럽고 솔직한 톤을 유지하세요"
-                ]
+                ],
+                model_name="gpt-4o-mini"
             ),
             
             QualityLevel.BELOW_AVERAGE: QualityConfig(
@@ -161,7 +167,8 @@ class AnswerQualityController:
                     "간단하고 솔직하게 답변하세요",
                     "부족한 부분이 있어도 성실히 답변하세요",
                     "긴장감이나 어색함을 자연스럽게 표현하세요"
-                ]
+                ],
+                model_name="gpt-4o-mini"
             ),
             
             QualityLevel.POOR: QualityConfig(
@@ -180,7 +187,8 @@ class AnswerQualityController:
                     "짧고 간단하게 답변하세요",
                     "구체적인 내용보다는 일반적인 내용으로 답변하세요",
                     "약간의 준비 부족이 느껴지도록 하세요"
-                ]
+                ],
+                model_name="gpt-4o-mini"
             )
         }
     
@@ -286,6 +294,85 @@ class AnswerQualityController:
         }
         
         return general_improvements.get(level, ["더 구체적이고 자세한 답변을 준비해보세요."])
+    
+    def process_complete_answer(self, raw_answer: str, quality_level: QualityLevel, question_type: str = "") -> str:
+        """답변에 대한 완전한 품질 처리 (model.py에서 이동한 로직)"""
+        if not raw_answer or not raw_answer.strip():
+            return "죄송합니다, 답변을 생성할 수 없었습니다."
+        
+        # 기본 정리
+        processed = raw_answer.strip()
+        
+        # 품질 레벨에 따른 설정 가져오기
+        config = self.get_quality_config(quality_level)
+        
+        # 길이 조정
+        if len(processed) > config.answer_length_max:
+            # 문장 단위로 자르기
+            sentences = processed.split('. ')
+            total_length = 0
+            result_sentences = []
+            
+            for sentence in sentences:
+                if total_length + len(sentence) <= config.answer_length_max:
+                    result_sentences.append(sentence)
+                    total_length += len(sentence) + 2  # '. ' 포함
+                else:
+                    break
+            
+            processed = '. '.join(result_sentences)
+            if not processed.endswith('.'):
+                processed += '.'
+        
+        # 최소 길이 확보
+        elif len(processed) < config.answer_length_min:
+            # 품질 레벨에 따른 추가 내용 생성 가이드
+            if config.include_examples:
+                processed += " 구체적인 예시를 통해 더 자세히 설명드리겠습니다."
+            elif config.include_challenges:
+                processed += " 이 과정에서 겪었던 도전과 그 해결 방법도 중요한 경험이었습니다."
+        
+        # 전문적 톤 조정
+        if config.professional_tone:
+            # 존댓말과 전문적 표현 강화
+            processed = self._enhance_professional_tone(processed)
+        
+        # 품질 레벨별 마무리 조정
+        processed = self._apply_quality_finishing(processed, quality_level)
+        
+        return processed
+    
+    def _enhance_professional_tone(self, text: str) -> str:
+        """전문적 톤으로 조정"""
+        # 기본적인 톤 조정 (간단한 규칙 기반)
+        replacements = {
+            '그냥': '단순히',
+            '되게': '매우',
+            '진짜': '정말로',
+            '좀': '조금',
+            '엄청': '매우'
+        }
+        
+        result = text
+        for informal, formal in replacements.items():
+            result = result.replace(informal, formal)
+        
+        return result
+    
+    def _apply_quality_finishing(self, text: str, quality_level: QualityLevel) -> str:
+        """품질 레벨별 마무리 조정"""
+        if quality_level.value >= 8:  # GOOD 이상
+            # 높은 품질: 명확하고 자신감 있는 마무리
+            if not text.endswith(('.', '습니다', '입니다')):
+                text += '.'
+        elif quality_level.value <= 4:  # POOR 이하
+            # 낮은 품질: 약간의 불확실성 표현
+            uncertain_endings = ['요.', '것 같습니다.', '생각합니다.']
+            if not any(text.endswith(ending) for ending in uncertain_endings):
+                if not text.endswith('.'):
+                    text += '.'
+        
+        return text
     
     def compare_quality_levels(self, base_level: QualityLevel, target_level: QualityLevel) -> str:
         """품질 레벨 간 비교 설명"""
