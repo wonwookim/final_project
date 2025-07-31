@@ -17,7 +17,7 @@ from .constants import CAREER_LEVELS, QUESTION_DIFFICULTIES
 
 # Supabase 클라이언트 임포트
 sys.path.append(str(Path(__file__).parent.parent.parent))
-from database.supabase_client import get_supabase_client
+from backend.services.supabase_client import get_supabase_client
 
 # 세션 매니저 임포트 (레거시 코드 제거)
 create_session_manager = None

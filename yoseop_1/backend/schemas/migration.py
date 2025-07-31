@@ -13,7 +13,6 @@ import os
 # 프로젝트 루트 경로 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from database.services.data_migration_service import migration_service
 import logging
 
 logger = logging.getLogger(__name__)

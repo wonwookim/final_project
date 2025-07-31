@@ -19,7 +19,7 @@ load_dotenv()
 # 상위 디렉토리의 database 모듈 접근을 위한 경로 추가
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 try:
-    from database.supabase_client import get_supabase_client
+    from backend.services.supabase_client import get_supabase_client
 except ImportError:
     print("⚠️ Supabase 클라이언트를 가져올 수 없습니다. 파일 기반 fallback만 사용됩니다.")
     get_supabase_client = None

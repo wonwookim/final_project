@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List
-from database.supabase_client import supabase_client
+from backend.services.supabase_client import supabase_client
 from backend.schemas.resume import ResumeCreate, ResumeUpdate, ResumeResponse
 from backend.schemas.user import UserResponse
 from backend.services.auth_service import AuthService

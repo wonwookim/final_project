@@ -3,7 +3,7 @@
 기존 테이블 구조를 건드리지 않고 현재 시스템과 연결
 """
 
-from database.supabase_client import get_supabase_client
+from .supabase_client import get_supabase_client
 from typing import List, Optional, Dict, Any
 import logging
 from datetime import datetime

@@ -2,13 +2,18 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from typing import Optional
 import logging
 from typing import List
-from database.supabase_client import supabase_client
-
-from schemas.interview import InterviewHistoryResponse, InterviewSettings, QuestionRequest, AnswerSubmission, InterviewResult, ComparisonAnswerSubmission, AITurnRequest, CompetitionTurnSubmission
+from backend.services.supabase_client import supabase_client
+from backend.schemas.user import UserResponse
+from schemas.interview import InterviewHistoryResponse, InterviewSettings, AnswerSubmission, CompetitionTurnSubmission, InterviewResponse
 from services.interview_service import InterviewService
+from backend.services.auth_service import AuthService
+
 
 # 서비스 계층 사용
 interview_service = InterviewService()
+
+# AuthService 인스턴스 생성
+auth_service = AuthService()
 
 # 의존성 주입
 def get_interview_service():
@@ -98,20 +103,6 @@ async def submit_answer(
         interview_logger.error(f"답변 제출 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@interview_router.get("/results/{session_id}")
-async def get_interview_results(
-    session_id: str,
-    service: InterviewService = Depends(get_interview_service)
-):
-    """면접 결과 조회"""
-    try:
-        result = await service.get_interview_results(session_id)
-        return result
-        
-    except Exception as e:
-        interview_logger.error(f"결과 조회 오류: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 # AI 경쟁 모드 엔드포인트
 
 @interview_router.post("/ai/start")
@@ -127,7 +118,7 @@ async def start_ai_competition(
         
         # 🆕 posting_id가 있으면 DB에서 실제 채용공고 정보를 가져와서 사용
         if settings.posting_id:
-            from database.services.existing_tables_service import existing_tables_service
+            from backend.services.existing_tables_service import existing_tables_service
             posting_info = await existing_tables_service.get_posting_by_id(settings.posting_id)
             
             if posting_info:
@@ -202,22 +193,7 @@ async def process_competition_turn(
         interview_logger.error(f"경쟁 면접 턴 처리 API 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@interview_router.get("/history")
-async def get_interview_history(
-    user_id: Optional[str] = None,
-    service: InterviewService = Depends(get_interview_service)
-):
-    """면접 기록 조회"""
-    try:
-        result = await service.get_interview_history(user_id)
-        return result
-        
-    except Exception as e:
-        interview_logger.error(f"기록 조회 오류: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 # 🚀 새로운 턴제 면접 엔드포인트
-
 @interview_router.post("/turn-based/start")
 async def start_turn_based_interview(
     settings: InterviewSettings,
@@ -253,12 +229,32 @@ async def get_turn_based_question(
         interview_logger.error(f"턴제 질문 가져오기 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-
-# 🟢 GET /interview/history – 면접 히스토리 조회
-@interview_router.get("/history", response_model=List[InterviewHistoryResponse])
-def get_interview_history(interview_id: int):
-    res = supabase_client.table("interview_detail").select("*").eq("interview_id", interview_id).order("sequence").execute()
+# 🟢 GET /interview/history – 내 면접 기록 조회
+@interview_router.get("/history", response_model=List[InterviewResponse])
+async def get_interview_history(current_user: UserResponse = Depends(auth_service.get_current_user)):
+    """현재 인증된 사용자의 면접 기록을 Supabase에서 조회합니다."""
+    res = supabase_client.client.from_("interview").select("*").eq("user_id", current_user.user_id).execute()
+    
     if not res.data:
         raise HTTPException(status_code=404, detail="No interview history found")
+    
     return res.data
+
+
+@interview_router.get("/history/{interview_id}", response_model=List[InterviewHistoryResponse])
+async def get_interview_results(
+    interview_id: int,
+    current_user: UserResponse = Depends(auth_service.get_current_user)
+):
+    """현재 로그인한 유저의 특정 면접 기록 조회"""
+    res = supabase_client.client.from_("history_detail") \
+        .select("*") \
+        .eq("interview_id", interview_id) \
+        .execute()
+        # .eq("user_id", current_user.user_id) \
+    
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Interview not found")
+    
+    return res.data
+

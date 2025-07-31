@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional, List, Dict
+from datetime import datetime
 
 # Pydantic 모델 정의
 class InterviewSettings(BaseModel):
@@ -61,8 +62,23 @@ class InterviewHistoryResponse(BaseModel):
     question_id: int
     question_content: str
     question_intent: str
-    question_level: str
+    question_level: int
     answer: str
     feedback: str
     sequence: int
     duration: int
+
+class InterviewResponse(BaseModel):
+    """면접 응답 모델"""
+    interview_id: int
+    user_id: int
+    ai_resume_id: int
+    user_resume_id: int
+    posting_id: int
+    company_id: int
+    position_id: int
+    total_feedback: str
+    date: datetime
+
+
+    

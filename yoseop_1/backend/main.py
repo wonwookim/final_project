@@ -4,47 +4,26 @@ FastAPI 기반 AI 면접 시스템
 새로운 서비스 계층 구조 적용
 """
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, BackgroundTasks
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
-from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
-import asyncio
 import os
 import sys
-import json
 from datetime import datetime
-import uuid
-from pathlib import Path
-import time
 
 # 프로젝트 루트 경로 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# 새로운 서비스 계층 사용
-from backend.services.interview_service import InterviewService
-
-# 기존 시스템 (필요 시 사용)
-from llm.shared.config import config
-from llm.shared.logging_config import interview_logger, performance_logger
-from llm.shared.constants import ALLOWED_FILE_EXTENSIONS, MAX_FILE_SIZE
-from llm.shared.models import QuestionType, QuestionAnswer
-from llm.candidate.quality_controller import QualityLevel
-
 # 데이터베이스 확장 임포트
 try:
-    # from extensions.database_integration import database_router
-    # from extensions.migration_api import migration_router
     from routers.user import user_router
     from routers.resume import resume_router
     from routers.auth import auth_router
     from routers.company import company_router
     from routers.posting import posting_router
     from routers.position import position_router
-    from routers.migration import migration_router
-    from routers.database import database_router
     from routers.interview import interview_router
+    # from routers.migration import migration_router
+    # from routers.database import database_router
 
     DATABASE_ENABLED = True
     print("데이터베이스 확장 로드 성공")

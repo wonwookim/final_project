@@ -12,7 +12,7 @@ import sys
 
 # 상위 디렉토리의 database 모듈 임포트를 위한 경로 추가
 sys.path.append(str(Path(__file__).parent.parent.parent))
-from database.supabase_client import get_supabase_client
+from backend.services.supabase_client import get_supabase_client
 
 class CompanyDataLoader:
     """회사 데이터 로딩 및 관리 클래스 (Supabase 연동)"""

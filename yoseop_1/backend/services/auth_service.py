@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 # 프로젝트 루트 경로 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from database.supabase_client import get_supabase_client
+from backend.services.supabase_client import get_supabase_client
 from backend.schemas.user import UserCreate, UserLogin, UserResponse, AuthResponse
 import re
 
@@ -222,11 +222,11 @@ class AuthService:
         except Exception as e:
             raise HTTPException(status_code=401, detail="토큰 검증에 실패했습니다.")
     
-    async def get_current_user(self, credentials: HTTPAuthorizationCredentials = Depends(security)) -> UserResponse:
+    def get_current_user(self, credentials: HTTPAuthorizationCredentials = Depends(security)) -> UserResponse:
         """현재 인증된 사용자 정보 반환 (Depends로 사용)"""
         try:
             token = credentials.credentials
-            
+
             # Supabase JWT 토큰 검증
             user_response = self.supabase.auth.get_user(token)
             
