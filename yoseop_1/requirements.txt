@@ -50,3 +50,6 @@ passlib[bcrypt]==1.7.4
 # 기타
 typing-extensions==4.14.1
 pathlib==1.0.1
+
+# 음성 처리
+aiohttp==3.12.15

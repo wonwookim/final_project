@@ -80,5 +80,20 @@ class InterviewResponse(BaseModel):
     total_feedback: str
     date: datetime
 
+# TTS 요청: 텍스트 -> 음성
+class TTSRequest(BaseModel):
+    text: str
+    voice_id: str
 
+# TTS 응답
+class TTSBase64Response(BaseModel):
+    success: bool
+    audio_base64: str
+
+# STT 응답
+class STTResponse(BaseModel):
+    success: bool
+    text: str
+    language: str = "ko"
+    duration: float = 0.0
     

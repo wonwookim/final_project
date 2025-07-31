@@ -1,12 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse, HTMLResponse
 from typing import Optional
 import logging
 from typing import List
 from backend.services.supabase_client import supabase_client
 from backend.schemas.user import UserResponse
-from schemas.interview import InterviewHistoryResponse, InterviewSettings, AnswerSubmission, CompetitionTurnSubmission, InterviewResponse
+from schemas.interview import InterviewHistoryResponse, InterviewSettings, AnswerSubmission, CompetitionTurnSubmission, InterviewResponse, TTSRequest, STTResponse
 from services.interview_service import InterviewService
 from backend.services.auth_service import AuthService
+from backend.services.voice_service import elevenlabs_tts_stream
+import io
+
+
 
 
 # 서비스 계층 사용
@@ -27,6 +32,27 @@ interview_router = APIRouter(
     prefix="/interview",
     tags=["Interview"],
 )
+
+# =================================================================
+# 🚀 TTS 테스트용 임시 코드 START (나중에 이 부분을 삭제하세요)
+# =================================================================
+from fastapi.responses import HTMLResponse
+
+@interview_router.get("/tts-test", response_class=HTMLResponse, summary="[테스트용] TTS 웹 페이지")
+async def get_tts_test_page():
+    """
+    TTS API를 테스트하기 위한 간단한 HTML 페이지를 반환합니다.
+    이 엔드포인트는 개발 및 디버깅 목적으로만 사용됩니다.
+    """
+    try:
+        with open("temp_test.html", "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="테스트 파일을 찾을 수 없습니다: temp_test.html")
+# =================================================================
+# 🚀 TTS 테스트용 임시 코드 END
+# =================================================================
+
 
 @interview_router.post("/start")
 async def start_interview(
@@ -258,3 +284,29 @@ async def get_interview_results(
     
     return res.data
 
+# 🟢 POST /interview/tts
+@interview_router.post("/tts")
+async def text_to_speech_elevenlabs(req: TTSRequest):
+    # 로그 추가
+    interview_logger.info(f"TTS 요청 수신: voice_id='{req.voice_id}', text='{req.text[:50]}...'")
+
+    # 빈 텍스트 유효성 검사
+    if not req.text or not req.text.strip():
+        raise HTTPException(status_code=400, detail="TTS를 위한 텍스트 내용이 비어있습니다.")
+
+    try:
+        audio_bytes = await elevenlabs_tts_stream(req.text, req.voice_id)
+        return StreamingResponse(io.BytesIO(audio_bytes), media_type="audio/mpeg")
+    except HTTPException as e:
+        # voice_service에서 발생한 HTTPException을 그대로 전달
+        interview_logger.error(f"TTS API 오류 발생: {e.status_code} - {e.detail}")
+        raise e
+    except Exception as e:
+        # 그 외 예기치 않은 오류 처리
+        interview_logger.error(f"TTS 처리 중 예기치 않은 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail="TTS 처리 중 서버 오류가 발생했습니다.")
+
+# 🟢 POST /interview/stt
+@interview_router.post("/stt", response_model=STTResponse)
+async def speech_to_text(file: UploadFile = File(...)):
+    pass
