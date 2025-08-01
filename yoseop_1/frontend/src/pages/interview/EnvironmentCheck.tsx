@@ -302,9 +302,15 @@ const EnvironmentCheck: React.FC = () => {
       originalCompany: state.jobPosting?.company
     });
     
-    // 실제 면접 시작
+    // 실제 면접 시작 - 모드에 따라 다른 페이지로 라우팅
     setTimeout(() => {
-      navigate('/interview/active');
+      if (finalSettings.mode === 'text_competition') {
+        console.log('🎯 텍스트 경쟁 모드 감지 - /interview/active-temp로 이동');
+        navigate('/interview/active-temp');
+      } else {
+        console.log('🎯 기본 모드 - /interview/active로 이동');
+        navigate('/interview/active');
+      }
     }, 1000);
   };
 

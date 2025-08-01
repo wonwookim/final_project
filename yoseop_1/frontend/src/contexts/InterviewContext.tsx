@@ -123,6 +123,13 @@ interface InterviewState {
   historyStats: InterviewStats;
   historyLoading: boolean;
   historyError: string | null;
+  
+  // 텍스트 경쟁 모드 전용 상태
+  textCompetitionData: {
+    initialQuestion: any | null;
+    aiPersona: any | null;
+    progress: { current: number; total: number; percentage: number } | null;
+  } | null;
 }
 
 // 액션 타입 정의
@@ -146,6 +153,7 @@ type InterviewAction =
   | { type: 'SET_ERROR'; payload: string | null }
   | { type: 'SET_TIME_LEFT'; payload: number }
   | { type: 'SET_PROGRESS'; payload: number }
+  | { type: 'SET_TEXT_COMPETITION_DATA'; payload: { initialQuestion: any; aiPersona: any; progress: { current: number; total: number; percentage: number } } }
   | { type: 'RESET_INTERVIEW' }
   | { type: 'SET_INTERVIEW_HISTORY'; payload: InterviewRecord[] }
   | { type: 'ADD_INTERVIEW_RECORD'; payload: InterviewRecord }
@@ -185,6 +193,7 @@ const initialState: InterviewState = {
   },
   historyLoading: false,
   historyError: null,
+  textCompetitionData: null,
 };
 
 // 리듀서 함수
@@ -280,6 +289,9 @@ function interviewReducer(state: InterviewState, action: InterviewAction): Inter
     
     case 'SET_PROGRESS':
       return { ...state, progress: action.payload };
+    
+    case 'SET_TEXT_COMPETITION_DATA':
+      return { ...state, textCompetitionData: action.payload };
     
     case 'RESET_INTERVIEW':
       return initialState;

@@ -7,6 +7,7 @@ from backend.services.supabase_client import supabase_client
 from backend.schemas.user import UserResponse
 from schemas.interview import InterviewHistoryResponse, InterviewSettings, AnswerSubmission, CompetitionTurnSubmission, InterviewResponse, TTSRequest, STTResponse
 from services.interview_service import InterviewService
+from services.interview_service_temp import InterviewServiceTemp
 from backend.services.auth_service import AuthService
 from backend.services.voice_service import elevenlabs_tts_stream
 from fastapi.responses import HTMLResponse
@@ -17,6 +18,7 @@ import io
 
 # 서비스 계층 사용
 interview_service = InterviewService()
+interview_service_temp = InterviewServiceTemp()
 
 # AuthService 인스턴스 생성
 auth_service = AuthService()
@@ -24,6 +26,9 @@ auth_service = AuthService()
 # 의존성 주입
 def get_interview_service():
     return interview_service
+
+def get_temp_interview_service():
+    return interview_service_temp
 
 # 로거 설정
 interview_logger = logging.getLogger("interview_logger")
@@ -309,3 +314,146 @@ async def text_to_speech_elevenlabs(req: TTSRequest):
 @interview_router.post("/stt", response_model=STTResponse)
 async def speech_to_text(file: UploadFile = File(...)):
     pass
+
+
+# ============================================================================
+# 🚀 텍스트 기반 AI 경쟁 면접 엔드포인트들 (InterviewServiceTemp 사용)
+# ============================================================================
+
+@interview_router.post("/text-competition/start")
+async def start_text_competition(
+    settings: InterviewSettings,
+    temp_service: InterviewServiceTemp = Depends(get_temp_interview_service)
+):
+    """텍스트 기반 AI 경쟁 면접 시작"""
+    try:
+        interview_logger.info(f"🎯 텍스트 경쟁 면접 시작 요청: {settings.company} - {settings.position}")
+        
+        settings_dict = {
+            "company": settings.company,
+            "position": settings.position,
+            "candidate_name": settings.candidate_name,
+            "documents": settings.documents or []
+        }
+        
+        result = await temp_service.start_text_interview(settings_dict)
+        
+        interview_logger.info(f"✅ 텍스트 경쟁 면접 시작 성공: {result.get('session_id')}")
+        return result
+        
+    except Exception as e:
+        interview_logger.error(f"❌ 텍스트 경쟁 면접 시작 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@interview_router.post("/text-competition/submit-answer")
+async def submit_text_answer(
+    answer_data: dict,
+    temp_service: InterviewServiceTemp = Depends(get_temp_interview_service)
+):
+    """텍스트 답변 제출 및 AI 답변 + 다음 질문 받기"""
+    try:
+        session_id = answer_data.get("session_id")
+        answer = answer_data.get("answer")
+        
+        if not session_id or not answer:
+            raise HTTPException(status_code=400, detail="session_id와 answer가 필요합니다")
+        
+        interview_logger.info(f"📝 텍스트 답변 제출: {session_id}")
+        
+        result = await temp_service.submit_answer_and_get_next(session_id, answer)
+        
+        interview_logger.info(f"✅ 텍스트 답변 처리 완료: {session_id} - {result.get('status')}")
+        return result
+        
+    except Exception as e:
+        interview_logger.error(f"❌ 텍스트 답변 처리 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@interview_router.get("/text-competition/session/{session_id}")
+async def get_text_session_info(
+    session_id: str,
+    temp_service: InterviewServiceTemp = Depends(get_temp_interview_service)
+):
+    """텍스트 기반 면접 세션 정보 조회"""
+    try:
+        interview_logger.info(f"🔍 텍스트 세션 정보 조회: {session_id}")
+        
+        result = await temp_service.get_session_info(session_id)
+        
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        interview_logger.error(f"❌ 텍스트 세션 정보 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@interview_router.get("/text-competition/results/{session_id}")
+async def get_text_interview_results(
+    session_id: str,
+    temp_service: InterviewServiceTemp = Depends(get_temp_interview_service)
+):
+    """텍스트 기반 면접 결과 조회"""
+    try:
+        interview_logger.info(f"📊 텍스트 면접 결과 조회: {session_id}")
+        
+        result = await temp_service.get_interview_results(session_id)
+        
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        interview_logger.error(f"❌ 텍스트 면접 결과 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@interview_router.delete("/text-competition/session/{session_id}")
+async def cleanup_text_session(
+    session_id: str,
+    temp_service: InterviewServiceTemp = Depends(get_temp_interview_service)
+):
+    """텍스트 기반 면접 세션 정리"""
+    try:
+        interview_logger.info(f"🧹 텍스트 세션 정리 요청: {session_id}")
+        
+        success = temp_service.cleanup_session(session_id)
+        
+        if success:
+            return {"message": "세션이 성공적으로 정리되었습니다.", "session_id": session_id}
+        else:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        interview_logger.error(f"❌ 텍스트 세션 정리 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@interview_router.get("/text-competition/stats")
+async def get_text_interview_stats(
+    temp_service: InterviewServiceTemp = Depends(get_temp_interview_service)
+):
+    """텍스트 기반 면접 시스템 통계"""
+    try:
+        active_sessions = temp_service.get_active_sessions_count()
+        
+        return {
+            "active_sessions": active_sessions,
+            "service_type": "text_based_competition",
+            "system_status": "operational"
+        }
+        
+    except Exception as e:
+        interview_logger.error(f"❌ 텍스트 면접 통계 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

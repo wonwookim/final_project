@@ -39,6 +39,14 @@ const InterviewModeSelection: React.FC = () => {
       icon: '📝'
     },
     {
+      id: 'text_competition',
+      title: '텍스트 AI 경쟁',
+      description: 'AI와 텍스트로 경쟁하는 면접',
+      features: ['고품질 턴제 면접', 'AI 페르소나 경쟁', '텍스트 기반 진행'],
+      color: 'from-orange-500 to-red-500',
+      icon: '⌨️'
+    },
+    {
       id: 'ai_competition',
       title: 'AI 경쟁 면접',
       description: 'AI 지원자와 경쟁',
@@ -85,7 +93,7 @@ const InterviewModeSelection: React.FC = () => {
           </div>
 
           {/* 면접 모드 선택 */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
             {interviewModes.map((mode, index) => (
               <div
                 key={mode.id}

@@ -34,6 +34,13 @@ const InterviewSetup: React.FC = () => {
       color: 'from-green-500 to-emerald-500'
     },
     {
+      id: 'text_competition',
+      title: '⌨️ 텍스트 AI 경쟁',
+      description: 'AI와 텍스트로 경쟁하는 면접',
+      features: ['고품질 턴제 면접', 'AI 페르소나 경쟁', '텍스트 기반 진행'],
+      color: 'from-orange-500 to-red-500'
+    },
+    {
       id: 'ai_competition',
       title: '🤖 AI 경쟁 면접',
       description: 'AI 지원자와 경쟁',
@@ -181,6 +188,21 @@ const InterviewSetup: React.FC = () => {
         
         // 설정 저장
         dispatch({ type: 'SET_SETTINGS', payload: settings });
+      } else if (selectedMode === 'text_competition') {
+        // 🆕 텍스트 기반 AI 경쟁 면접 시작
+        response = await interviewApi.startTextCompetition(settings);
+        
+        // 설정 저장 (텍스트 모드 표시)
+        dispatch({ type: 'SET_SETTINGS', payload: { ...settings, mode: 'text_competition' } });
+        
+        // 텍스트 경쟁 모드 전용 데이터 저장
+        if (response.question) {
+          dispatch({ type: 'SET_TEXT_COMPETITION_DATA', payload: {
+            initialQuestion: response.question,
+            aiPersona: response.ai_persona,
+            progress: response.progress
+          }});
+        }
       } else {
         // 일반 면접 시작
         response = await interviewApi.startInterview(settings);
@@ -219,7 +241,7 @@ const InterviewSetup: React.FC = () => {
             <h2 className="text-3xl font-bold text-slate-900 text-center mb-8">
               면접 모드를 선택하세요
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {interviewModes.map((mode, index) => (
                 <div
                   key={mode.id}

@@ -317,6 +317,211 @@ export const interviewApi = {
       timestamp: string;
     };
   },
+
+  // ============================================================================
+  // 🚀 텍스트 기반 AI 경쟁 면접 API 메서드들
+  // ============================================================================
+
+  // 텍스트 기반 AI 경쟁 면접 시작
+  async startTextCompetition(settings: InterviewSettings): Promise<{
+    session_id: string;
+    question: any;
+    ai_persona: {
+      name: string;
+      summary: string;
+      background: any;
+    };
+    interview_type: string;
+    progress: {
+      current: number;
+      total: number;
+      percentage: number;
+    };
+    message: string;
+  }> {
+    console.log('🎯 텍스트 경쟁 면접 API 호출:', settings);
+    
+    const response = await apiClient.post('/interview/text-competition/start', settings);
+    
+    console.log('✅ 텍스트 경쟁 면접 시작 응답:', response.data);
+    
+    return response.data as {
+      session_id: string;
+      question: any;
+      ai_persona: {
+        name: string;
+        summary: string;
+        background: any;
+      };
+      interview_type: string;
+      progress: {
+        current: number;
+        total: number;
+        percentage: number;
+      };
+      message: string;
+    };
+  },
+
+  // 텍스트 답변 제출 및 AI 답변 + 다음 질문 받기
+  async submitTextAnswer(sessionId: string, answer: string): Promise<{
+    status: string;
+    ai_answer?: {
+      content: string;
+    };
+    next_question?: any;
+    progress?: {
+      current: number;
+      total: number;
+      percentage: number;
+    };
+    final_stats?: {
+      total_questions: number;
+      user_answers: number;
+      ai_answers: number;
+    };
+    message: string;
+    session_id?: string;
+  }> {
+    console.log('📝 텍스트 답변 제출:', sessionId, answer.substring(0, 50) + '...');
+    
+    const response = await apiClient.post('/interview/text-competition/answer', {
+      session_id: sessionId,
+      answer: answer
+    });
+    
+    console.log('✅ 텍스트 답변 처리 응답:', response.data);
+    
+    return response.data as {
+      status: string;
+      ai_answer?: {
+        content: string;
+      };
+      next_question?: any;
+      progress?: {
+        current: number;
+        total: number;
+        percentage: number;
+      };
+      final_stats?: {
+        total_questions: number;
+        user_answers: number;
+        ai_answers: number;
+      };
+      message: string;
+      session_id?: string;
+    };
+  },
+
+  // 텍스트 기반 면접 세션 정보 조회
+  async getTextSessionInfo(sessionId: string): Promise<{
+    session_id: string;
+    company_id: string;
+    position: string;
+    candidate_name: string;
+    ai_persona: {
+      name: string;
+      summary: string;
+    };
+    progress: {
+      current: number;
+      total: number;
+      percentage: number;
+    };
+    created_at: string;
+  }> {
+    const response = await apiClient.get(`/interview/text-competition/session/${sessionId}`);
+    return response.data as {
+      session_id: string;
+      company_id: string;
+      position: string;
+      candidate_name: string;
+      ai_persona: {
+        name: string;
+        summary: string;
+      };
+      progress: {
+        current: number;
+        total: number;
+        percentage: number;
+      };
+      created_at: string;
+    };
+  },
+
+  // 텍스트 기반 면접 결과 조회
+  async getTextInterviewResults(sessionId: string): Promise<{
+    session_id: string;
+    company: string;
+    position: string;
+    candidate: string;
+    ai_competitor: string;
+    interview_type: string;
+    total_questions: number;
+    qa_pairs: Array<{
+      question: string;
+      user_answer: string;
+      ai_answer: string;
+      interviewer_type: string;
+      timestamp: string;
+    }>;
+    summary: {
+      message: string;
+      user_answers_count: number;
+      ai_answers_count: number;
+    };
+    completed_at: string;
+  }> {
+    const response = await apiClient.get(`/interview/text-competition/results/${sessionId}`);
+    return response.data as {
+      session_id: string;
+      company: string;
+      position: string;
+      candidate: string;
+      ai_competitor: string;
+      interview_type: string;
+      total_questions: number;
+      qa_pairs: Array<{
+        question: string;
+        user_answer: string;
+        ai_answer: string;
+        interviewer_type: string;
+        timestamp: string;
+      }>;
+      summary: {
+        message: string;
+        user_answers_count: number;
+        ai_answers_count: number;
+      };
+      completed_at: string;
+    };
+  },
+
+  // 텍스트 기반 면접 세션 정리
+  async cleanupTextSession(sessionId: string): Promise<{
+    message: string;
+    session_id: string;
+  }> {
+    const response = await apiClient.delete(`/interview/text-competition/session/${sessionId}`);
+    return response.data as {
+      message: string;
+      session_id: string;
+    };
+  },
+
+  // 텍스트 기반 면접 시스템 통계
+  async getTextInterviewStats(): Promise<{
+    active_sessions: number;
+    service_type: string;
+    system_status: string;
+  }> {
+    const response = await apiClient.get('/interview/text-competition/stats');
+    return response.data as {
+      active_sessions: number;
+      service_type: string;
+      system_status: string;
+    };
+  },
 };
 
 // 에러 처리 유틸리티

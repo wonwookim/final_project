@@ -1292,7 +1292,15 @@ const InterviewActive: React.FC = () => {
       }
     } catch (error) {
       console.error('질문 로드 실패:', error);
-      alert(`질문 로드 실패: ${handleApiError(error)}`);
+      const errorMessage = handleApiError(error);
+      
+      // 404 에러인 경우 더 친화적인 메시지 제공
+      if (errorMessage.includes('404') || errorMessage.includes('찾을 수 없습니다')) {
+        alert('이 면접 모드는 지원되지 않는 기능을 사용하려고 합니다. 다른 면접 모드를 선택해주세요.');
+        navigate('/interview/interview-mode-selection');
+      } else {
+        alert(`질문 로드 실패: ${errorMessage}`);
+      }
     } finally {
       setIsLoading(false);
     }
