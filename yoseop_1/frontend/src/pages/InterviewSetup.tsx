@@ -7,7 +7,7 @@ import { interviewApi, handleApiError, validateFileSize, validateFileExtension }
 
 const InterviewSetup: React.FC = () => {
   const navigate = useNavigate();
-  const { dispatch } = useInterview();
+  const { state, dispatch } = useInterview();
   
   const [selectedMode, setSelectedMode] = useState('personalized');
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);

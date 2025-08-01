@@ -39,13 +39,15 @@ export const useTextCompetitionInit = ({
   });
 
   const initialize = async () => {
-    // 중복 초기화 방지
-    if (initializationAttempted.current || state.isInitialized) {
-      console.log('🚫 이미 초기화 시도됨 또는 완료됨');
-      return;
-    }
+    console.log('🔍 초기화 시도 상태 확인:', {
+      initializationAttempted: initializationAttempted.current,
+      isInitialized: state.isInitialized,
+      sessionId: !!sessionId,
+      settings: !!settings,
+      mode: settings?.mode
+    });
 
-    // 필수 조건 확인
+    // 필수 조건 확인 (초기화 방지보다 우선)
     if (!sessionId || !settings) {
       console.log('🚫 초기화 조건 미충족:', { sessionId: !!sessionId, settings: !!settings });
       navigate('/interview/setup');
@@ -58,15 +60,26 @@ export const useTextCompetitionInit = ({
       return;
     }
 
+    // 중복 초기화 방지 (조건을 더 정교하게 수정)
+    if (initializationAttempted.current && state.isInitialized) {
+      console.log('🚫 이미 초기화 완료됨 - 중복 실행 방지');
+      return;
+    }
+
+    // 현재 로딩 중이면 중복 실행 방지
+    if (state.isLoading) {
+      console.log('🚫 이미 초기화 진행 중 - 중복 실행 방지');
+      return;
+    }
+
+    console.log('🎯 텍스트 경쟁 모드 초기화 시작');
     initializationAttempted.current = true;
     setState(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      console.log('🎯 텍스트 경쟁 모드 초기화 시작');
-
       // Context에 저장된 데이터가 있는지 확인
-      if (textCompetitionData) {
-        console.log('✨ Context에서 초기 데이터 사용');
+      if (textCompetitionData && textCompetitionData.aiPersona) {
+        console.log('✨ Context에서 완전한 초기 데이터 사용');
         
         setState(prev => ({
           ...prev,
@@ -83,13 +96,18 @@ export const useTextCompetitionInit = ({
       }
 
       // 다단계 플로우에서 온 경우: 텍스트 경쟁 면접을 새로 시작
-      console.log('🔄 다단계 플로우 - 텍스트 경쟁 면접 시작');
+      console.log('🔄 다단계 플로우 - 텍스트 경쟁 면접 시작 (AI 페르소나 생성)');
 
       const response = await textCompetitionApi.startTextCompetition(settings);
       console.log('✅ 텍스트 경쟁 면접 시작 응답:', response);
 
+      // 응답 검증
+      if (!response.session_id || !response.ai_persona) {
+        throw new Error('서버 응답이 불완전합니다 (session_id 또는 ai_persona 누락)');
+      }
+
       // 세션 ID 업데이트 (새로 생성된 세션 ID 사용)
-      if (response.session_id && response.session_id !== sessionId) {
+      if (response.session_id !== sessionId) {
         console.log('🔄 세션 ID 업데이트:', sessionId, '→', response.session_id);
         onSessionIdUpdate(response.session_id);
       }
@@ -101,19 +119,23 @@ export const useTextCompetitionInit = ({
         currentQuestion: response.question || null,
         aiPersona: response.ai_persona || null,
         progress: response.progress || { current: 0, total: 15, percentage: 0 },
-        sessionId: response.session_id || sessionId
+        sessionId: response.session_id
       }));
 
-      console.log('✅ 텍스트 경쟁 면접 초기화 완료');
+      console.log('✅ 텍스트 경쟁 면접 초기화 완료 - AI 페르소나:', response.ai_persona?.name);
 
     } catch (error) {
       console.error('❌ 텍스트 경쟁 모드 초기화 실패:', error);
       const errorMessage = `면접 초기화 실패: ${handleApiError(error)}`;
       
+      // 실패 시 상태 리셋하여 재시도 가능하게 함
+      initializationAttempted.current = false;
+      
       setState(prev => ({
         ...prev,
         isLoading: false,
-        error: errorMessage
+        error: errorMessage,
+        isInitialized: false
       }));
 
       alert(errorMessage);
@@ -128,8 +150,14 @@ export const useTextCompetitionInit = ({
   return {
     ...state,
     retry: () => {
+      console.log('🔄 초기화 재시도');
       initializationAttempted.current = false;
-      setState(prev => ({ ...prev, isInitialized: false, error: null }));
+      setState(prev => ({ 
+        ...prev, 
+        isInitialized: false, 
+        isLoading: false,
+        error: null 
+      }));
       initialize();
     }
   };

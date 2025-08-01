@@ -13,12 +13,14 @@ const withDuplicationPrevention = <T>(
   requestFn: () => Promise<T>
 ): Promise<T> => {
   if (activeRequests.has(key)) {
-    console.log(`🚫 중복 요청 방지: ${key}`);
+    console.log(`🚫 중복 요청 방지: ${key} - 기존 요청 대기 중`);
     return activeRequests.get(key)!;
   }
 
+  console.log(`✅ 새로운 요청 시작: ${key}`);
   const promise = requestFn()
     .finally(() => {
+      console.log(`🏁 요청 완료 및 정리: ${key}`);
       activeRequests.delete(key);
     });
 
@@ -53,17 +55,20 @@ const fetchApi = async (url: string, options: RequestInit = {}) => {
 
 // 텍스트 경쟁 면접 시작
 export const startTextCompetition = async (settings: any) => {
-  const requestKey = `start-text-competition-${JSON.stringify(settings)}`;
+  // 더 간단한 중복 방지 키 생성 (JSON.stringify 제거)
+  const requestKey = `start-text-competition-${settings.company}-${settings.position}-${settings.candidate_name}`;
   
   return withDuplicationPrevention(requestKey, async () => {
-    console.log('🚀 텍스트 경쟁 면접 시작 API 호출');
+    console.log('🚀 텍스트 경쟁 면접 시작 API 호출 시작');
+    console.log('📋 요청 설정:', settings);
     
     const response = await fetchApi('/interview/text-competition/start', {
       method: 'POST',
       body: JSON.stringify(settings)
     });
 
-    console.log('✅ 텍스트 경쟁 면접 시작 성공:', response);
+    console.log('✅ 텍스트 경쟁 면접 시작 성공');
+    console.log('📄 응답 데이터:', response);
     return response;
   });
 };

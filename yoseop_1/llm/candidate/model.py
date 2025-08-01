@@ -259,7 +259,7 @@ class AICandidateModel:
         try:
             # 🆕 1순위: DB에서 직접 조회 (company_name이 있는 경우)
             if company_name and get_supabase_client:
-                from database.services.existing_tables_service import existing_tables_service
+                from backend.services.existing_tables_service import existing_tables_service
                 import asyncio
                 import concurrent.futures
                 

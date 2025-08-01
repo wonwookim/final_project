@@ -502,8 +502,9 @@ class InterviewerService:
         """동적 꼬리 질문 생성 - 답변 기반 실시간 심층 탐구"""
         
         # 프롬프트 빌더를 사용하여 프롬프트 생성
+        position = user_resume.get('position', '개발자') if user_resume else '개발자'
         prompt = self.prompt_builder.build_follow_up_question_prompt(
-            previous_question, user_answer, chun_sik_answer, company_info, interviewer_role
+            previous_question, user_answer, chun_sik_answer, company_info, interviewer_role, position
         )
         system_prompt = self.prompt_builder.build_system_prompt_for_follow_up()
         

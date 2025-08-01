@@ -11,8 +11,8 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 import json
 
-# InterviewerService 및 AI 관련 모듈
-from llm.interviewer.service import InterviewerService
+# 새로운 아키텍처: TurnManager와 AI 관련 모듈
+from .turn_manager import TurnManager
 from llm.candidate.model import AICandidateModel, CandidatePersona, AnswerRequest
 from llm.candidate.quality_controller import QualityLevel
 from llm.shared.models import QuestionType, QuestionAnswer
@@ -24,15 +24,16 @@ class InterviewServiceTemp:
     텍스트 기반 AI 경쟁 면접 서비스
     
     주요 특징:
-    - InterviewerService의 턴제 면접관 시스템 활용
+    - 새로운 아키텍처: TurnManager + QuestionGenerator 활용
     - AI 페르소나와의 텍스트 기반 경쟁
     - 기존 시스템과 독립적으로 운영
+    - 관심사 분리: 턴제 관리와 질문 생성 분리
     """
     
     def __init__(self):
         """서비스 초기화"""
-        # 턴제 면접관 시스템 (15개 질문 한도)
-        self.interviewer_service = InterviewerService(total_question_limit=15)
+        # 새로운 아키텍처: 턴제 관리자 (15개 질문 한도)
+        self.turn_manager = TurnManager(total_question_limit=15)
         
         # AI 페르소나 생성 및 답변 생성
         self.ai_candidate_model = AICandidateModel()
@@ -91,8 +92,8 @@ class InterviewServiceTemp:
                 'current_question': None
             }
             
-            # 3. 첫 질문 생성 (InterviewerService 활용)
-            first_question = self.interviewer_service.generate_next_question(
+            # 3. 첫 질문 생성 (TurnManager 활용)
+            first_question = self.turn_manager.generate_next_question(
                 user_resume=session_data['user_resume'],
                 chun_sik_persona=ai_persona,
                 company_id=company_id
@@ -172,8 +173,8 @@ class InterviewServiceTemp:
             
             session_data['ai_answers'].append(ai_answer_content)
             
-            # 3. 다음 질문 생성 (InterviewerService의 턴제 시스템)
-            next_question = self.interviewer_service.generate_next_question(
+            # 3. 다음 질문 생성 (TurnManager의 턴제 시스템)
+            next_question = self.turn_manager.generate_next_question(
                 user_resume=session_data['user_resume'],
                 chun_sik_persona=session_data['ai_persona'],
                 company_id=session_data['company_id'], 
@@ -209,9 +210,10 @@ class InterviewServiceTemp:
                     "session_id": session_id
                 }
             
-            # 7. 진행률 계산
-            current_progress = len(session_data['qa_history'])
-            progress_percentage = (current_progress / 15) * 100
+            # 7. 진행률 계산 (TurnManager에서)
+            progress_info = self.turn_manager.get_interview_progress()
+            current_progress = progress_info['questions_asked']
+            progress_percentage = progress_info['percentage']
             
             return {
                 "status": "continue",
