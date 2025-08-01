@@ -230,6 +230,7 @@ const EnvironmentCheck: React.FC = () => {
       mode: state.aiSettings?.mode || 'personalized',
       difficulty: '중간',
       candidate_name: state.resume?.name || '사용자',
+      resume: state.resume,  // 전체 이력서 데이터 포함
       documents: [] as string[]
     };
     

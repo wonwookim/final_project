@@ -190,10 +190,31 @@ const InterviewSetup: React.FC = () => {
         dispatch({ type: 'SET_SETTINGS', payload: settings });
       } else if (selectedMode === 'text_competition') {
         // 🆕 텍스트 기반 AI 경쟁 면접 시작
-        response = await interviewApi.startTextCompetition(settings);
+        console.log('🔍 텍스트 경쟁 모드 - Context 상태 확인:');
+        console.log('📄 state.resume:', state.resume);
+        console.log('📋 전체 state:', state);
+        
+        // 이력서 데이터 확인 및 포함
+        if (!state.resume) {
+          console.log('⚠️ 이력서 데이터 없음 - 이력서 선택 페이지로 이동');
+          alert('이력서를 먼저 선택해주세요. 이력서 선택 페이지로 이동합니다.');
+          navigate('/interview/resume-selection');
+          return;
+        }
+
+        // 이력서 데이터를 포함한 설정 생성
+        const settingsWithResume = {
+          ...settings,
+          resume: state.resume
+        };
+
+        console.log('✅ 이력서 데이터가 포함된 설정:');
+        console.log('📤 settingsWithResume:', settingsWithResume);
+
+        response = await interviewApi.startTextCompetition(settingsWithResume);
         
         // 설정 저장 (텍스트 모드 표시)
-        dispatch({ type: 'SET_SETTINGS', payload: { ...settings, mode: 'text_competition' } });
+        dispatch({ type: 'SET_SETTINGS', payload: { ...settingsWithResume, mode: 'text_competition' } });
         
         // 텍스트 경쟁 모드 전용 데이터 저장
         if (response.question) {

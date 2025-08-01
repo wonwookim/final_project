@@ -60,7 +60,15 @@ export const startTextCompetition = async (settings: any) => {
   
   return withDuplicationPrevention(requestKey, async () => {
     console.log('🚀 텍스트 경쟁 면접 시작 API 호출 시작');
-    console.log('📋 요청 설정:', settings);
+    console.log('📋 요청 설정 전체:', settings);
+    console.log('📄 이력서 데이터 확인:', settings.resume ? '있음' : '없음');
+    if (settings.resume) {
+      console.log('📝 이력서 상세:', {
+        name: settings.resume.name,
+        tech: settings.resume.tech,
+        career: settings.resume.career
+      });
+    }
     
     const response = await fetchApi('/interview/text-competition/start', {
       method: 'POST',
