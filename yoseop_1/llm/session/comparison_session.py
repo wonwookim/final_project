@@ -1,24 +1,38 @@
 #!/usr/bin/env python3
 """
-AI vs Human 비교 세션 관리자
+🚫 DEPRECATED - 더 이상 사용하지 않음
+
+이 모듈의 모든 기능은 backend/services/interview_service.py로 이관되었습니다.
+새로운 Backend 중앙 관제 시스템을 사용하세요.
+
+기존 설명: AI vs Human 비교 세션 관리자
 기존 unified_interview_session.py 기능을 담당
 """
 
-import uuid
-from typing import Dict, List, Any, Optional, TYPE_CHECKING
-from datetime import datetime
+# 🗑️ 모든 import 주석 처리 - 더 이상 사용하지 않음
+# import uuid
+# from typing import Dict, List, Any, Optional, TYPE_CHECKING
+# from datetime import datetime
 
-from .models import ComparisonSession, SessionState, AnswerData
-from .question_generator import question_generator_service, QuestionPlan
-from ..shared.company_data_loader import get_company_loader
-from ..shared.logging_config import interview_logger
+# from .models import ComparisonSession, SessionState, AnswerData
+# # from .question_generator import question_generator_service, QuestionPlan  # 제거됨
+# from ..shared.company_data_loader import get_company_loader
+# from ..shared.logging_config import interview_logger
 
-# 순환 import 방지를 위한 TYPE_CHECKING 사용
-if TYPE_CHECKING:
-    from ..candidate.model import CandidatePersona
+# # 순환 import 방지를 위한 TYPE_CHECKING 사용
+# if TYPE_CHECKING:
+#     from ..candidate.model import CandidatePersona
+
+# ⚠️ DEPRECATED: 이 모듈을 사용하려고 하면 경고가 발생합니다.
+raise DeprecationWarning(
+    "🚫 llm.session.comparison_session 는 더 이상 사용되지 않습니다. "
+    "backend.services.interview_service 의 새로운 중앙 관제 시스템을 사용하세요."
+)
+
+# 🗑️ 기존 코드 모두 주석 처리
 
 
-class ComparisonSessionManager:
+# class ComparisonSessionManager:
     """
     AI vs Human 비교 세션 관리자
     기존 UnifiedInterviewSession 기능을 담당
@@ -27,9 +41,9 @@ class ComparisonSessionManager:
     def __init__(self):
         self.sessions: Dict[str, ComparisonSession] = {}
         self.company_loader = get_company_loader()
-        self.question_generator = question_generator_service
+        # self.question_generator = question_generator_service  # 제거됨
         # 각 세션별 질문 계획 저장
-        self.session_question_plans: Dict[str, List[QuestionPlan]] = {}
+        # self.session_question_plans: Dict[str, List[QuestionPlan]] = {}  # 제거됨
         
         # 🆕 페르소나 캐싱 시스템
         self.persona_cache: Dict[str, 'CandidatePersona'] = {}  # session_id -> persona

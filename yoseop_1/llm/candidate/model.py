@@ -21,14 +21,14 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 try:
     from backend.services.supabase_client import get_supabase_client
 except ImportError:
-    print("⚠️ Supabase 클라이언트를 가져올 수 없습니다. 파일 기반 fallback만 사용됩니다.")
+    print("WARNING: Supabase 클라이언트를 가져올 수 없습니다. 파일 기반 fallback만 사용됩니다.")
     get_supabase_client = None
 
 from ..shared.models import LLMProvider, LLMResponse
 from .quality_controller import AnswerQualityController, QualityLevel
 from .prompt import CandidatePromptBuilder
 from ..shared.models import QuestionType, QuestionAnswer, AnswerRequest, AnswerResponse
-from ..session.models import InterviewSession
+from backend.models.session import InterviewSession  # 호환성을 위한 별도 모듈
 from ..shared.utils import safe_json_load, get_fixed_questions
 
 # 직군 매핑 (position_name -> position_id)
@@ -110,7 +110,7 @@ AI_CANDIDATE_NAMES = {
 class AICandidateSession(InterviewSession):
     """AI 지원자 전용 면접 세션 - 면접자와 동일한 플로우"""
     
-    def __init__(self, company_id: str, position: str, persona: CandidatePersona):
+    def __init__(self, company_id: str, position: str, persona: 'CandidatePersona'):
         super().__init__(company_id, position, persona.name)
         self.persona = persona
         self.ai_answers: List[QuestionAnswer] = []
@@ -181,22 +181,22 @@ class AICandidateModel:
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
         if self.api_key:
             self.openai_client = openai.OpenAI(api_key=self.api_key)
-            print("✅ OpenAI 클라이언트 초기화 완료")
+            print("OK: OpenAI 클라이언트 초기화 완료")
         else:
             self.openai_client = None
-            print("⚠️ OpenAI API 키가 설정되지 않았습니다. .env 파일에 OPENAI_API_KEY를 추가하거나 직접 전달하세요.")
+            print("WARNING: OpenAI API 키가 설정되지 않았습니다. .env 파일에 OPENAI_API_KEY를 추가하거나 직접 전달하세요.")
         
         # 🆕 의존성 주입 패턴: quality_controller를 외부에서 주입 받거나 기본값 사용
         if quality_controller is not None:
             self.quality_controller = quality_controller
-            print("✅ [DI] 외부에서 주입된 QualityController 사용")
+            print("OK [DI] 외부에서 주입된 QualityController 사용")
         else:
             self.quality_controller = AnswerQualityController()
-            print("✅ [DI] 기본 QualityController 생성")
+            print("OK [DI] 기본 QualityController 생성")
             
         # 🆕 프롬프트 빌더 초기화
         self.prompt_builder = CandidatePromptBuilder()
-        print("✅ [DI] CandidatePromptBuilder 초기화 완료")
+        print("OK [DI] CandidatePromptBuilder 초기화 완료")
             
         self.companies_data = self._load_companies_data()
         
@@ -213,18 +213,18 @@ class AICandidateModel:
         주어진 회사와 직군에 맞는 AI 지원자 페르소나를 LLM으로 실시간 생성
         """
         try:
-            print(f"🔥 [PERSONA DEBUG] 페르소나 생성 시작: company='{company_name}', position='{position_name}'")
+            print(f"DEBUG [PERSONA DEBUG] 페르소나 생성 시작: company='{company_name}', position='{position_name}'")
             
             company_korean_name = self._get_company_korean_name(company_name)
             position_id = self._get_position_id(position_name, company_korean_name)
             
             if not position_id:
-                print(f"❌ [PERSONA DEBUG] 지원하지 않는 직군: {position_name}, 기본 페르소나 생성 시도")
+                print(f"ERROR [PERSONA DEBUG] 지원하지 않는 직군: {position_name}, 기본 페르소나 생성 시도")
                 return self._create_default_persona(company_korean_name, position_name)
             
             resume_data = self._get_random_resume_from_db(position_id)
             if not resume_data:
-                print(f"❌ [PERSONA DEBUG] 이력서 없음: position_id {position_id}, 기본 페르소나 생성 시도")
+                print(f"ERROR [PERSONA DEBUG] 이력서 없음: position_id {position_id}, 기본 페르소나 생성 시도")
                 return self._create_default_persona(company_korean_name, position_name)
             
             company_info = self._get_company_info(company_name)
@@ -235,20 +235,20 @@ class AICandidateModel:
             llm_response = self._generate_persona_with_extended_tokens(prompt, system_prompt)
             
             if llm_response.error:
-                print(f"❌ [PERSONA DEBUG] LLM 응답 오류: {llm_response.error}")
+                print(f"ERROR [PERSONA DEBUG] LLM 응답 오류: {llm_response.error}")
                 return None
             
             persona = self._parse_llm_response_to_persona(llm_response.content, resume_data.get('ai_resume_id', 0))
             
             if persona:
-                print(f"✅ [PERSONA DEBUG] 페르소나 생성 완료: {persona.name} ({company_name} {position_name})")
+                print(f"OK [PERSONA DEBUG] 페르소나 생성 완료: {persona.name} ({company_name} {position_name})")
                 return persona
             else:
-                print(f"❌ [PERSONA DEBUG] 페르소나 파싱 실패")
+                print(f"ERROR [PERSONA DEBUG] 페르소나 파싱 실패")
                 return None
                 
         except Exception as e:
-            print(f"❌ [PERSONA DEBUG] 페르소나 생성 중 오류: {e}")
+            print(f"ERROR [PERSONA DEBUG] 페르소나 생성 중 오류: {e}")
             import traceback
             traceback.print_exc()
             return None
@@ -281,13 +281,13 @@ class AICandidateModel:
                     if posting_info and posting_info.get('position', {}).get('position_id'):
                         return posting_info['position']['position_id']
                 except Exception as db_error:
-                    print(f"⚠️ [DB] 직군 조회 실패: {db_error}")
+                    print(f"WARNING [DB] 직군 조회 실패: {db_error}")
             
             position_lower = position_name.lower().replace(" ", "").replace("(", "").replace(")", "")
             return POSITION_MAPPING.get(position_lower)
             
         except Exception as e:
-            print(f"❌ [POSITION] 직군 ID 변환 오류: {e}")
+            print(f"ERROR [POSITION] 직군 ID 변환 오류: {e}")
             return None
     
     def _get_random_resume_from_db(self, position_id: int) -> Optional[Dict[str, Any]]:
@@ -298,7 +298,7 @@ class AICandidateModel:
             response = get_supabase_client().table('ai_resume').select('*').eq('position_id', position_id).execute()
             return random.choice(response.data) if response.data else None
         except Exception as e:
-            print(f"❌ 이력서 조회 오류: {e}")
+            print(f"ERROR 이력서 조회 오류: {e}")
             return None
     
     def _get_company_info(self, company_name: str) -> Dict[str, Any]:
@@ -339,7 +339,7 @@ class AICandidateModel:
             persona_data = json.loads(response_clean)
             return CandidatePersona(**persona_data, resume_id=resume_id)
         except (json.JSONDecodeError, TypeError) as e:
-            print(f"❌ JSON 파싱 또는 페르소나 객체 생성 오류: {e}")
+            print(f"ERROR JSON 파싱 또는 페르소나 객체 생성 오류: {e}")
             return None
     
     def _load_companies_data(self) -> Dict[str, Any]:
@@ -350,7 +350,7 @@ class AICandidateModel:
         """fallback: 기본 페르소나 생성"""
         # ... (이하 코드는 이전과 동일)
         try:
-            print(f"🔄 [DEFAULT PERSONA] 기본 페르소나 생성 시작: {company_name} - {position_name}")
+            print(f"INFO [DEFAULT PERSONA] 기본 페르소나 생성 시작: {company_name} - {position_name}")
             company_info = self._get_company_info(company_name)
             company_name = company_info.get("name", company_name.capitalize())
             
@@ -372,7 +372,7 @@ class AICandidateModel:
             )
             return default_persona
         except Exception as e:
-            print(f"❌ [DEFAULT PERSONA] 기본 페르소나 생성 실패: {e}")
+            print(f"ERROR [DEFAULT PERSONA] 기본 페르소나 생성 실패: {e}")
             return None
 
     def _get_company_korean_name(self, company_code: str) -> str:

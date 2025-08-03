@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
-리팩터링 후 기능 테스트 스크립트
-현재 동작하는 모든 기능이 새로운 구조에서도 정상 동작하는지 확인
+🚫 DEPRECATED 테스트 파일
+
+이 테스트는 구 InterviewerService 기반으로 작성되었습니다.
+새로운 Backend 중앙 관제 시스템을 위한 새로운 테스트를 작성해야 합니다.
+
+기존 설명: 리팩터링 후 기능 테스트 스크립트
 """
 import sys
 import os
@@ -12,11 +16,14 @@ def test_import_structure():
     print("🔍 Import 구조 테스트 시작...")
     
     try:
-        # LLM 시스템 임포트 테스트
-        from llm.interviewer.service import InterviewerService
+        # 🗑️ 구 시스템 임포트 테스트 (더 이상 사용하지 않음)
+        # from llm.interviewer.service import InterviewerService  # DEPRECATED
         from llm.candidate.model import AICandidateModel
-        from llm.session.interviewer_session import InterviewerSession
-        print("✅ LLM 모듈 import 성공")
+        # from llm.session.interviewer_session import InterviewerSession  # DEPRECATED
+        
+        # 새로운 중앙 관제 시스템 임포트 테스트
+        from backend.services.interview_service import InterviewService
+        print("✅ 새로운 중앙 관제 시스템 import 성공")
         
         # 기본 객체 생성 테스트
         interviewer_service = InterviewerService()

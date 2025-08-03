@@ -14,8 +14,9 @@ from dotenv import load_dotenv
 # .env 파일에서 환경변수 로드
 load_dotenv()
 
-from ..shared.models import QuestionAnswer, QuestionType, CandidatePersona
-from ..session.models import InterviewSession
+from ..shared.models import QuestionAnswer, QuestionType
+from ..candidate.model import CandidatePersona
+from backend.models.session import InterviewSession  # 호환성을 위한 별도 모듈
 from ..shared.utils import safe_json_load
 
 class FeedbackService:

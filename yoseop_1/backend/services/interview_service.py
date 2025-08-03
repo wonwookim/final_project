@@ -2,47 +2,81 @@
 """
 면접 서비스
 모든 면접 관련 비즈니스 로직을 담당하는 서비스 계층
+- Backend 중앙 관제 시스템: 모든 면접 상태와 흐름을 직접 관리
 """
 
 import asyncio
 import os
 import json
+import uuid
+import random
 from typing import Dict, List, Any, Optional
 from pathlib import Path
-import uuid
-import time
+from dataclasses import dataclass, field
 
-# 통합 세션 관리 모듈 (FinalInterviewSystem 대체)
-from llm.session import SessionManager, InterviewSession, ComparisonSession
-# 새로운 턴제 면접관 시스템
-from llm.interviewer.service import InterviewerService
-
-# 문서 처리 및 AI 모델
-from llm.interviewer.document_processor import DocumentProcessor, UserProfile
-from llm.candidate.model import AICandidateModel
-from llm.feedback.service import FeedbackService
-from llm.shared.models import QuestionAnswer, QuestionType
+# 🆕 필요한 모듈 직접 임포트
+from llm.interviewer.question_generator import QuestionGenerator  # service.py 대신 question_generator.py를 직접 사용
+from llm.candidate.model import AICandidateModel, CandidatePersona
+from llm.shared.models import AnswerRequest, QuestionType, QuestionAnswer, LLMProvider
+from llm.candidate.quality_controller import QualityLevel
 from llm.shared.constants import ALLOWED_FILE_EXTENSIONS, MAX_FILE_SIZE
 from llm.shared.logging_config import interview_logger, performance_logger
+
+# 호환성을 위한 InterviewSession 클래스 import
+from backend.models.session import InterviewSession
+
+# 🔥 llm/session 의존성 완전 제거 - 더 이상 사용하지 않음
+# from llm.session import SessionManager, InterviewSession, ComparisonSession  # REMOVED
+
+# 문서 처리 및 피드백 서비스
+from llm.interviewer.document_processor import DocumentProcessor, UserProfile
+from llm.feedback.service import FeedbackService
+
+# 🆕 면접 세션의 모든 상태를 담는 데이터 클래스 (턴 관리 상태 포함)
+@dataclass
+class SessionState:
+    session_id: str
+    company_id: str
+    position: str
+    user_name: str
+    
+    # LLM 엔진 인스턴스
+    question_generator: QuestionGenerator
+    ai_candidate_model: AICandidateModel
+    ai_persona: CandidatePersona
+    
+    # 면접 진행 상태
+    qa_history: List[Dict[str, Any]] = field(default_factory=list)
+    is_completed: bool = False
+    total_question_limit: int = 15
+    questions_asked_count: int = 0
+    current_interviewer_index: int = 0
+    interviewer_roles: List[str] = field(default_factory=lambda: ['HR', 'TECH', 'COLLABORATION'])
+    interviewer_turn_state: Dict[str, Any] = field(default_factory=lambda: {
+        'HR': {'main_question_asked': False, 'follow_up_count': 0},
+        'TECH': {'main_question_asked': False, 'follow_up_count': 0},
+        'COLLABORATION': {'main_question_asked': False, 'follow_up_count': 0}
+    })
+    
+    def get_current_interviewer(self) -> str:
+        return self.interviewer_roles[self.current_interviewer_index]
+
+
 
 class InterviewService:
     """면접 서비스 - 모든 면접 관련 로직을 담당"""
     
     def __init__(self):
-        """서비스 초기화"""
-        # 🆕 통합 세션 관리자 (FinalInterviewSystem + PersonalizedInterviewSystem 통합)
-        self.session_manager = SessionManager()
+        """서비스 초기화. 모든 세션을 직접 관리합니다."""
+        self.active_sessions: Dict[str, SessionState] = {}  # 🆕 세션 저장소
         
-        # 🚀 새로운 턴제 면접관 시스템
-        self.interviewer_service = InterviewerService()
+        # 🔥 SessionManager 완전 제거 - 모든 세션을 active_sessions에서 직접 관리
+        # self.session_manager = SessionManager()  # REMOVED
         
         # 보조 서비스들
         self.document_processor = DocumentProcessor()
         self.ai_candidate_model = AICandidateModel()
         self.feedback_service = FeedbackService()
-        
-        # 🔄 더 이상 필요 없음 - SessionManager가 모든 세션을 관리
-        # self.comparison_sessions = {}
         
         # 회사 이름 매핑
         self.company_name_map = {
@@ -61,27 +95,52 @@ class InterviewService:
         return self.company_name_map.get(company_name, company_name.lower())
     
     async def start_interview(self, settings: Dict[str, Any]) -> Dict[str, Any]:
-        """일반 면접 시작 (SessionManager 사용)"""
+        """🔥 새로운 중앙 관제 방식으로 일반 면접 시작"""
         try:
+            interview_logger.info("🎯 [Central Control] Regular Interview Start")
+            session_id = f"reg_{uuid.uuid4().hex[:12]}"
             company_id = self.get_company_id(settings['company'])
             
-            # 🆕 SessionManager를 통한 표준 면접 시작 (FinalInterviewSystem 기능 통합)
-            session_id = self.session_manager.start_interview(
-                company_id=company_id,
-                position=settings['position'],
-                candidate_name=settings['candidate_name']
-            )
+            # 1. LLM 엔진 인스턴스 생성
+            question_generator = QuestionGenerator()
+            ai_candidate_model = AICandidateModel()
             
-            interview_logger.info(f"면접 시작 - 세션 ID: {session_id}")
+            # 2. AI 페르소나 생성 (일반 면접용)
+            ai_persona = await asyncio.to_thread(
+                ai_candidate_model.create_persona_for_interview, company_id, settings['position']
+            )
+            if not ai_persona:
+                ai_persona = ai_candidate_model._create_default_persona(company_id, settings['position'])
+            
+            # 3. 새로운 세션 상태 객체 생성 및 저장 (일반 면접용 설정)
+            session_state = SessionState(
+                session_id=session_id, company_id=company_id, position=settings['position'],
+                user_name=settings['candidate_name'], question_generator=question_generator,
+                ai_candidate_model=ai_candidate_model, ai_persona=ai_persona,
+                total_question_limit=20  # 일반 면접은 20개 질문
+            )
+            session_state.interviewer_roles = ['GENERAL']  # 일반 면접은 단일 면접관
+            session_state.interviewer_turn_state = {
+                'GENERAL': {'main_question_asked': False, 'follow_up_count': 0}
+            }
+            self.active_sessions[session_id] = session_state
+            
+            # 4. 첫 질문 생성 (자기소개)
+            first_question = session_state.question_generator.generate_fixed_question(0, company_id)
+            session_state.questions_asked_count += 1
+            session_state.qa_history.append({"question": first_question, "user_answer": None, "ai_answer": None})
+            
+            interview_logger.info(f"✅ [Central Control] Regular interview session created: {session_id}")
             
             return {
-                "session_id": session_id,
+                "session_id": session_id, "question": first_question,
+                "total_questions": session_state.total_question_limit,
                 "message": "면접이 시작되었습니다."
             }
             
         except Exception as e:
-            interview_logger.error(f"면접 시작 오류: {str(e)}")
-            raise Exception(f"면접 시작 중 오류가 발생했습니다: {str(e)}")
+            interview_logger.error(f"면접 시작 오류: {e}", exc_info=True)
+            raise
     
     async def upload_document(self, file_data: Dict[str, Any]) -> Dict[str, Any]:
         """문서 업로드 및 분석"""
@@ -116,115 +175,239 @@ class InterviewService:
             raise Exception(f"문서 업로드 중 오류가 발생했습니다: {str(e)}")
     
     async def get_next_question(self, session_id: str) -> Dict[str, Any]:
-        """다음 질문 가져오기 (SessionManager 사용)"""
+        """🔥 새로운 중앙 관제 방식으로 다음 질문 가져오기"""
         try:
-            # 🆕 SessionManager를 통한 질문 가져오기
-            question_data = self.session_manager.get_next_question(session_id)
+            session_state = self.active_sessions.get(session_id)
+            if not session_state:
+                return {"error": "유효하지 않은 세션 ID입니다."}
             
-            if not question_data:
+            # 면접 완료 확인
+            if session_state.is_completed or session_state.questions_asked_count >= session_state.total_question_limit:
                 return {"completed": True, "message": "모든 질문이 완료되었습니다."}
             
-            # 진행률 정보 계산
-            session = self.session_manager.get_session(session_id)
-            if session:
-                current_index = session.current_question_count
-                total_questions = len(session.question_plan)
-                progress = (current_index / total_questions) * 100 if total_questions > 0 else 0
+            # 다음 질문 생성 로직
+            next_question = None
+            
+            # 첫 번째 고정 질문 (자기소개)
+            if session_state.questions_asked_count == 0:
+                next_question = session_state.question_generator.generate_fixed_question(0, session_state.company_id)
+            # 두 번째 고정 질문 (지원동기)
+            elif session_state.questions_asked_count == 1:
+                next_question = session_state.question_generator.generate_fixed_question(1, session_state.company_id, 
+                                                                                        {"name": session_state.user_name})
+            # 동적 질문 생성
             else:
-                current_index = 0
-                total_questions = 20
-                progress = 0
+                current_interviewer = session_state.get_current_interviewer()
+                next_question = await asyncio.to_thread(
+                    session_state.question_generator.generate_question_by_role,
+                    interviewer_role=current_interviewer, company_id=session_state.company_id,
+                    user_resume={"name": session_state.user_name, "position": session_state.position}
+                )
+            
+            if not next_question:
+                return {"error": "질문 생성에 실패했습니다."}
+            
+            # 진행률 계산
+            progress = (session_state.questions_asked_count / session_state.total_question_limit) * 100
             
             return {
                 "question": {
-                    "id": question_data["question_id"],
-                    "question": question_data["question_content"],
-                    "category": question_data["question_type"],
-                    "time_limit": question_data.get("time_limit", 120),
-                    "keywords": question_data.get("keywords", [])
+                    "id": f"q_{session_state.questions_asked_count + 1}",
+                    "question": next_question.get("question", ""),
+                    "category": next_question.get("interviewer_type", "GENERAL"),
+                    "intent": next_question.get("intent", ""),
+                    "time_limit": 120,
+                    "keywords": []
                 },
-                "question_index": current_index,
-                "total_questions": total_questions,
+                "question_index": session_state.questions_asked_count + 1,
+                "total_questions": session_state.total_question_limit,
                 "progress": progress
             }
             
         except Exception as e:
-            interview_logger.error(f"질문 가져오기 오류: {str(e)}")
-            raise Exception(f"질문을 가져오는 중 오류가 발생했습니다: {str(e)}")
+            interview_logger.error(f"질문 가져오기 오류: {e}", exc_info=True)
+            raise
     
     async def submit_answer(self, answer_data: Dict[str, Any]) -> Dict[str, Any]:
-        """답변 제출 (SessionManager 사용)"""
+        """🔥 새로운 중앙 관제 방식으로 답변 제출 및 다음 질문 생성"""
         try:
             session_id = answer_data['session_id']
-            answer = answer_data['answer']
+            user_answer = answer_data['answer']
             
-            # 🆕 SessionManager를 통한 답변 제출
-            result = self.session_manager.submit_answer(session_id, answer)
+            session_state = self.active_sessions.get(session_id)
+            if not session_state:
+                return {"error": "유효하지 않은 세션 ID입니다."}
             
-            if "error" in result:
-                raise Exception(result["error"])
+            if session_state.is_completed:
+                return {"error": "이미 완료된 면접입니다."}
             
-            return {
-                "status": result.get("status", "success"),
-                "message": result.get("message", "답변이 성공적으로 제출되었습니다."),
-                "question": result.get("question"),
-                "answered_count": result.get("answered_count", 0),
-                "total_questions": result.get("total_questions", 0)
-            }
+            # 1. 사용자 답변 기록
+            if session_state.qa_history:
+                last_qa = session_state.qa_history[-1]
+                last_qa["user_answer"] = user_answer
+            
+            # 2. 다음 질문 생성 또는 면접 종료 처리
+            if session_state.questions_asked_count >= session_state.total_question_limit:
+                session_state.is_completed = True
+                return {
+                    "status": "interview_complete",
+                    "message": "면접이 완료되었습니다.",
+                    "total_questions": session_state.questions_asked_count
+                }
+            
+            # 3. 다음 질문 생성
+            next_question = None
+            
+            # 두 번째 고정 질문 (지원동기)
+            if session_state.questions_asked_count == 1:
+                next_question = session_state.question_generator.generate_fixed_question(1, session_state.company_id, 
+                                                                                        {"name": session_state.user_name})
+            # 동적 질문 생성
+            else:
+                current_interviewer = session_state.get_current_interviewer()
+                turn_state = session_state.interviewer_turn_state.get(current_interviewer, {})
+                
+                # 메인 질문 안했으면 메인 질문 생성
+                if not turn_state.get('main_question_asked', False):
+                    next_question = await asyncio.to_thread(
+                        session_state.question_generator.generate_question_by_role,
+                        interviewer_role=current_interviewer, company_id=session_state.company_id,
+                        user_resume={"name": session_state.user_name, "position": session_state.position}
+                    )
+                    turn_state['main_question_asked'] = True
+                # 꼬리 질문 생성 (최대 2개)
+                elif turn_state.get('follow_up_count', 0) < 2:
+                    # 이전 질문 정보 가져오기
+                    if len(session_state.qa_history) >= 2:
+                        prev_qa = session_state.qa_history[-2]
+                        previous_question_text = prev_qa["question"].get("question", "")
+                        company_info = session_state.question_generator.companies_data.get(session_state.company_id, {})
+                        
+                        next_question = await asyncio.to_thread(
+                            session_state.question_generator.generate_follow_up_question,
+                            previous_question=previous_question_text, user_answer=user_answer, chun_sik_answer="",
+                            company_info=company_info, interviewer_role=current_interviewer,
+                            user_resume={"name": session_state.user_name, "position": session_state.position}
+                        )
+                        turn_state['follow_up_count'] = turn_state.get('follow_up_count', 0) + 1
+                    else:
+                        # 꼬리 질문 생성 조건 부족
+                        next_question = await asyncio.to_thread(
+                            session_state.question_generator.generate_question_by_role,
+                            interviewer_role=current_interviewer, company_id=session_state.company_id,
+                            user_resume={"name": session_state.user_name, "position": session_state.position}
+                        )
+                # 턴 전환
+                else:
+                    # 다음 면접관으로 전환
+                    session_state.current_interviewer_index = (session_state.current_interviewer_index + 1) % len(session_state.interviewer_roles)
+                    new_interviewer = session_state.get_current_interviewer()
+                    
+                    next_question = await asyncio.to_thread(
+                        session_state.question_generator.generate_question_by_role,
+                        interviewer_role=new_interviewer, company_id=session_state.company_id,
+                        user_resume={"name": session_state.user_name, "position": session_state.position}
+                    )
+                    session_state.interviewer_turn_state[new_interviewer]['main_question_asked'] = True
+            
+            # 4. 상태 업데이트
+            if next_question:
+                session_state.questions_asked_count += 1
+                session_state.qa_history.append({"question": next_question, "user_answer": None, "ai_answer": None})
+                
+                return {
+                    "status": "success",
+                    "message": "답변이 성공적으로 제출되었습니다.",
+                    "next_question": next_question,
+                    "answered_count": session_state.questions_asked_count,
+                    "total_questions": session_state.total_question_limit,
+                    "progress": (session_state.questions_asked_count / session_state.total_question_limit) * 100
+                }
+            else:
+                session_state.is_completed = True
+                return {
+                    "status": "interview_complete",
+                    "message": "면접이 완료되었습니다.",
+                    "total_questions": session_state.questions_asked_count
+                }
             
         except Exception as e:
-            interview_logger.error(f"답변 제출 오류: {str(e)}")
-            raise Exception(f"답변 제출 중 오류가 발생했습니다: {str(e)}")
+            interview_logger.error(f"답변 제출 오류: {e}", exc_info=True)
+            raise
     
     async def get_interview_results(self, session_id: str) -> Dict[str, Any]:
-        """면접 결과 조회 (SessionManager 사용)"""
+        """면접 결과 조회 - 새로운 중앙 관제 시스템 및 기존 시스템 모두 지원"""
         try:
-            # 🆕 SessionManager를 통한 면접 평가
-            results = self.session_manager.evaluate_interview(session_id)
+            # 새로운 중앙 관제 시스템 세션인지 확인
+            if session_id in self.active_sessions:
+                session_state = self.active_sessions[session_id]
+                
+                # 간단한 결과 생성 (실제로는 LLM 기반 평가 시스템을 사용할 수 있음)
+                total_questions = len(session_state.qa_history)
+                
+                return {
+                    "session_id": session_id,
+                    "company": session_state.company_id,
+                    "position": session_state.position,
+                    "candidate": session_state.user_name,
+                    "ai_name": session_state.ai_persona.name,
+                    "total_questions": total_questions,
+                    "questions_asked": session_state.questions_asked_count,
+                    "is_completed": session_state.is_completed,
+                    "interviewer_stats": session_state.interviewer_turn_state,
+                    "qa_history": session_state.qa_history,
+                    "message": "새로운 중앙 관제 시스템 결과"
+                }
             
-            if "error" in results:
-                raise ValueError(results["error"])
-            
-            # 🧹 면접 완료 시 페르소나 캐시 정리 (비교 면접인 경우)
-            if session_id.startswith("comp_"):
-                try:
-                    self.session_manager.comparison_session_manager.clear_session_persona(session_id)
-                    interview_logger.info(f"🧹 [CLEANUP] 면접 완료 - 페르소나 캐시 정리: {session_id}")
-                except Exception as cleanup_error:
-                    interview_logger.warning(f"⚠️ [CLEANUP] 페르소나 캐시 정리 실패: {cleanup_error}")
-            
-            # 결과가 이미 완전한 형태로 반환됨
-            return results
+            # 🔥 SessionManager 의존성 완전 제거 - 모든 세션을 active_sessions에서 처리
+            else:
+                return {"error": f"세션 ID '{session_id}'를 찾을 수 없습니다. 새로운 중앙 관제 시스템만 지원됩니다."}
             
         except Exception as e:
             interview_logger.error(f"결과 조회 오류: {str(e)}")
             raise Exception(f"결과를 조회하는 중 오류가 발생했습니다: {str(e)}")
     
+    # 🔄 완전히 새로운 로직으로 교체
     async def start_ai_competition(self, settings: Dict[str, Any]) -> Dict[str, Any]:
-        """AI 지원자와의 경쟁 면접 시작 (InterviewerService 사용)"""
         try:
-            interview_logger.info("🎯 InterviewerService 기반 비교면접 시작")
+            interview_logger.info("🎯 [New Arch] Backend-Controlling Interview Start")
+            session_id = f"comp_{uuid.uuid4().hex[:12]}"
             company_id = self.get_company_id(settings['company'])
-
-            result = await asyncio.to_thread(
-                self.session_manager.start_interviewer_competition,
-                company_id=company_id,
-                position=settings['position'],
-                user_name=settings['candidate_name']
+            
+            # 1. LLM 엔진 인스턴스 생성
+            question_generator = QuestionGenerator()
+            ai_candidate_model = AICandidateModel()
+            
+            # 2. AI 페르소나 생성
+            ai_persona = await asyncio.to_thread(
+                ai_candidate_model.create_persona_for_interview, company_id, settings['position']
             )
-
-            # 프론트엔드 호환성을 위한 응답 데이터 재구성
+            if not ai_persona:
+                ai_persona = ai_candidate_model._create_default_persona(company_id, settings['position'])
+            
+            # 3. 새로운 세션 상태 객체 생성 및 저장
+            session_state = SessionState(
+                session_id=session_id, company_id=company_id, position=settings['position'],
+                user_name=settings['candidate_name'], question_generator=question_generator,
+                ai_candidate_model=ai_candidate_model, ai_persona=ai_persona
+            )
+            self.active_sessions[session_id] = session_state
+            
+            # 4. 첫 질문 생성 (자기소개)
+            first_question = session_state.question_generator.generate_fixed_question(0, company_id)
+            session_state.questions_asked_count += 1
+            session_state.qa_history.append({"question": first_question, "user_answer": None, "ai_answer": None})
+            
+            interview_logger.info(f"✅ [New Arch] New session created: {session_id}")
+            
             return {
-                "session_id": result["session_id"],
-                "comparison_session_id": result["session_id"],
-                "question": result["question"],
-                "ai_name": result["ai_persona"]["name"],
-                "total_questions": 15,
+                "session_id": session_id, "question": first_question,
+                "ai_name": ai_persona.name, "total_questions": session_state.total_question_limit,
                 "message": "새로운 AI 경쟁 면접이 시작되었습니다."
             }
         except Exception as e:
-            interview_logger.error(f"AI 경쟁 면접 시작 오류: {str(e)}")
-            raise Exception(f"AI 경쟁 면접 시작 중 오류가 발생했습니다: {str(e)}")
+            interview_logger.error(f"AI 경쟁 면접 시작 오류: {e}", exc_info=True)
+            raise
     
     
     
@@ -240,8 +423,8 @@ class InterviewService:
             company_id = session_parts[0] if len(session_parts) > 0 else "naver"
             position = "_".join(session_parts[1:-1]) if len(session_parts) > 2 else "백엔드 개발"
             
-            # ✅ 올바른 방식: InterviewerService를 통해 질문 생성
-            from llm.session.interviewer_session import InterviewerSession
+            # 🗑️ 더 이상 사용하지 않음 - 새로운 중앙 관제 시스템 사용
+            # from llm.session.interviewer_session import InterviewerSession
             
             # InterviewerSession 임시 생성하여 질문 가져오기
             temp_session = InterviewerSession(company_id, position, "춘식이")
@@ -269,7 +452,6 @@ class InterviewService:
             # AI 답변 생성
             from llm.candidate.model import AnswerRequest
             from llm.shared.models import QuestionType
-            from llm.candidate.quality_controller import QualityLevel
             
             # QuestionType 매핑
             question_type_map = {
@@ -315,26 +497,29 @@ class InterviewService:
     
     
     async def get_interview_history(self, user_id: str = None) -> Dict[str, Any]:
-        """면접 기록 조회 (SessionManager 사용)"""
+        """면접 기록 조회 - 새로운 중앙 관제 시스템 및 기존 시스템 모두 지원"""
         try:
             completed_sessions = []
             
-            # 🆕 SessionManager의 모든 세션 가져오기
-            all_sessions = self.session_manager.get_all_sessions()
-            
-            for session_info in all_sessions:
-                if session_info.get("state") == "completed":
+            # 새로운 중앙 관제 시스템 세션들 추가
+            for session_id, session_state in self.active_sessions.items():
+                if session_state.is_completed:
                     completed_sessions.append({
-                        "session_id": session_info["session_id"],
+                        "session_id": session_id,
                         "settings": {
-                            "company": session_info.get("company_id", "unknown"),
-                            "position": session_info.get("position", "unknown"),
-                            "user_name": session_info.get("candidate_name", session_info.get("user_name", "unknown"))
+                            "company": session_state.company_id,
+                            "position": session_state.position,
+                            "user_name": session_state.user_name
                         },
-                        "completed_at": session_info.get("created_at", ""),
+                        "completed_at": "",
                         "total_score": 85,  # 기본값
-                        "type": session_info.get("type", "standard")
+                        "type": "central_control",
+                        "questions_asked": session_state.questions_asked_count,
+                        "ai_name": session_state.ai_persona.name
                     })
+            
+            # 🔥 SessionManager 의존성 완전 제거 - 오직 active_sessions만 사용
+            # 메모: 기존 SessionManager 세션들은 더 이상 지원하지 않음
             
             return {
                 "total_interviews": len(completed_sessions),
@@ -345,45 +530,107 @@ class InterviewService:
             interview_logger.error(f"기록 조회 오류: {str(e)}")
             raise Exception(f"기록을 조회하는 중 오류가 발생했습니다: {str(e)}")
     
+    # 🔄 완전히 새로운 로직으로 교체
     async def process_competition_turn(self, session_id: str, user_answer: str) -> Dict[str, Any]:
-        """
-        사용자 답변을 받아 AI 답변을 생성하고, 두 답변을 기반으로 다음 질문을 반환하는 통합 턴 처리 함수.
-        """
         try:
-            session = self.session_manager.get_interviewer_session(session_id)
-            if not session:
-                raise ValueError("유효하지 않은 세션 ID입니다.")
-
-            # 1. 사용자 답변 기록
-            session.record_user_answer(user_answer)
-
-            # 2. AI 답변 생성 및 기록
-            ai_answer_content = await asyncio.to_thread(session.generate_and_record_ai_answer)
-
-            # 3. 다음 질문 생성
-            next_question = await asyncio.to_thread(session.get_next_question)
-
-            # 프론트엔드 호환성을 위한 응답 데이터 재구성
+            session_state = self.active_sessions.get(session_id)
+            if not session_state or session_state.is_completed:
+                raise ValueError("유효하지 않거나 이미 종료된 세션 ID입니다.")
+            
+            # 1. 사용자 답변 및 이전 질문 기록
+            last_qa = session_state.qa_history[-1]
+            last_qa["user_answer"] = user_answer
+            previous_question_obj = last_qa["question"]
+            previous_question_text = previous_question_obj["question"]
+            
+            # 2. AI 답변 생성
+            answer_request = AnswerRequest(
+                question_content=previous_question_text,
+                question_type=QuestionType.from_string(previous_question_obj.get("interviewer_type", "HR")),
+                question_intent=previous_question_obj.get("intent", ""),
+                company_id=session_state.company_id,
+                position=session_state.position,
+                quality_level=QualityLevel.AVERAGE,
+                llm_provider=LLMProvider.OPENAI_GPT4O
+            )
+            ai_answer_response = await asyncio.to_thread(
+                session_state.ai_candidate_model.generate_answer, request=answer_request, persona=session_state.ai_persona
+            )
+            ai_answer_content = ai_answer_response.answer_content
+            last_qa["ai_answer"] = ai_answer_content
+            
+            # 3. 다음 질문 생성을 위한 모든 로직을 여기서 직접 수행
+            # 3-1. 면접 종료 조건 확인
+            if session_state.questions_asked_count >= session_state.total_question_limit:
+                session_state.is_completed = True
+                next_question = {'question': '면접이 종료되었습니다. 수고하셨습니다.', 'intent': '면접 종료', 
+                                'interviewer_type': 'SYSTEM', 'is_final': True}
+            # 3-2. 두 번째 고정 질문 (지원동기)
+            elif session_state.questions_asked_count == 1:
+                next_question = session_state.question_generator.generate_fixed_question(1, session_state.company_id, 
+                                                                                        {"name": session_state.user_name})
+            # 3-3. 턴제 시스템에 따른 질문 생성
+            else:
+                current_interviewer = session_state.get_current_interviewer()
+                turn_state = session_state.interviewer_turn_state[current_interviewer]
+                
+                # 메인 질문 안했으면 메인 질문 생성
+                if not turn_state['main_question_asked']:
+                    next_question = await asyncio.to_thread(
+                        session_state.question_generator.generate_question_by_role,
+                        interviewer_role=current_interviewer, company_id=session_state.company_id,
+                        user_resume={"name": session_state.user_name, "position": session_state.position}
+                    )
+                    turn_state['main_question_asked'] = True
+                # 꼬리 질문 생성 (최대 2개로 수정)
+                elif turn_state['follow_up_count'] < 2:  # 1개에서 2개로 변경
+                    company_info = session_state.question_generator.companies_data.get(session_state.company_id, {})
+                    next_question = await asyncio.to_thread(
+                        session_state.question_generator.generate_follow_up_question,
+                        previous_question=previous_question_text, user_answer=user_answer, chun_sik_answer=ai_answer_content,
+                        company_info=company_info, interviewer_role=current_interviewer,
+                        user_resume={"name": session_state.user_name, "position": session_state.position}
+                    )
+                    turn_state['follow_up_count'] += 1
+                # 턴 전환
+                else:
+                    # 현재 면접관 턴 초기화 및 다음 면접관으로 인덱스 변경
+                    turn_state['main_question_asked'] = False
+                    turn_state['follow_up_count'] = 0
+                    session_state.current_interviewer_index = (session_state.current_interviewer_index + 1) % len(session_state.interviewer_roles)
+                    
+                    # 새로운 면접관의 메인 질문 생성
+                    new_interviewer = session_state.get_current_interviewer()
+                    next_question = await asyncio.to_thread(
+                        session_state.question_generator.generate_question_by_role,
+                        interviewer_role=new_interviewer, company_id=session_state.company_id,
+                        user_resume={"name": session_state.user_name, "position": session_state.position}
+                    )
+                    session_state.interviewer_turn_state[new_interviewer]['main_question_asked'] = True
+            
+            # 4. 상태 업데이트
+            if not next_question.get('is_final'):
+                session_state.questions_asked_count += 1
+                session_state.qa_history.append({"question": next_question, "user_answer": None, "ai_answer": None})
+            
+            interview_logger.info(f"🔄 [New Arch] Turn processed: {session_id}, Next question by {next_question.get('interviewer_type')}")
+            
             return {
-                "status": "success",
-                "ai_answer": { "content": ai_answer_content },
-                "next_question": next_question,
-                "next_user_question": next_question, # 프론트엔드 호환용
-                "interview_status": "completed" if session.is_complete() or next_question.get('is_final') else "continue",
+                "status": "success", "ai_answer": {"content": ai_answer_content},
+                "next_question": next_question, "interview_status": "completed" if session_state.is_completed else "continue",
                 "progress": {
-                    "current": session.interviewer_service.questions_asked_count,
-                    "total": session.interviewer_service.total_question_limit,
-                    "percentage": (session.interviewer_service.questions_asked_count / session.interviewer_service.total_question_limit) * 100
+                    "current": session_state.questions_asked_count, "total": session_state.total_question_limit,
+                    "percentage": (session_state.questions_asked_count / session_state.total_question_limit) * 100
                 }
             }
         except Exception as e:
-            interview_logger.error(f"경쟁 면접 턴 처리 오류: {str(e)}")
-            raise Exception(f"턴 처리 중 오류가 발생했습니다: {str(e)}")
+            interview_logger.error(f"경쟁 면접 턴 처리 오류: {e}", exc_info=True)
+            raise
     
-    # 🚀 새로운 턴제 면접 시스템 메서드들
+    # 🗑️ 더 이상 사용하지 않는 메서드들 (기존 시스템 호환용으로 유지)
     
     async def start_turn_based_interview(self, settings: Dict[str, Any]) -> Dict[str, Any]:
-        """턴제 면접 시작 - 새로운 InterviewerService 사용"""
+        """턴제 면접 시작 - 더 이상 사용하지 않음, start_ai_competition 사용 권장"""
         try:
             company_id = self.get_company_id(settings['company'])
             
