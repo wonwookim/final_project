@@ -342,30 +342,6 @@ class InterviewerPromptBuilder:
         return prompt
     
     def build_system_prompt_for_follow_up(self) -> str:
-        """꼬리 질문 생성용 시스템 프롬프트"""
-        return """당신은 경험 많은 전문 면접관입니다. 지원자들의 답변을 분석하여 핵심을 파고드는 날카로운 꼬리 질문을 생성합니다.
-
-🚨 **절대 준수 사항** 🚨
-- 오직 아래 JSON 형식으로만 응답하세요
-- 다른 어떤 텍스트, 설명, 주석도 절대 포함하지 마세요
-- JSON 앞뒤에 ```json이나 기타 텍스트 금지
-
-**필수 응답 형식:**
-{"question": "질문 내용", "intent": "질문 의도"}
-
-**예시:**
-{"question": "방금 말씀하신 성능 최적화 방법에서 가장 효과적이었던 부분은 무엇인가요?", "intent": "구체적인 기술적 성과와 판단 근거 확인"}
-
-위 형식만 사용하세요. 다른 형태의 응답은 시스템 오류를 발생시킵니다."""
-    
-    def build_follow_up_question_prompt(self, previous_question: str, user_answer: str, 
-                                      chun_sik_answer: str, company_info: Dict, 
-                                      interviewer_role: str) -> str:
-        """동적 꼬리 질문 생성 - 답변 기반 실시간 심층 탐구"""
-        
-        company_name = company_info.get('name', '회사')
-        
-def build_system_prompt_for_follow_up(self) -> str:
         """고도화된 꼬리 질문 생성용 시스템 프롬프트 - 직무별 전문성 반영"""
         return """당신은 각 직무별 전문성을 깊이 이해하는 경험 많은 면접관입니다. 
 지원자들의 답변을 정밀 분석하여 직무 전문가만이 답할 수 있는 날카로운 꼬리 질문을 생성합니다.
@@ -389,10 +365,10 @@ def build_system_prompt_for_follow_up(self) -> str:
 백엔드: {"question": "대용량 트래픽 상황에서 DB 커넥션 풀 관리는 어떤 전략으로 하셨나요?", "intent": "백엔드 확장성 설계 경험 검증"}
 
 위 형식만 사용하세요. 다른 형태의 응답은 시스템 오류를 발생시킵니다."""
-    
-def build_follow_up_question_prompt(self, previous_question: str, user_answer: str, 
-                                      chun_sik_answer: str, company_info: Dict, 
-                                      interviewer_role: str, position: str) -> str:
+        
+    def build_follow_up_question_prompt(self, previous_question: str, user_answer: str, 
+                                        chun_sik_answer: str, company_info: Dict, 
+                                        interviewer_role: str, position: str) -> str:
         """고도화된 동적 꼬리 질문 생성 - 직무별 전문성 반영"""
         
         company_name = company_info.get('name', '회사')
@@ -432,8 +408,8 @@ def build_follow_up_question_prompt(self, previous_question: str, user_answer: s
 {{"question": "질문 내용", "intent": "질문 의도"}}
 """
         return prompt.strip()
-    
-def _build_position_context(self, position: str, interviewer_role: str) -> str:
+        
+    def _build_position_context(self, position: str, interviewer_role: str) -> str:
         """직무별 전문성 컨텍스트 동적 생성"""
         
         # 직무명 정규화 (다양한 표기법 대응)
@@ -483,7 +459,7 @@ def _build_position_context(self, position: str, interviewer_role: str) -> str:
 - **면접관 역할**: {interviewer_role} 관점에서 {position} 전문성과 실무 역량 평가
 """
 
-def _analyze_answers_for_follow_up(self, user_answer: str, ai_answer: str, position: str) -> str:
+    def _analyze_answers_for_follow_up(self, user_answer: str, ai_answer: str, position: str) -> str:
         """답변 분석 및 질문 전략 결정"""
         
         # 답변 길이 및 구체성 분석
@@ -531,7 +507,7 @@ def _analyze_answers_for_follow_up(self, user_answer: str, ai_answer: str, posit
         
         return "\n".join(analysis_parts + strategy_parts) if analysis_parts or strategy_parts else f"📋 **분석**: 두 답변 모두 {position} 관점에서 균형있게 구성됨"
 
-def _get_position_specific_guidelines(self, position: str, interviewer_role: str) -> str:
+    def _get_position_specific_guidelines(self, position: str, interviewer_role: str) -> str:
         """직무별 특화 가이드라인"""
         
         position_normalized = self._normalize_position_name(position)
@@ -573,7 +549,7 @@ def _get_position_specific_guidelines(self, position: str, interviewer_role: str
 - {interviewer_role} 면접관 관점에서의 날카로운 검증 포인트
 """
 
-def _normalize_position_name(self, position: str) -> str:
+    def _normalize_position_name(self, position: str) -> str:
         """다양한 직무명 표기를 표준화"""
         
         position_lower = position.lower().replace(" ", "").replace("-", "")
@@ -591,7 +567,7 @@ def _normalize_position_name(self, position: str) -> str:
         else:
             return position  # 원본 반환
 
-def _get_position_keywords(self, position: str) -> List[str]:
+    def _get_position_keywords(self, position: str) -> List[str]:
         """직무별 핵심 키워드 리스트"""
         
         position_normalized = self._normalize_position_name(position)
