@@ -107,6 +107,32 @@ export interface InterviewResult {
   interview_info: InterviewSettings;
 }
 
+// 🆕 백엔드 InterviewResponse 스키마에 맞는 타입 정의 (JOIN된 데이터 포함)
+export interface InterviewResponse {
+  interview_id: number;
+  user_id: number;
+  ai_resume_id: number;
+  user_resume_id: number;
+  posting_id: number;
+  company_id: number;
+  position_id: number;
+  total_feedback: string;
+  date: string; // ISO 날짜 문자열
+  // JOIN된 데이터
+  company: {
+    name: string;
+  };
+  position: {
+    position_name: string;
+  };
+}
+
+// UI에서 사용할 확장된 면접 히스토리 타입 (추가 정보만 포함)
+export interface InterviewHistoryItem extends InterviewResponse {
+  score?: number;        // 계산된 점수 (total_feedback에서 파싱)
+  status?: 'completed' | 'in_progress' | 'failed'; // UI 상태
+}
+
 export interface InterviewHistory {
   total_interviews: number;
   interviews: Array<{
@@ -195,11 +221,10 @@ export const interviewApi = {
     return response.data as InterviewResult;
   },
 
-  // 면접 기록 조회
-  async getInterviewHistory(userId?: string): Promise<InterviewHistory> {
-    const params = userId ? { user_id: userId } : {};
-    const response = await apiClient.get('/interview/history', { params });
-    return response.data as InterviewHistory;
+  // 면접 기록 조회 (백엔드 /interview/history API 호출)
+  async getInterviewHistory(): Promise<InterviewResponse[]> {
+    const response = await apiClient.get('/interview/history');
+    return response.data as InterviewResponse[];
   },
 
   // AI 경쟁 면접 시작

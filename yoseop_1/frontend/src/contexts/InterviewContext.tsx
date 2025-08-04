@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useReducer, useEffect, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useRef, useCallback, useState, ReactNode } from 'react';
 import { InterviewSettings, Question, InterviewResult, interviewApi } from '../services/api';
+import { tokenManager } from '../services/api';
 
 // JobPosting 타입 정의 - 실제 DB 구조에 맞게 최종 단순화
 interface JobPosting {
@@ -380,40 +381,106 @@ function calculateInterviewStats(interviews: InterviewRecord[]): InterviewStats 
 const InterviewContext = createContext<{
   state: InterviewState;
   dispatch: React.Dispatch<InterviewAction>;
-  loadInterviewHistory: () => Promise<void>;
+  loadInterviewHistory: (force?: boolean) => Promise<void>;
+  updateAuthState: () => void;
 } | null>(null);
 
 // Provider 컴포넌트
 export function InterviewProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(interviewReducer, initialState);
   const hasInitialized = useRef(false);
+  const currentUser = useRef<any>(null);
   
-  // 면접 기록 로드 함수
-  const loadInterviewHistory = async () => {
-    if (state.historyLoading) return; // 이미 로딩 중이면 중복 실행 방지
+  // 인증 상태 관리 (localStorage 변경을 실시간으로 감지)
+  const [authState, setAuthState] = useState(() => {
+    const token = tokenManager.getToken();
+    const user = tokenManager.getUser();
+    return {
+      isAuthenticated: !!(token && user),
+      user: user,
+      token: token
+    };
+  });
+  
+  // 인증 상태 업데이트 함수
+  const updateAuthState = useCallback(() => {
+    const token = tokenManager.getToken();
+    const user = tokenManager.getUser();
+    const isAuthenticated = !!(token && user);
+    
+    setAuthState(prev => {
+      // 인증 상태가 실제로 변경된 경우에만 업데이트
+      if (prev.isAuthenticated !== isAuthenticated || prev.user?.user_id !== user?.user_id) {
+        console.log('🔄 인증 상태 업데이트:', isAuthenticated ? '로그인됨' : '로그아웃됨');
+        return {
+          isAuthenticated,
+          user,
+          token
+        };
+      }
+      return prev;
+    });
+  }, []);
+
+  // 면접 기록 로드 함수 (useCallback으로 최적화)
+  const loadInterviewHistory = useCallback(async (force: boolean = false) => {
+    // authState 사용하여 인증 상태 체크
+    if (!authState.isAuthenticated) {
+      // 로그인되지 않은 경우 빈 상태로 설정
+      console.log('🔒 로그인되지 않음: 면접 히스토리 로드 건너뜀');
+      dispatch({ 
+        type: 'LOAD_INTERVIEW_HISTORY_SUCCESS', 
+        payload: [] 
+      });
+      return;
+    }
+    
+    if (state.historyLoading && !force) return; // 이미 로딩 중이면 중복 실행 방지
     
     dispatch({ type: 'LOAD_INTERVIEW_HISTORY_START' });
     
     try {
-      const response = await interviewApi.getInterviewHistory();
-      
-      const processedInterviews: InterviewRecord[] = response.interviews.map(interview => {
-        const date = new Date(interview.completed_at);
+      console.log('📊 면접 히스토리 로드 시작 (사용자:', authState.user?.email, ')');
+      // 새로운 /interview/history API 호출
+      const interviews = await interviewApi.getInterviewHistory();
+      console.log(interviews)
+      const processedInterviews: InterviewRecord[] = interviews.map(interview => {
+        const date = new Date(interview.date);
+        // total_feedback에서 점수 추출 (예: JSON 파싱 또는 패턴 매칭)
+        let score = 75; // 기본값
+        try {
+          // total_feedback이 JSON 형태인 경우 파싱 시도
+          const feedbackData = JSON.parse(interview.total_feedback);
+          score = feedbackData.overall_score || 75;
+        } catch {
+          // 숫자 패턴 매칭으로 점수 추출 시도
+          const scoreMatch = interview.total_feedback.match(/(\d+)점/);
+          if (scoreMatch) {
+            score = parseInt(scoreMatch[1]);
+          }
+        }
+        console.log(interview)
         return {
-          session_id: interview.session_id,
-          company: interview.settings.company,
-          position: interview.settings.position,
+          session_id: interview.interview_id.toString(),
+          company: interview.company?.name || '회사명 없음',
+          position: interview.position?.position_name || '직군명 없음',
           date: date.toLocaleDateString('ko-KR'),
           time: date.toLocaleTimeString('ko-KR', { 
             hour: '2-digit', 
             minute: '2-digit' 
           }),
           duration: `${Math.floor(Math.random() * 20 + 15)}분 ${Math.floor(Math.random() * 60)}초`,
-          score: interview.total_score,
-          mode: interview.settings.mode,
+          score: score,
+          mode: 'standard', // TODO: 면접 모드 정보 추가 필요
           status: '완료',
-          settings: interview.settings,
-          completed_at: interview.completed_at
+          settings: { 
+            company: interview.company?.name || '회사명 없음', 
+            position: interview.position?.position_name || '직군명 없음', 
+            mode: 'standard', 
+            difficulty: '보통', 
+            candidate_name: authState.user?.name || '사용자' 
+          },
+          completed_at: interview.date
         };
       });
 
@@ -425,46 +492,89 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         payload: processedInterviews 
       });
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('면접 기록 로드 실패:', error);
+      
+      // 401 에러 (인증 실패) 처리
+      if (error.response?.status === 401) {
+        console.log('🔒 인증 만료됨: 토큰 제거 및 빈 상태로 설정');
+        tokenManager.clearAuth();
+        dispatch({ 
+          type: 'LOAD_INTERVIEW_HISTORY_SUCCESS', 
+          payload: [] 
+        });
+        return;
+      }
+      
+      // 404 에러 (면접 기록 없음) 처리  
+      if (error.response?.status === 404) {
+        console.log('📊 면접 기록 없음');
+        dispatch({ 
+          type: 'LOAD_INTERVIEW_HISTORY_SUCCESS', 
+          payload: [] 
+        });
+        return;
+      }
+      
+      // 기타 에러 처리
       dispatch({ 
         type: 'LOAD_INTERVIEW_HISTORY_ERROR', 
         payload: '면접 기록을 불러오는데 실패했습니다.' 
       });
       
-      // 에러 발생 시 기본 데이터 설정
-      const fallbackData: InterviewRecord[] = [
-        {
-          session_id: '1',
-          company: '네이버',
-          position: '백엔드 개발자',
-          date: '2024-01-16',
-          time: '14:00',
-          duration: '18분 32초',
-          score: 85,
-          mode: 'ai_competition',
-          status: '완료',
-          settings: { company: '네이버', position: '백엔드 개발자', mode: 'ai_competition', difficulty: '중간', candidate_name: '홍길동' },
-          completed_at: '2024-01-16T14:00:00Z'
-        }
-      ];
-      
+      // 에러 발생 시 빈 배열 반환
       dispatch({ 
         type: 'LOAD_INTERVIEW_HISTORY_SUCCESS', 
-        payload: fallbackData 
+        payload: [] 
       });
     }
-  };
+  }, [authState.isAuthenticated, authState.user?.email, state.historyLoading, dispatch]);
 
-  // 컴포넌트 마운트 시 면접 기록 로드 (React Strict Mode 중복 방지)
+  // 초기 로드 시 인증 상태 동기화
   useEffect(() => {
-    if (hasInitialized.current) return;
-    hasInitialized.current = true;
-    loadInterviewHistory();
-  }, []);
+    updateAuthState();
+    
+    // localStorage 변경 감지 (다른 탭에서 로그인/로그아웃 시)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'auth_token' || e.key === 'user_profile') {
+        console.log('🔑 localStorage 변경 감지:', e.key);
+        updateAuthState();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [updateAuthState]);
+
+  // 인증 상태 변경 시 면접 히스토리 로드
+  useEffect(() => {
+    const userChanged = currentUser.current?.user_id !== authState.user?.user_id;
+    currentUser.current = authState.user;
+
+    if (!authState.isAuthenticated) {
+      // 로그아웃된 경우 상태 초기화
+      console.log('🔓 로그아웃 감지: 면접 히스토리 초기화');
+      hasInitialized.current = false;
+      dispatch({ 
+        type: 'LOAD_INTERVIEW_HISTORY_SUCCESS', 
+        payload: [] 
+      });
+      return;
+    }
+
+    // 로그인 상태이고 (사용자가 변경되었거나 초기 로드인 경우) 면접 히스토리 로드
+    if (userChanged || !hasInitialized.current) {
+      console.log('🔄 인증 상태 변경 감지: 면접 히스토리 로드');
+      hasInitialized.current = true;
+      loadInterviewHistory(true); // force=true로 강제 새로고침
+    }
+  }, [authState.isAuthenticated, authState.user?.user_id, loadInterviewHistory]);
   
   return (
-    <InterviewContext.Provider value={{ state, dispatch, loadInterviewHistory }}>
+    <InterviewContext.Provider value={{ state, dispatch, loadInterviewHistory, updateAuthState }}>
       {children}
     </InterviewContext.Provider>
   );

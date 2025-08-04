@@ -5,16 +5,9 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 import { useAuth } from '../hooks/useAuth';
 import { usePositions } from '../hooks/usePositions';
 import { useResumes } from '../hooks/useResumes';
+import { useInterviewHistory } from '../hooks/useInterviewHistory';
 import { Position, ResumeResponse, ResumeCreate } from '../services/api';
 
-interface InterviewRecord {
-  id: string;
-  company: string;
-  position: string;
-  date: string;
-  score: number;
-  status: 'completed' | 'in_progress' | 'failed';
-}
 
 // UserResume 인터페이스를 백엔드 스키마와 일치하도록 수정
 interface UserResume extends ResumeResponse {
@@ -33,38 +26,13 @@ const ProfilePage: React.FC = () => {
   // 커스텀 훅들 사용
   const { positions, loading: positionsLoading } = usePositions();
   const { resumes: resumesData, loading: resumesLoading, error: resumesError, createResume, updateResume, deleteResume } = useResumes();
+  const { interviews: interviewHistory, stats: interviewStats, isLoading: historyLoading, error: historyError, refreshHistory } = useInterviewHistory();
   const [userInfo, setUserInfo] = useState({
     name: user?.name || '',
     email: user?.email || '',
     profileImage: null as string | null
   });
 
-  const [interviewHistory] = useState<InterviewRecord[]>([
-    {
-      id: '1',
-      company: '네이버',
-      position: '프론트엔드 개발자',
-      date: '2025-07-20',
-      score: 87,
-      status: 'completed'
-    },
-    {
-      id: '2', 
-      company: '카카오',
-      position: '백엔드 개발자',
-      date: '2025-07-18',
-      score: 92,
-      status: 'completed'
-    },
-    {
-      id: '3',
-      company: '라인',
-      position: '풀스택 개발자', 
-      date: '2025-07-15',
-      score: 78,
-      status: 'completed'
-    }
-  ]);
 
 
   const [currentResume, setCurrentResume] = useState<UserResume>({
@@ -735,71 +703,128 @@ const ProfilePage: React.FC = () => {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold text-slate-900">면접 히스토리</h2>
-              <button 
-                onClick={() => navigate('/interview/job-posting')}
-                className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
-              >
-                🚀 새 면접 시작
-              </button>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => refreshHistory()}
+                  disabled={historyLoading}
+                  className="bg-slate-100 text-slate-600 px-3 py-2 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                >
+                  {historyLoading ? (
+                    <>
+                      <LoadingSpinner size="sm" />
+                      새로고침 중...
+                    </>
+                  ) : (
+                    <>
+                      🔄 새로고침
+                    </>
+                  )}
+                </button>
+                <button 
+                  onClick={() => navigate('/interview/job-posting')}
+                  className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                  🚀 새 면접 시작
+                </button>
+              </div>
             </div>
 
             <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
               <h3 className="text-lg font-semibold text-slate-900 mb-4">면접 통계</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">{interviewHistory.length}</div>
-                  <div className="text-sm text-slate-600">총 면접 횟수</div>
+              {historyLoading ? (
+                <div className="flex justify-center py-8">
+                  <LoadingSpinner size="sm" />
+                  <span className="ml-2 text-slate-500">통계 로딩 중...</span>
                 </div>
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">
-                    {Math.round(interviewHistory.reduce((sum, interview) => sum + interview.score, 0) / interviewHistory.length)}
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center p-4 bg-blue-50 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">{interviewStats.totalInterviews}</div>
+                    <div className="text-sm text-slate-600">총 면접 횟수</div>
                   </div>
-                  <div className="text-sm text-slate-600">평균 점수</div>
-                </div>
-                <div className="text-center p-4 bg-purple-50 rounded-lg">
-                  <div className="text-2xl font-bold text-purple-600">
-                    {interviewHistory.filter(interview => interview.score >= 80).length}
+                  <div className="text-center p-4 bg-green-50 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">
+                      {interviewStats.averageScore}
+                    </div>
+                    <div className="text-sm text-slate-600">평균 점수</div>
                   </div>
-                  <div className="text-sm text-slate-600">80점 이상</div>
+                  <div className="text-center p-4 bg-purple-50 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-600">
+                      {interviewHistory.filter(interview => interview.score >= 80).length}
+                    </div>
+                    <div className="text-sm text-slate-600">80점 이상</div>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
-            <div className="space-y-4">
-              {interviewHistory.map(interview => (
-                <div key={interview.id} className="bg-white rounded-lg border border-slate-200 p-4 hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg flex items-center justify-center text-white font-bold">
-                        {interview.company.charAt(0)}
+            {historyLoading ? (
+              <div className="flex justify-center py-12">
+                <LoadingSpinner size="lg" />
+                <span className="ml-3 text-slate-600">면접 기록을 불러오는 중...</span>
+              </div>
+            ) : historyError ? (
+              <div className="text-center py-12">
+                <div className="text-6xl mb-4">⚠️</div>
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">면접 기록을 불러올 수 없습니다</h3>
+                <p className="text-slate-600 mb-4">{historyError}</p>
+                <button 
+                  onClick={() => refreshHistory()}
+                  disabled={historyLoading}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {historyLoading ? '다시 시도 중...' : '다시 시도'}
+                </button>
+              </div>
+            ) : interviewHistory.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="text-6xl mb-4">📊</div>
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">아직 면접 기록이 없습니다</h3>
+                <p className="text-slate-600 mb-6">첫 면접을 시작해보세요!</p>
+                <button 
+                  onClick={() => navigate('/interview/job-posting')}
+                  className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                  🚀 면접 시작하기
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {interviewHistory.map(interview => (
+                  <div key={interview.session_id} className="bg-white rounded-lg border border-slate-200 p-4 hover:shadow-md transition-shadow">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg flex items-center justify-center text-white font-bold">
+                          {interview.company.charAt(0)}
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-slate-900">{interview.company}</h3>
+                          <p className="text-slate-600">{interview.position}</p>
+                          <p className="text-sm text-slate-500">{interview.date} {interview.time}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-semibold text-slate-900">{interview.company}</h3>
-                        <p className="text-slate-600">{interview.position}</p>
-                        <p className="text-sm text-slate-500">{interview.date}</p>
+                      <div className="flex items-center space-x-4">
+                        <div className={`px-3 py-1 rounded-full text-sm font-medium ${getScoreColor(interview.score)}`}>
+                          {interview.score}점
+                        </div>
+                        {getStatusBadge(interview.status)}
+                        <button 
+                          onClick={() => navigate('/interview/results', { 
+                            state: { 
+                              interviewId: interview.session_id,
+                              skipApiCall: true 
+                            }
+                          })}
+                          className="text-blue-600 hover:text-blue-700 px-3 py-1 rounded text-sm"
+                        >
+                          결과 보기
+                        </button>
                       </div>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                      <div className={`px-3 py-1 rounded-full text-sm font-medium ${getScoreColor(interview.score)}`}>
-                        {interview.score}점
-                      </div>
-                      {getStatusBadge(interview.status)}
-                      <button 
-                        onClick={() => navigate('/interview/results', { 
-                          state: { 
-                            interviewId: interview.id,
-                            skipApiCall: true 
-                          }
-                        })}
-                        className="text-blue-600 hover:text-blue-700 px-3 py-1 rounded text-sm"
-                      >
-                        결과 보기
-                      </button>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         );
 
