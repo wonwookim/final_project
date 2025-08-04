@@ -11,6 +11,7 @@ class InterviewSettings(BaseModel):
     difficulty: str = "중간"
     candidate_name: str
     documents: Optional[List[str]] = None
+    resume: Optional[Dict] = None  # 🆕 사용자 이력서 데이터
     posting_id: Optional[int] = None  # 🆕 채용공고 ID - 지정되면 실제 DB 데이터 사용
     use_interviewer_service: Optional[bool] = False  # 🎯 InterviewerService 사용 플래그
 
