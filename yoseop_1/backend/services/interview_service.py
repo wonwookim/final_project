@@ -13,6 +13,7 @@ import random
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 from dataclasses import dataclass, field
+import time
 
 # 🆕 필요한 모듈 직접 임포트
 from llm.interviewer.question_generator import QuestionGenerator  # service.py 대신 question_generator.py를 직접 사용
@@ -23,7 +24,7 @@ from llm.shared.constants import ALLOWED_FILE_EXTENSIONS, MAX_FILE_SIZE
 from llm.shared.logging_config import interview_logger, performance_logger
 
 # 호환성을 위한 InterviewSession 클래스 import
-from backend.models.session import InterviewSession
+from backend.services.Orchestrator import Orchestrator  # Orchestrator 클래스 임포트
 
 # 🔥 llm/session 의존성 완전 제거 - 더 이상 사용하지 않음
 # from llm.session import SessionManager, InterviewSession, ComparisonSession  # REMOVED
@@ -61,7 +62,34 @@ class SessionState:
     def get_current_interviewer(self) -> str:
         return self.interviewer_roles[self.current_interviewer_index]
 
+## 석원 추가
+from dataclasses import dataclass, field
+from typing import Optional
 
+@dataclass
+class Metadata:
+    interview_id: str
+    step: int
+    task: str
+    from_agent: str 
+    next_agent: str
+
+@dataclass
+class Content:
+    type: str  # HR, TECH, COLLABORATION
+    content: str
+
+@dataclass
+class Metrics:
+    total_time: Optional[float] = None
+    duration: Optional[float] = None
+    answer_seq: Optional[int] = None
+
+@dataclass
+class AgentMessage:
+    metadata: Metadata
+    content: Content
+    metrics: Metrics = field(default_factory=Metrics)
 
 class InterviewService:
     """면접 서비스 - 모든 면접 관련 로직을 담당"""
@@ -499,9 +527,21 @@ class InterviewService:
     
     # ===== AI 경쟁 관련 =====
     
-    async def start_ai_competition(self, settings: Dict[str, Any]) -> Dict[str, Any]:
+    async def start_ai_competition(self, settings: Dict[str, Any], start_time: float = None) -> Dict[str, Any]:
+        """
+        AI 경쟁 면접 시작.
+        
+        Args:
+            settings (Dict[str, Any]): 면접 설정.
+            start_time (float, optional): 라우터에서 전달받은 요청 시작 시간. Defaults to None.
+        """
         session_id = None
         try:
+            # start_time이 전달되었는지 확인하고 로그 기록
+            if start_time:
+                setup_duration = time.perf_counter() - start_time
+                self._log_interview_event("SETUP_TIME", session_id, f"라우터 -> 서비스 준비 시간: {setup_duration:.4f}초")
+
             # 설정 검증 (공통 로직 사용)
             validation_error = self._validate_interview_settings(settings)
             if validation_error:
@@ -526,11 +566,19 @@ class InterviewService:
             )
             self.active_sessions[session_id] = session_state
             
+            # 3-1. 오케스트레이터기반 턴제 시스템 초기화
+            orchestrator = Orchestrator(session_id)  # Orchestrator 인스턴스 생성
+            
             # 4. 첫 질문 생성 (공통 로직 사용)
             first_question = self._generate_first_question(session_state)
             
             self._log_interview_event("AI_SESSION_CREATED", session_id, f"AI: {ai_persona.name}")
             
+            # 여기서도 전체 경과 시간 측정 가능
+            if start_time:
+                total_duration = time.perf_counter() - start_time
+                self._log_interview_event("START_COMPLETE_TIME", session_id, f"면접 시작까지 총 소요 시간: {total_duration:.4f}초")
+
             return self._create_success_response(
                 "새로운 AI 경쟁 면접이 시작되었습니다.",
                 {
@@ -542,127 +590,6 @@ class InterviewService:
             )
         except Exception as e:
             return self._handle_interview_error(e, "AI 경쟁 면접 시작", session_id)
-    
-    
-    
-    async def get_ai_answer(self, session_id: str, question_id: str) -> Dict[str, Any]:
-        """AI 지원자의 답변 생성"""
-        try:
-            # URL 디코딩
-            import urllib.parse
-            decoded_session_id = urllib.parse.unquote(session_id)
-            
-            # 세션 ID에서 회사와 포지션 파싱
-            session_parts = decoded_session_id.split('_')
-            company_id = session_parts[0] if len(session_parts) > 0 else "naver"
-            position = "_".join(session_parts[1:-1]) if len(session_parts) > 2 else "백엔드 개발"
-            
-            # 🗑️ 더 이상 사용하지 않음 - 새로운 중앙 관제 시스템 사용
-            # from llm.session.interviewer_session import InterviewerSession
-            
-            # InterviewerSession 임시 생성하여 질문 가져오기
-            temp_session = InterviewerSession(company_id, position, "춘식이")
-            first_question_data = temp_session.start()
-            
-            if first_question_data:
-                question_content = first_question_data["question"]
-                question_intent = first_question_data.get("intent", "일반적인 평가")
-                question_type = first_question_data.get("interviewer_type", "HR")
-            else:
-                # 폴백 질문
-                if question_id == "q_1":
-                    question_content = "춘식이, 자기소개를 부탁드립니다."
-                    question_intent = "지원자의 기본 정보와 성격, 역량을 파악"
-                    question_type = "INTRO"
-                elif question_id == "q_2":
-                    question_content = f"춘식이께서 네이버에 지원하게 된 동기는 무엇인가요?"
-                    question_intent = "회사에 대한 관심도와 지원 동기 파악"
-                    question_type = "MOTIVATION"
-                else:
-                    question_content = "춘식이에 대해 더 알려주세요."
-                    question_intent = "일반적인 평가"
-                    question_type = "HR"
-            
-            # AI 답변 생성
-            from llm.candidate.model import AnswerRequest
-            from llm.shared.models import QuestionType
-            
-            # QuestionType 매핑
-            question_type_map = {
-                "INTRO": QuestionType.INTRO,
-                "MOTIVATION": QuestionType.MOTIVATION,
-                "HR": QuestionType.HR,
-                "TECH": QuestionType.TECH,
-                "COLLABORATION": QuestionType.COLLABORATION
-            }
-            
-            answer_request = AnswerRequest(
-                question_content=question_content,
-                question_type=question_type_map.get(question_type, QuestionType.HR),
-                question_intent=question_intent,
-                company_id=company_id,
-                position=position,
-                quality_level=QualityLevel.GOOD,
-                llm_provider="openai_gpt4o_mini"
-            )
-            
-            # 🔄 단독 AI 답변 생성 (세션 없음 - 매번 새로운 페르소나)
-            interview_logger.info(f"🎭 [STANDALONE AI] 단독 AI 답변 생성 (세션 무관): {company_id} - {position}")
-            ai_answer = self.ai_candidate_model.generate_answer(answer_request, persona=None)
-            
-            if not ai_answer:
-                raise Exception("AI 답변 생성에 실패했습니다.")
-            
-            return {
-                "question": question_content,
-                "questionType": question_type,
-                "questionIntent": question_intent,
-                "answer": ai_answer.answer_content,
-                "time_spent": 60,
-                "score": 85,
-                "quality_level": ai_answer.quality_level.value,
-                "persona_name": ai_answer.persona_name
-            }
-            
-        except Exception as e:
-            interview_logger.error(f"AI 답변 생성 오류: {str(e)}")
-            raise Exception(f"AI 답변 생성 중 오류가 발생했습니다: {str(e)}")
-    
-    # ===== 결과 및 기록 =====
-    
-    # async def get_interview_history(self, user_id: str = None) -> Dict[str, Any]:
-    #     """면접 기록 조회 - 새로운 중앙 관제 시스템 및 기존 시스템 모두 지원 - UNUSED"""
-    #     try:
-    #         completed_sessions = []
-    #         
-    #         # 새로운 중앙 관제 시스템 세션들 추가
-    #         for session_id, session_state in self.active_sessions.items():
-    #             if session_state.is_completed:
-    #                 completed_sessions.append({
-    #                     "session_id": session_id,
-    #                     "settings": {
-    #                         "company": session_state.company_id,
-    #                         "position": session_state.position,
-    #                         "user_name": session_state.user_name
-    #                     },
-    #                     "completed_at": "",
-    #                     "total_score": 85,  # 기본값
-    #                     "type": "central_control",
-    #                     "questions_asked": session_state.questions_asked_count,
-    #                     "ai_name": session_state.ai_persona.name
-    #                 })
-    #         
-    #         # 🔥 SessionManager 의존성 완전 제거 - 오직 active_sessions만 사용
-    #         # 메모: 기존 SessionManager 세션들은 더 이상 지원하지 않음
-    #         
-    #         return {
-    #             "total_interviews": len(completed_sessions),
-    #             "interviews": completed_sessions
-    #         }
-    #         
-    #     except Exception as e:
-    #         interview_logger.error(f"기록 조회 오류: {str(e)}")
-    #         raise Exception(f"기록을 조회하는 중 오류가 발생했습니다: {str(e)}")
     
     # 🔄 완전히 새로운 로직으로 교체
     async def process_competition_turn(self, session_id: str, user_answer: str) -> Dict[str, Any]:
@@ -759,6 +686,127 @@ class InterviewService:
         except Exception as e:
             interview_logger.error(f"경쟁 면접 턴 처리 오류: {e}", exc_info=True)
             raise
+    
+    # async def get_ai_answer(self, session_id: str, question_id: str) -> Dict[str, Any]:
+    #     """AI 지원자의 답변 생성"""
+    #     try:
+    #         # URL 디코딩
+    #         import urllib.parse
+    #         decoded_session_id = urllib.parse.unquote(session_id)
+            
+    #         # 세션 ID에서 회사와 포지션 파싱
+    #         session_parts = decoded_session_id.split('_')
+    #         company_id = session_parts[0] if len(session_parts) > 0 else "naver"
+    #         position = "_".join(session_parts[1:-1]) if len(session_parts) > 2 else "백엔드 개발"
+            
+    #         # 🗑️ 더 이상 사용하지 않음 - 새로운 중앙 관제 시스템 사용
+    #         # from llm.session.interviewer_session import InterviewerSession
+            
+    #         # InterviewerSession 임시 생성하여 질문 가져오기
+    #         temp_session = InterviewerSession(company_id, position, "춘식이")
+    #         first_question_data = temp_session.start()
+            
+    #         if first_question_data:
+    #             question_content = first_question_data["question"]
+    #             question_intent = first_question_data.get("intent", "일반적인 평가")
+    #             question_type = first_question_data.get("interviewer_type", "HR")
+    #         else:
+    #             # 폴백 질문
+    #             if question_id == "q_1":
+    #                 question_content = "춘식이, 자기소개를 부탁드립니다."
+    #                 question_intent = "지원자의 기본 정보와 성격, 역량을 파악"
+    #                 question_type = "INTRO"
+    #             elif question_id == "q_2":
+    #                 question_content = f"춘식이께서 네이버에 지원하게 된 동기는 무엇인가요?"
+    #                 question_intent = "회사에 대한 관심도와 지원 동기 파악"
+    #                 question_type = "MOTIVATION"
+    #             else:
+    #                 question_content = "춘식이에 대해 더 알려주세요."
+    #                 question_intent = "일반적인 평가"
+    #                 question_type = "HR"
+            
+    #         # AI 답변 생성
+    #         from llm.candidate.model import AnswerRequest
+    #         from llm.shared.models import QuestionType
+            
+    #         # QuestionType 매핑
+    #         question_type_map = {
+    #             "INTRO": QuestionType.INTRO,
+    #             "MOTIVATION": QuestionType.MOTIVATION,
+    #             "HR": QuestionType.HR,
+    #             "TECH": QuestionType.TECH,
+    #             "COLLABORATION": QuestionType.COLLABORATION
+    #         }
+            
+    #         answer_request = AnswerRequest(
+    #             question_content=question_content,
+    #             question_type=question_type_map.get(question_type, QuestionType.HR),
+    #             question_intent=question_intent,
+    #             company_id=company_id,
+    #             position=position,
+    #             quality_level=QualityLevel.GOOD,
+    #             llm_provider="openai_gpt4o_mini"
+    #         )
+            
+    #         # 🔄 단독 AI 답변 생성 (세션 없음 - 매번 새로운 페르소나)
+    #         interview_logger.info(f"🎭 [STANDALONE AI] 단독 AI 답변 생성 (세션 무관): {company_id} - {position}")
+    #         ai_answer = self.ai_candidate_model.generate_answer(answer_request, persona=None)
+            
+    #         if not ai_answer:
+    #             raise Exception("AI 답변 생성에 실패했습니다.")
+            
+    #         return {
+    #             "question": question_content,
+    #             "questionType": question_type,
+    #             "questionIntent": question_intent,
+    #             "answer": ai_answer.answer_content,
+    #             "time_spent": 60,
+    #             "score": 85,
+    #             "quality_level": ai_answer.quality_level.value,
+    #             "persona_name": ai_answer.persona_name
+    #         }
+            
+    #     except Exception as e:
+    #         interview_logger.error(f"AI 답변 생성 오류: {str(e)}")
+    #         raise Exception(f"AI 답변 생성 중 오류가 발생했습니다: {str(e)}")
+    
+    # ===== 결과 및 기록 =====
+    
+    # async def get_interview_history(self, user_id: str = None) -> Dict[str, Any]:
+    #     """면접 기록 조회 - 새로운 중앙 관제 시스템 및 기존 시스템 모두 지원 - UNUSED"""
+    #     try:
+    #         completed_sessions = []
+    #         
+    #         # 새로운 중앙 관제 시스템 세션들 추가
+    #         for session_id, session_state in self.active_sessions.items():
+    #             if session_state.is_completed:
+    #                 completed_sessions.append({
+    #                     "session_id": session_id,
+    #                     "settings": {
+    #                         "company": session_state.company_id,
+    #                         "position": session_state.position,
+    #                         "user_name": session_state.user_name
+    #                     },
+    #                     "completed_at": "",
+    #                     "total_score": 85,  # 기본값
+    #                     "type": "central_control",
+    #                     "questions_asked": session_state.questions_asked_count,
+    #                     "ai_name": session_state.ai_persona.name
+    #                 })
+    #         
+    #         # 🔥 SessionManager 의존성 완전 제거 - 오직 active_sessions만 사용
+    #         # 메모: 기존 SessionManager 세션들은 더 이상 지원하지 않음
+    #         
+    #         return {
+    #             "total_interviews": len(completed_sessions),
+    #             "interviews": completed_sessions
+    #         }
+    #         
+    #     except Exception as e:
+    #         interview_logger.error(f"기록 조회 오류: {str(e)}")
+    #         raise Exception(f"기록을 조회하는 중 오류가 발생했습니다: {str(e)}")
+    
+ 
     
     # ===== 레거시/호환성 (DEPRECATED) =====
     

@@ -12,7 +12,7 @@ from backend.services.auth_service import AuthService
 from backend.services.voice_service import elevenlabs_tts_stream
 from fastapi.responses import HTMLResponse
 import io
-
+import time
 
 
 
@@ -141,6 +141,7 @@ async def start_ai_competition(
     service: InterviewService = Depends(get_interview_service)
 ):
     """AI 지원자와의 경쟁 면접 시작"""
+    start_time = time.perf_counter()  # <--- 추가: 시간 측정 시작
     try:
         # 🐛 디버깅: FastAPI에서 받은 설정값 로깅
         interview_logger.info(f"🐛 FastAPI DEBUG: 받은 settings = {settings.dict()}")
@@ -185,11 +186,20 @@ async def start_ai_competition(
         # 🐛 디버깅: 서비스에 전달할 settings_dict 로깅
         interview_logger.info(f"🐛 FastAPI DEBUG: 서비스에 전달할 settings_dict = {settings_dict}")
         
-        result = await service.start_ai_competition(settings_dict)
+        result = await service.start_ai_competition(settings_dict, start_time=start_time)
+        
+        # <--- 추가: 전체 소요 시간 로깅
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        interview_logger.info(f"✅ AI 경쟁 면접 시작 성공. 총 처리 시간: {elapsed_time:.4f}초")
+        
         return result
         
     except Exception as e:
-        interview_logger.error(f"AI 경쟁 면접 시작 오류: {str(e)}")
+        # <--- 추가: 에러 발생 시에도 소요 시간 로깅
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        interview_logger.error(f"AI 경쟁 면접 시작 오류: {str(e)}. 처리 시간: {elapsed_time:.4f}초")
         raise HTTPException(status_code=500, detail=str(e))
 
 @interview_router.get("/ai-answer/{session_id}/{question_id}")
