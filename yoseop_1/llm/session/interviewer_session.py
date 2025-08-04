@@ -1,27 +1,46 @@
 # llm/session/interviewer_session.py
 
+# 🚫 DEPRECATED - 더 이상 사용하지 않음
+# backend/services/interview_service.py의 새로운 중앙 관제 시스템을 사용하세요
+
 import uuid
-from typing import Dict, List, Any, Optional
-from llm.interviewer.service import InterviewerService
-from llm.candidate.model import CandidatePersona, AICandidateModel
+from typing import Dict, List, Any, Optional, TYPE_CHECKING
+# from llm.interviewer.service import InterviewerService  # 🗑️ DEPRECATED
+
+if TYPE_CHECKING:
+    from llm.candidate.model import CandidatePersona, AICandidateModel
 
 class InterviewerSession:
     """
-    InterviewerService를 기반으로 한 동적 턴제 면접의 상태를 관리하는 세션 클래스.
+    🚫 DEPRECATED - 더 이상 사용하지 않음
+    
+    backend/services/interview_service.py의 SessionState 및 중앙 관제 시스템을 사용하세요.
+    
+    기존 설명: InterviewerService를 기반으로 한 동적 턴제 면접의 상태를 관리하는 세션 클래스.
     """
     def __init__(self, company_id: str, position: str, user_name: str):
-        self.session_id = f"interviewer_comp_{uuid.uuid4().hex[:8]}"
-        self.company_id = company_id
-        self.position = position
-        self.user_name = user_name
+        """
+        🚫 DEPRECATED - 사용하지 마세요!
+        backend/services/interview_service.py의 start_ai_competition()을 사용하세요.
+        """
+        raise DeprecationWarning(
+            "🚫 InterviewerSession은 더 이상 사용되지 않습니다. "
+            "backend/services/interview_service.py의 새로운 중앙 관제 시스템을 사용하세요."
+        )
+        
+        # 🗑️ 기존 코드 주석 처리
+        # self.session_id = f"interviewer_comp_{uuid.uuid4().hex[:8]}"
+        # self.company_id = company_id
+        # self.position = position
+        # self.user_name = user_name
 
-        # 의존성 객체 초기화
-        self.interviewer_service = InterviewerService(total_question_limit=15)
-        self.ai_candidate_model = AICandidateModel()
+        # # 의존성 객체 초기화
+        # self.interviewer_service = InterviewerService(total_question_limit=15)
+        # self.ai_candidate_model = AICandidateModel()
 
         # 세션 상태
         self.user_resume: Dict[str, Any] = {'name': user_name, 'position': position}
-        self.ai_persona: Optional[CandidatePersona] = None
+        self.ai_persona: Optional['CandidatePersona'] = None
         self.qa_history: List[Dict[str, Any]] = []
         self.last_question: Optional[Dict[str, Any]] = None
 

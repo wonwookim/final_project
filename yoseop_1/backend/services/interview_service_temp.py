@@ -60,9 +60,22 @@ class InterviewServiceTemp:
     async def start_text_interview(self, settings: Dict[str, Any]) -> Dict[str, Any]:
         """텍스트 기반 AI 경쟁 면접 시작"""
         try:
+            # 필수 파라미터 검증
+            required_fields = ['company', 'position', 'candidate_name']
+            for field in required_fields:
+                if field not in settings or not settings[field]:
+                    raise ValueError(f"필수 필드가 누락되었습니다: {field}")
+            
             company_id = self.get_company_id(settings['company'])
             
             interview_logger.info(f"🎯 텍스트 기반 면접 시작: {company_id} - {settings['position']}")
+            
+            # 이력서 데이터 검증 및 로깅
+            if 'resume' in settings and settings['resume']:
+                resume_data = settings['resume']
+                interview_logger.info(f"📄 이력서 정보: {resume_data.get('name', 'N/A')} - {resume_data.get('tech', 'N/A')[:50]}...")
+            else:
+                interview_logger.warning("⚠️ 이력서 데이터가 제공되지 않았습니다. 기본 정보만 사용합니다.")
             
             # 1. AI 페르소나 생성 (실시간 LLM 기반)
             ai_persona = self.ai_candidate_model.create_persona_for_interview(
@@ -75,15 +88,47 @@ class InterviewServiceTemp:
             
             # 2. 세션 데이터 구성
             session_id = f"text_comp_{uuid.uuid4().hex[:8]}"
+            print(settings)
+            # 이력서 데이터 처리
+            user_resume = {}
+            if 'resume' in settings and settings['resume']:
+                # 프론트엔드에서 전달받은 이력서 데이터 사용
+                resume_data = settings['resume']
+                user_resume = {
+                    'name': resume_data.get('name', settings['candidate_name']),
+                    'email': resume_data.get('email', ''),
+                    'phone': resume_data.get('phone', ''),
+                    'position': settings['position'],
+                    'academic_record': resume_data.get('academic_record', ''),
+                    'career': resume_data.get('career', ''),
+                    'tech': resume_data.get('tech', ''),
+                    'activities': resume_data.get('activities', ''),
+                    'certificate': resume_data.get('certificate', ''),
+                    'awards': resume_data.get('awards', ''),
+                    'created_at': resume_data.get('created_at', ''),
+                    'updated_at': resume_data.get('updated_at', '')
+                }
+                print(f"✅ 이력서 데이터 사용: {user_resume['name']}, 기술스택: {user_resume['tech'][:50]}...")
+            else:
+                # 이력서 데이터가 없는 경우 기본값 사용
+                user_resume = {
+                    'name': settings['candidate_name'],
+                    'position': settings['position'],
+                    'academic_record': '',
+                    'career': '',
+                    'tech': '',
+                    'activities': '',
+                    'certificate': '',
+                    'awards': ''
+                }
+                print(f"⚠️ 이력서 데이터 없음 - 기본값 사용: {user_resume['name']}")
+            
             session_data = {
                 'session_id': session_id,
                 'company_id': company_id,
                 'position': settings['position'],
                 'candidate_name': settings['candidate_name'],
-                'user_resume': {
-                    'name': settings['candidate_name'],
-                    'position': settings['position']
-                },
+                'user_resume': user_resume,
                 'ai_persona': ai_persona,
                 'qa_history': [],
                 'user_answers': [],

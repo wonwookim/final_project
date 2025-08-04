@@ -1,38 +1,53 @@
 #!/usr/bin/env python3
 """
-통합 세션 관리자
-모든 세션 타입을 관리하는 중앙화된 매니저
-FinalInterviewSystem의 모든 기능을 포함하여 완전한 세션 관리 제공
+🚫 DEPRECATED - 더 이상 사용하지 않음
+
+이 SessionManager의 모든 기능은 backend/services/interview_service.py로 이관되었습니다.
+새로운 Backend 중앙 관제 시스템을 사용하세요.
+
+기존 설명: 통합 세션 관리자 - 모든 세션 타입을 관리하는 중앙화된 매니저
 """
 
-import json
-import openai
-import os
-from typing import Dict, List, Any, Optional
-import uuid
-import time
-from datetime import datetime
-from dotenv import load_dotenv
+# 🗑️ 모든 import 주석 처리 - 더 이상 사용하지 않음
+# import json
+# import openai
+# import os
+# from typing import Dict, List, Any, Optional
+# import uuid
+# import time
+# from datetime import datetime
+# from dotenv import load_dotenv
 
-from .models import InterviewSession, ComparisonSession, SessionState, AnswerData
-from .base_session import BaseInterviewSession
-from .comparison_session import ComparisonSessionManager
-from .interviewer_session import InterviewerSession
-from ..shared.models import QuestionAnswer, QuestionType
-from ..shared.company_data_loader import get_company_loader
+# from .models import InterviewSession, ComparisonSession, SessionState, AnswerData
+# from .comparison_session import ComparisonSessionManager
+# from .interviewer_session import InterviewerSession
+# from ..shared.models import QuestionAnswer, QuestionType
+# from ..shared.company_data_loader import get_company_loader
 
-# .env 파일에서 환경변수 로드
-load_dotenv()
+# # .env 파일에서 환경변수 로드
+# load_dotenv()
 
 
 class SessionManager:
     """
-    중앙화된 세션 관리자
-    FinalInterviewSystem + BaseInterviewSession + ComparisonSession을 통합 관리
-    모든 면접 관련 기능을 하나의 인터페이스로 제공
+    🚫 DEPRECATED - 사용하지 마세요!
+    
+    이 클래스의 모든 기능은 backend/services/interview_service.py로 이관되었습니다.
+    
+    기존 설명: 중앙화된 세션 관리자 - FinalInterviewSystem + ComparisonSession을 통합 관리
     """
     
     def __init__(self, api_key: str = None):
+        """
+        🚫 DEPRECATED - 사용하지 마세요!
+        backend/services/interview_service.py의 InterviewService를 사용하세요.
+        """
+        raise DeprecationWarning(
+            "🚫 SessionManager는 더 이상 사용되지 않습니다. "
+            "backend.services.interview_service.InterviewService를 사용하세요."
+        )
+        
+        # 🗑️ 기존 코드 주석 처리
         # OpenAI API 클라이언트 초기화
         if not api_key:
             api_key = os.getenv('OPENAI_API_KEY')
@@ -43,7 +58,6 @@ class SessionManager:
         self.client = openai.OpenAI(api_key=api_key)
         
         # 기존 관리자들
-        self.base_session_manager = BaseInterviewSession()
         self.comparison_session_manager = ComparisonSessionManager()
         
         # 회사 데이터 로더
@@ -54,28 +68,6 @@ class SessionManager:
         self.standard_sessions: Dict[str, InterviewSession] = {}  # FinalInterviewSystem 호환 세션들
         self.interviewer_sessions: Dict[str, InterviewerSession] = {}  # InterviewerService 기반 세션들
         
-    # 개별 세션 관리 (기존 기능 위임)
-    def start_individual_interview(self, company_id: str, position: str, candidate_name: str) -> str:
-        """개별 면접 시작"""
-        session_id = self.base_session_manager.start_interview(company_id, position, candidate_name)
-        self.all_sessions[session_id] = {
-            "type": "individual",
-            "session_id": session_id,
-            "created_at": datetime.now()
-        }
-        return session_id
-    
-    def get_individual_session(self, session_id: str) -> Optional[InterviewSession]:
-        """개별 세션 조회"""
-        return self.base_session_manager.get_session(session_id)
-    
-    def submit_individual_answer(self, session_id: str, answer_content: str) -> Dict[str, Any]:
-        """개별 세션 답변 제출"""
-        return self.base_session_manager.submit_answer(session_id, answer_content)
-    
-    def get_individual_next_question(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """개별 세션 다음 질문"""
-        return self.base_session_manager.get_next_question(session_id)
     
     # 비교 세션 관리 (새로운 기능)
     async def start_comparison_interview(self, company_id: str, position: str, user_name: str, ai_name: str = "춘식이", posting_id: int = None, position_id: int = None) -> str:
@@ -138,19 +130,7 @@ class SessionManager:
         """모든 세션 목록"""
         result = []
         for session_id, session_info in self.all_sessions.items():
-            if session_info["type"] == "individual":
-                session = self.get_individual_session(session_id)
-                if session:
-                    result.append({
-                        "session_id": session_id,
-                        "type": "individual",
-                        "company_id": session.company_id,
-                        "position": session.position,
-                        "candidate_name": session.candidate_name,
-                        "state": session.state.value,
-                        "created_at": session.created_at.isoformat()
-                    })
-            elif session_info["type"] == "comparison":
+            if session_info["type"] == "comparison":
                 session = self.get_comparison_session(session_id)
                 if session:
                     result.append({
@@ -171,14 +151,7 @@ class SessionManager:
         if not session_info:
             return None
         
-        if session_info["type"] == "individual":
-            session = self.get_individual_session(session_id)
-            return {
-                "type": "individual",
-                "session": session,
-                "summary": self.base_session_manager.get_session_summary(session_id)
-            }
-        elif session_info["type"] == "comparison":
+        if session_info["type"] == "comparison":
             session = self.get_comparison_session(session_id)
             return {
                 "type": "comparison", 
@@ -194,9 +167,7 @@ class SessionManager:
         if not session_info:
             return False
         
-        if session_info["type"] == "individual":
-            self.base_session_manager.sessions.pop(session_id, None)
-        elif session_info["type"] == "comparison":
+        if session_info["type"] == "comparison":
             self.comparison_session_manager.sessions.pop(session_id, None)
         
         self.all_sessions.pop(session_id, None)

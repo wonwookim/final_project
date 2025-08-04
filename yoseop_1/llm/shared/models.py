@@ -6,13 +6,17 @@
 
 import time
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from dataclasses import dataclass
 from enum import Enum
 from pydantic import BaseModel
 
 # 기존 llm.core.llm_manager의 enum들은 제거되었음 - 문자열 타입 사용
 from ..candidate.quality_controller import QualityLevel
+
+# TYPE_CHECKING을 사용하여 순환 import 방지
+if TYPE_CHECKING:
+    from ..candidate.model import CandidatePersona
 
 class LLMProvider(Enum):
     OPENAI_GPT4 = "openai_gpt4"
@@ -84,6 +88,11 @@ class QuestionType(Enum):
         
         # 매핑되지 않으면 HR을 기본값으로 반환 (안전한 fallback)
         return cls.HR
+    
+    @classmethod
+    def from_string(cls, value: str) -> 'QuestionType':
+        """from_str의 별칭 메서드 - 호환성을 위해 추가"""
+        return cls.from_str(value)
 
 @dataclass
 class QuestionAnswer:
@@ -97,21 +106,6 @@ class QuestionAnswer:
     individual_score: int = 0
     individual_feedback: str = ""
 
-@dataclass
-class CandidatePersona:
-    """지원자 페르소나 데이터 클래스"""
-    company_id: str
-    name: str
-    background: Dict[str, Any]
-    technical_skills: List[str]
-    projects: List[Dict[str, Any]]
-    experiences: List[Dict[str, Any]]
-    strengths: List[str]
-    achievements: List[str]
-    career_goal: str
-    personality_traits: List[str]
-    interview_style: str
-    success_factors: List[str]
 
 @dataclass
 class AnswerRequest:
@@ -144,7 +138,7 @@ class AnswerResponse:
 @dataclass
 class AICandidatePersonaContext:
     """AI 지원자 페르소나 컨텍스트 (기존 AICandidateSession의 컨텍스트 기능만 분리)"""
-    persona: CandidatePersona
+    persona: 'CandidatePersona'
     
     def get_persona_context(self) -> str:
         """페르소나 컨텍스트 구성"""

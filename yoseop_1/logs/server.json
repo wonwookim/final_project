@@ -1,1 +1,4 @@
 {"timestamp": "2025-07-30T11:51:19.103103", "level": "INFO", "logger": "interview_system", "message": "🎭 [STANDALONE AI] 단독 AI 답변 생성 (세션 무관): naver - 백엔드개발", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-08-04T08:48:50.375993", "level": "INFO", "logger": "interview_system", "message": "🎯 [Interview] TEST: test_session_id - test details", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-08-04T08:56:07.816566", "level": "ERROR", "logger": "interview_system", "message": "❌ [Interview Error] test context 오류: test error (세션: test_session)", "module": "", "function": null, "line": 0}
+{"timestamp": "2025-08-04T08:56:25.047129", "level": "ERROR", "logger": "interview_system", "message": "❌ [Interview Error] test context 오류: test error (세션: test_session)", "module": "", "function": null, "line": 0}

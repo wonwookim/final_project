@@ -1402,6 +1402,19 @@ const InterviewActive: React.FC = () => {
   };
 
   const submitAnswer = async () => {
+    // 🐛 디버깅: 버튼 클릭 시 상태 확인
+    console.log('🔘 submitAnswer 함수 호출됨');
+    console.log('📋 현재 상태:', {
+      sessionId: state.sessionId,
+      currentAnswer: currentAnswer?.length || 0,
+      currentAnswerTrim: currentAnswer?.trim() || '',
+      isLoading,
+      currentPhase,
+      comparisonMode,
+      canAnswer,
+      comparisonSessionId
+    });
+    
     if (!state.sessionId) return;
     
     // 답변 제출 시 STT 자동 종료
@@ -1419,7 +1432,13 @@ const InterviewActive: React.FC = () => {
   };
 
   const submitComparisonAnswer = async () => {
-    if (!comparisonSessionId) return;
+    // 🐛 comparisonSessionId가 없으면 state.sessionId 사용
+    const sessionIdToUse = comparisonSessionId || state.sessionId;
+    if (!sessionIdToUse) {
+      console.error('❌ sessionId가 없음:', { comparisonSessionId, sessionId: state.sessionId });
+      return;
+    }
+    console.log('🎯 사용할 sessionId:', sessionIdToUse);
     
     try {
       setIsLoading(true);
@@ -1451,7 +1470,7 @@ const InterviewActive: React.FC = () => {
       });
       
       // 사용자 답변 제출 (새로운 통합 API 사용)
-      const response = await interviewApi.processCompetitionTurn(comparisonSessionId, currentAnswer);
+      const response = await interviewApi.processCompetitionTurn(sessionIdToUse, currentAnswer);
       
       console.log('✅ 사용자 답변 제출 완료:', response);
       setCurrentAnswer('');
@@ -2361,13 +2380,31 @@ const InterviewActive: React.FC = () => {
 
             {/* 컨트롤 버튼 */}
             <div className="space-y-3">
-              <button 
-                className="w-full py-3 bg-green-600 text-white rounded-lg hover:bg-green-500 transition-colors font-semibold"
-                onClick={submitAnswer}
-                disabled={!currentAnswer.trim() || isLoading || (currentPhase !== 'user_turn' && currentPhase !== 'interviewer_question')}
-              >
-                {isLoading ? '제출 중...' : currentPhase === 'user_turn' ? '🚀 답변 제출' : '대기 중...'}
-              </button>
+              {(() => {
+                const hasAnswer = !!currentAnswer.trim();
+                const isValidPhase = (currentPhase === 'user_turn' || currentPhase === 'interviewer_question');
+                const isButtonDisabled = !hasAnswer || isLoading || !isValidPhase;
+                
+                // 🐛 디버깅: 버튼 상태 로깅
+                console.log('🔘 버튼 상태 체크 (첫 번째 버튼):', {
+                  hasAnswer,
+                  isLoading,
+                  currentPhase,
+                  isValidPhase,
+                  isButtonDisabled,
+                  currentAnswerLength: currentAnswer?.length || 0
+                });
+                
+                return (
+                  <button 
+                    className="w-full py-3 bg-green-600 text-white rounded-lg hover:bg-green-500 transition-colors font-semibold"
+                    onClick={submitAnswer}
+                    disabled={isButtonDisabled}
+                  >
+                    {isLoading ? '제출 중...' : currentPhase === 'user_turn' ? '🚀 답변 제출' : '대기 중...'}
+                  </button>
+                );
+              })()}
             </div>
 
             {/* 진행 상황 */}
@@ -2719,22 +2756,44 @@ const InterviewActive: React.FC = () => {
             ) : (
               /* 사용자 턴일 때 답변 제출 버튼 */
               <div className="flex justify-end">
-                <button
-                  onClick={submitAnswer}
-                  disabled={!currentAnswer.trim() || isLoading || (comparisonMode && (!canAnswer || (currentPhase !== 'user_turn' && currentPhase !== 'interviewer_question')))}
-                  className={`px-8 py-3 text-white rounded-lg font-medium transition-colors ${
-                    comparisonMode 
-                      ? 'bg-green-600 hover:bg-green-700' 
-                      : 'bg-blue-600 hover:bg-blue-700'
-                  } disabled:bg-gray-400 disabled:cursor-not-allowed`}
-                >
-                  {isLoading 
-                    ? '제출 중...' 
-                    : comparisonMode 
-                      ? (currentPhase === 'interviewer_question' ? '💬 답변 제출' : '🏃‍♂️ 춘식이와 경쟁!')
-                      : '답변 제출'
-                  }
-                </button>
+                {(() => {
+                  const hasAnswer = !!currentAnswer.trim();
+                  const isValidPhase = (currentPhase === 'user_turn' || currentPhase === 'interviewer_question');
+                  const canAnswerCondition = comparisonMode ? canAnswer : true;
+                  const isButtonDisabled = !hasAnswer || isLoading || (comparisonMode && (!canAnswerCondition || !isValidPhase));
+                  
+                  // 🐛 디버깅: 버튼 상태 로깅
+                  console.log('🔘 버튼 상태 체크 (두 번째 버튼):', {
+                    hasAnswer,
+                    isLoading,
+                    currentPhase,
+                    isValidPhase,
+                    comparisonMode,
+                    canAnswer,
+                    canAnswerCondition,
+                    isButtonDisabled,
+                    currentAnswerLength: currentAnswer?.length || 0
+                  });
+                  
+                  return (
+                    <button
+                      onClick={submitAnswer}
+                      disabled={isButtonDisabled}
+                      className={`px-8 py-3 text-white rounded-lg font-medium transition-colors ${
+                        comparisonMode 
+                          ? 'bg-green-600 hover:bg-green-700' 
+                          : 'bg-blue-600 hover:bg-blue-700'
+                      } disabled:bg-gray-400 disabled:cursor-not-allowed`}
+                    >
+                      {isLoading 
+                        ? '제출 중...' 
+                        : comparisonMode 
+                          ? (currentPhase === 'interviewer_question' ? '💬 답변 제출' : '🏃‍♂️ 춘식이와 경쟁!')
+                          : '답변 제출'
+                      }
+                    </button>
+                  );
+                })()}
               </div>
             )}
           </div>

@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 """
+🗑️ DEPRECATED - 더 이상 사용하지 않음
+
+이 파일의 모든 기능은 backend/services/interview_service.py로 이관되었습니다.
+새로운 Backend 중앙 관제 시스템을 사용하세요.
+
+기존 설명:
 지능형 턴제 면접관 패널 시스템
 
 핵심 특징:
@@ -10,29 +16,51 @@
 - DB 기반 참조질문과 LLM 기반 생성질문의 전략적 혼합
 """
 
-import json
-import random
-import os
-import sys
-from typing import Dict, List, Any, Optional
-import openai
-from dotenv import load_dotenv
+# 🗑️ DEPRECATED - 모든 기능이 backend/services/interview_service.py로 이관됨
+# import json
+# import random
+# import os
+# import sys
+# from typing import Dict, List, Any, Optional
+# import openai
+# from dotenv import load_dotenv
 
-# .env 파일에서 환경변수 로드
-load_dotenv()
+# 🚫 이 파일은 더 이상 사용되지 않습니다!
+# 모든 기능이 backend/services/interview_service.py로 이관되었습니다.
+# 새로운 중앙 관제 시스템을 사용하세요.
 
-# 프로젝트 루트 경로 추가
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# # .env 파일에서 환경변수 로드
+# load_dotenv()
 
-from backend.services.supabase_client import get_supabase_client
-from llm.shared.constants import GPT_MODEL, MAX_TOKENS, TEMPERATURE
-from llm.candidate.model import CandidatePersona
-from .prompt import InterviewerPromptBuilder
+# # 프로젝트 루트 경로 추가
+# sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+# from backend.services.supabase_client import get_supabase_client
+# from llm.shared.constants import GPT_MODEL, MAX_TOKENS, TEMPERATURE
+# from llm.candidate.model import CandidatePersona
+# from .prompt import InterviewerPromptBuilder
 
 class InterviewerService:
-    """지능형 턴제 기반 면접관 패널 시스템"""
+    """
+    🚫 DEPRECATED - 더 이상 사용하지 않음
+    
+    이 클래스의 모든 기능은 backend/services/interview_service.py의 
+    SessionState 및 중앙 관제 시스템으로 이관되었습니다.
+    
+    기존 설명: 지능형 턴제 기반 면접관 패널 시스템
+    """
     
     def __init__(self, total_question_limit: int = 15):
+        """
+        🚫 DEPRECATED - 사용하지 마세요!
+        backend/services/interview_service.py의 start_ai_competition()을 사용하세요.
+        """
+        raise DeprecationWarning(
+            "🚫 InterviewerService는 더 이상 사용되지 않습니다. "
+            "backend/services/interview_service.py의 새로운 중앙 관제 시스템을 사용하세요."
+        )
+        
+        # 🗑️ 기존 코드 주석 처리
         # Supabase 클라이언트 초기화
         self.client = get_supabase_client()
         
