@@ -80,6 +80,8 @@ class InterviewResponse(BaseModel):
     position_id: int
     total_feedback: str
     date: datetime
+    company: Optional[Dict[str, str]] = None  # 회사 정보
+    position: Optional[Dict[str, str]] = None  # 직무 정보
 
 # TTS 요청: 텍스트 -> 음성
 class TTSRequest(BaseModel):

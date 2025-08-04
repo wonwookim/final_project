@@ -263,11 +263,12 @@ async def get_turn_based_question(
 @interview_router.get("/history", response_model=List[InterviewResponse])
 async def get_interview_history(current_user: UserResponse = Depends(auth_service.get_current_user)):
     """현재 인증된 사용자의 면접 기록을 Supabase에서 조회합니다."""
-    res = supabase_client.client.from_("interview").select("*").eq("user_id", current_user.user_id).execute()
+    res = supabase_client.client.from_("interview").select(
+        "*, company(name), position(position_name)"
+    ).eq("user_id", current_user.user_id).execute()
     
     if not res.data:
         raise HTTPException(status_code=404, detail="No interview history found")
-    
     return res.data
 
 
