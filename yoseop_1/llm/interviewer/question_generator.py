@@ -107,7 +107,7 @@ class QuestionGenerator:
             return {
                 'question': '자기소개를 부탁드립니다.',
                 'intent': '지원자의 기본 정보와 성격, 역량을 파악',
-                'interviewer_type': 'HR'
+                'interviewer_type': 'INTRO'
             }
         
         elif question_index == 1:
@@ -122,7 +122,7 @@ class QuestionGenerator:
             return {
                 'question': question_with_name,
                 'intent': '회사에 대한 관심도와 지원 동기 파악',
-                'interviewer_type': 'HR'
+                'interviewer_type': 'MOTIVATION'
             }
         
         else:

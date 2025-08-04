@@ -408,7 +408,9 @@ class InterviewServiceTemp:
             'HR': QuestionType.HR,
             'TECH': QuestionType.TECH,
             'COLLABORATION': QuestionType.COLLABORATION,
-            'SYSTEM': QuestionType.FOLLOWUP
+            'SYSTEM': QuestionType.FOLLOWUP,
+            'INTRO': QuestionType.INTRO,
+            'MOTIVATION': QuestionType.MOTIVATION,
         }
         return mapping.get(interviewer_type, QuestionType.HR)
     
