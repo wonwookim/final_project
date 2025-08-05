@@ -146,3 +146,6 @@ dmypy.json*.pyc
 
 *.pyc
 __pycache__/
+
+.serena
+.claude
