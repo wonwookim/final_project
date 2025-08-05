@@ -24,20 +24,22 @@ class CandidatePromptBuilder:
         """질문 유형에 따라 적절한 프롬프트 빌더를 호출하는 통합 메서드 - 외부 의존성 제거"""
         print(f"🔍 [DEBUG] 질문 타입: {request.question_type}")
         print(f"🔍 [DEBUG] 질문 타입 값: {request.question_type.value}")
+        print(f"🔍 [DEBUG] 질문 타입 값 (upper): {request.question_type.value.upper()}")
         print(f"🔍 [DEBUG] 질문 내용: {request.question_content}")
+        print(f"🔍 [DEBUG] INTRO 비교: {request.question_type.value.upper() == 'INTRO'}")
         # 3단계: 면접 컨텍스트 기반 서사 연결 적용
         if interview_context is None:
             interview_context = {"previous_answers": [], "current_stage": 1, "total_questions": 20}
             
-        if request.question_type.value.upper() == "INTRO":
+        if request.question_type.value == "자기소개":
             return self.build_intro_prompt(request, persona, company_data, interview_context)
-        elif request.question_type.value.upper() == "MOTIVATION":
+        elif request.question_type.value == "지원동기":
             return self.build_motivation_prompt(request, persona, company_data, interview_context)
-        elif request.question_type.value.upper() == "HR":
+        elif request.question_type.value == "인사":
             return self.build_hr_prompt(request, persona, company_data, interview_context)
-        elif request.question_type.value.upper() == "TECH":
+        elif request.question_type.value == "기술":
             return self.build_tech_prompt(request, persona, company_data, interview_context)
-        elif request.question_type.value.upper() == "COLLABORATION":
+        elif request.question_type.value == "협업":
             return self.build_collaboration_prompt(request, persona, company_data, interview_context)
         else:
             return self.build_default_prompt(request, persona, company_data, interview_context)
@@ -79,53 +81,53 @@ class CandidatePromptBuilder:
 
 {{
   "name": "춘식이",
-  "summary": "예: 5년간 백엔드 개발 경험을 쌓으며 대규모 트래픽 처리와 시스템 최적화에 특화된 개발자",
+  "summary": "{position_name} 경력과 전문성을 한 줄로 요약",
   "background": {{
-    "career_years": "예: 5",
-    "current_position": "예: 백엔드 개발자",
-    "education": "예: {academic}",
-    "major": "예: 컴퓨터공학"
+    "career_years": "경력 년수",
+    "current_position": "{position_name}",
+    "education": "{academic}",
+    "major": "전공 분야"
   }},
   "strengths": [
-    "예: 대용량 데이터 처리 시스템 설계",
-    "예: 성능 최적화 및 병목 지점 해결",
-    "예: 팀 내 기술적 멘토링"
+    "주요 강점 1",
+    "주요 강점 2", 
+    "주요 강점 3"
   ],
   "technical_skills": [
-    "예: Java", "예: Spring Boot", "예: MySQL", "예: Redis"
+    "기술스킬1", "기술스킬2", "기술스킬3", "기술스킬4"
   ],
   "projects": [
     {{
-      "name": "예: 대규모 트래픽 처리 시스템",
-      "description": "예: 일 1억 건 이상의 요청을 처리하는 백엔드 시스템 구축",
-      "role": "예: 백엔드 리드 개발자",
-      "tech_stack": ["예: Java", "예: Spring Boot", "예: MySQL"],
-      "achievements": ["예: 응답 시간 50% 단축", "예: 시스템 안정성 99.9% 달성"],
-      "challenges": ["예: 대용량 트래픽으로 인한 DB 부하", "예: 메모리 최적화 필요"]
+      "name": "프로젝트명",
+      "description": "프로젝트 설명",
+      "role": "담당 역할",
+      "tech_stack": ["사용기술1", "사용기술2"],
+      "achievements": ["성과1", "성과2"],
+      "challenges": ["어려웠던점1", "어려웠던점2"]
     }}
   ],
   "experiences": [
     {{
-      "category": "예: 리더십 경험",
-      "experience": "예: 신입 개발자 3명 멘토링하여 프로젝트 성공적 완료",
-      "lesson": "예: 효과적인 소통과 단계적 학습의 중요성 깨달음"
+      "category": "경험 카테고리",
+      "experience": "구체적 경험 내용",
+      "lesson": "얻은 교훈이나 깨달음"
     }}
   ],
   "weaknesses": [
-    "예: 새로운 기술 도입에 신중한 편",
-    "예: 완벽주의 성향으로 때로는 빠른 의사결정이 어려움"
+    "약점1",
+    "약점2"
   ],
-  "motivation": "예: 복잡한 시스템 문제를 해결할 때 느끼는 성취감과 사용자들에게 더 나은 서비스를 제공하고 싶은 열정이 개발자로서의 동력입니다.",
+  "motivation": "지원 동기",
   "inferred_personal_experiences": [
     {{
-      "category": "예: 기술적 성장",
-      "experience": "예: 첫 프로젝트에서 성능 이슈로 고생했던 경험을 통해 최적화의 중요성을 깨달음",
-      "lesson": "예: 초기 설계의 중요성과 지속적인 모니터링의 필요성을 체감"
+      "category": "경험 카테고리",
+      "experience": "개인적 경험 내용",
+      "lesson": "얻은 교훈"
     }}
   ],
-  "career_goal": "예: {company_name}의 고가용성 시스템을 책임지는 기술 리더로 성장하여, 전 세계 사용자들에게 안정적이고 빠른 서비스를 제공하고 싶습니다.",
-  "personality_traits": ["예: 분석적", "예: 추진력 있는"],
-  "interview_style": "예: 구체적인 경험과 수치를 바탕으로 체계적으로 설명하는 스타일",
+  "career_goal": "커리어 목표",
+  "personality_traits": ["성격 특성1", "성격 특성2"],
+  "interview_style": "면접 스타일",
   "generated_by": "{model_name}"
 }}
 
@@ -152,7 +154,7 @@ class CandidatePromptBuilder:
 - 모든 필드를 빠짐없이 포함
 - 예시 형태가 아닌 실제 내용으로 작성"""
 
-    def build_system_prompt(self, persona: 'CandidatePersona', company_data: Dict, question_type: QuestionType, llm_provider: LLMProvider = LLMProvider.OPENAI_GPT35) -> str:
+    def build_system_prompt(self, persona: 'CandidatePersona', company_name: str, company_data: Dict, question_type: QuestionType, llm_provider: LLMProvider = LLMProvider.OPENAI_GPT4O) -> str:
         """질문 타입별 시스템 프롬프트 구성"""
         
         # AI 이름 결정 (모델에 따라 동적으로 설정)
@@ -164,11 +166,10 @@ class CandidatePromptBuilder:
 - **자기소개 질문(INTRO)에서만** "{ai_name}"라고 이름을 언급하세요
 - **다른 모든 질문에서는 절대 이름을 언급하지 마세요**
 - "안녕하세요" 같은 인사말도 자기소개가 아닌 경우 사용하지 마세요
-- 다른 이름(김네이버, 박카카오 등)을 절대 사용하지 마세요
 
 예시:
-- 자기소개: "안녕하세요, 저는 {ai_name}라고 합니다. 5년의 백엔드 개발 경험을..."
-- 지원동기: "제가 네이버에 지원하게 된 이유는..." (이름/인사 없이 바로 시작)
+- 자기소개: "안녕하세요, 저는 {ai_name}라고 합니다...."
+- 지원동기: "제가 {company_name}에 지원하게 된 이유는..." (이름/인사 없이 바로 시작)
 - 기술질문: "그 부분에 대해서는 제 경험을 말씀드리면..." (이름/인사 없이)
 - 기타질문: "제 생각에는..." 또는 "저의 경험으로는..." (이름/인사 없이)
 
@@ -199,7 +200,7 @@ class CandidatePromptBuilder:
 
         return base_info
 
-    def build_intro_prompt(self, request: AnswerRequest, persona: 'CandidatePersona', company_data: Dict) -> str:
+    def build_intro_prompt(self, request: AnswerRequest, persona: 'CandidatePersona', company_data: Dict, interview_context: Dict = None) -> str:
         """자기소개 질문 전용 프롬프트 빌더 - 1단계 인간적 스토리 전환"""
         print(f"🎭 [DEBUG] build_intro_prompt 호출됨! H.U.M.A.N 프레임워크 적용 중...")
         
@@ -243,90 +244,35 @@ class CandidatePromptBuilder:
 - 현재 직책: {background.get('current_position', '지원자')}
 - 개발 동기: {motivation}
 
-=== 🎭 H.U.M.A.N 프레임워크 적용 자기소개 ===
+🚨 절대 기계적 답변 금지! 진짜 {name}처럼 자연스럽게 🚨
 
-**💝 Honesty (진정성)**: 기술 나열이 아닌 개인적 동기와 진솔한 이야기
-- 내 동기: {motivation}
-- 개인적 경험: {personal_experience.get('experience', '의미있는 개인적 경험')}
-- 깨달음: {personal_experience.get('lesson', '중요한 교훈')}
+=== H.U.M.A.N 프레임워크 ===
+**💝 Honesty**: 기술나열 말고 진짜 개인적 동기 → {motivation}
+**🌟 Uniqueness**: 나만의 특별한 경험 → {personal_experience.get('experience', '특별한 경험') if personal_experience else '특별한 경험'}
+**⚡ Moment**: 구체적이고 생생한 감정과 깨달음 → {personal_experience.get('lesson', '중요한 교훈') if personal_experience else '중요한 교훈'}
+**❤️ Affection**: 진짜 열정과 따뜻함 → {career_goal}에 대한 진심
+**📖 Narrative**: 과거 → 현재 → 미래로 자연스럽게 연결
 
-**🌟 Uniqueness (독특함)**: 남들과 다른 나만의 스토리와 관점
-- 특별한 경험: {key_experience.get('experience', '독특한 학습 경험')}
-- 나만의 접근법: {key_project.get('name', '특별한 프로젝트')} - {', '.join(key_project.get('challenges', ['독특한 도전을 겪었던 경험']))}
+=== 답변 가이드 ===
+❌ 금지: 딱딱하고 형식적인 기계적 말투
+✅ 필수: 진짜 사람이 말하듯 편안하고 자연스럽게
 
-**⚡ Moment (순간)**: 구체적이고 생생한 경험의 순간들
-- 기억에 남는 순간: {key_project.get('name', '인상 깊었던 프로젝트')}에서 {', '.join(key_project.get('achievements', ['특별한 성과를 달성했던 순간']))}
-- 전환점: {key_experience.get('lesson', '인생의 전환점이 된 깨달음')}
+**답변 흐름**: 따뜻한 인사 → 개인적 동기 → 생생한 경험 → 진솔한 미래 비전
 
-**❤️ Affection (애정)**: 기술과 개발에 대한 진짜 열정과 애정
-- 개발 열정: {motivation}
-- 좋아하는 것: {', '.join(persona.technical_skills[:3])} 기술들을 다루며 느끼는 즐거움
-- 지속적 관심사: {career_goal}
+**답변 길이**: 50-65초 분량
+**핵심**: 진정성 있고 따뜻한 사람의 목소리로
 
-**📖 Narrative (서사)**: 과거-현재-미래로 이어지는 일관된 성장 스토리
-- 과거: {personal_experience.get('experience', '시작점이 된 경험')}
-- 현재: {background.get('career_years', '0')}년간 {', '.join(main_strengths)}을 기르며 성장
-- 미래: {career_goal}
+=== 직무 DNA 활용 ===
+- 정체성: {position_dna['core_identity']}
+- 동기: {position_dna['motivation_dna']}  
+- 강점: {', '.join(position_dna['unique_strengths'])}
+- 성격: {', '.join(position_dna['personality_traits'])}
 
-=== 🎯 인간적 자기소개 답변 구조 (기존 기술나열 → 스토리텔링 전환) ===
-
-**1단계: 따뜻한 인사와 개인적 동기 소개 (15-20초)**
-❌ 기존: "안녕하세요, 저는 {name}입니다. {background.get('career_years', '0')}년 경력의 개발자로..."
-✅ 개선: "안녕하세요, {name}입니다. {motivation}이라는 마음으로 개발을 시작해서, 지금까지 {background.get('career_years', '0')}년간..."
-
-**2단계: 생생한 경험 스토리와 성장 과정 (25-30초)**
-❌ 기존: "주요 기술은 {', '.join(persona.technical_skills[:3])}이고, {key_project.get('name', '프로젝트')}에서 {', '.join(key_project.get('achievements', ['성과']))}를 달성했습니다"
-✅ 개선: "{key_project.get('name', '프로젝트')}를 진행하면서 {', '.join(key_project.get('challenges', ['어려움']))}을 겪었는데, 이를 해결하는 과정에서 {personal_experience.get('lesson', '중요한 깨달음')}을 얻었고, 결국 {', '.join(key_project.get('achievements', ['의미있는 성과']))}라는 성과로 이어졌습니다"
-
-**3단계: 미래 비전과 회사 연결 (10-15초)**
-❌ 기존: "앞으로도 기술 역량을 키워서 회사에 기여하고 싶습니다"
-✅ 개선: "{career_goal}라는 목표를 가지고 있어서, {company_data.get('name', '이 회사')}에서 함께 성장하며 의미있는 가치를 만들어가고 싶습니다"
-
-=== 🌟 스토리텔링 답변 가이드라인 ===
-
-**핵심 원칙:**
-1. **감정 연결**: 기술적 사실보다 개인적 감정과 동기를 우선
-2. **구체적 순간**: 추상적 설명보다 생생한 경험의 순간들
-3. **성장 서사**: 과거의 경험이 현재로, 현재가 미래로 이어지는 자연스러운 흐름
-4. **진정성**: 완벽한 모습보다 진솔하고 인간적인 면모
-5. **연결성**: 개인의 이야기가 회사와 자연스럽게 연결
-
-**답변 길이**: 50-65초 분량 (기존보다 약간 길어져도 스토리가 풍부하게)
-**답변 톤**: 따뜻하고 진정성 있으면서도 전문성을 잃지 않는, 함께 일하고 싶은 동료의 모습
-
-**필수 포함 요소:**
-- 개발을 시작하게 된 개인적 동기나 계기
-- 기억에 남는 구체적 경험과 그때의 감정
-- 그 경험을 통한 성장과 깨달음
-- 미래에 대한 진솔한 포부와 회사에서의 기여 의지
-
-=== 🎯 직무별 맞춤 자기소개 가이드라인 ({position_key} DNA 적용) ===
-
-**직무 정체성 반영 방법:**
-1. **{position_key} 관점**: {position_dna['core_identity']}의 시각으로 경험 해석
-2. **고유 표현 사용**: {', '.join(position_dna['speech_patterns']['key_phrases'][:3])} 등을 자연스럽게 활용
-3. **특화된 스토리텔링**: {position_dna['speech_patterns']['storytelling_style']}
-4. **동기 연결**: {position_dna['motivation_dna']}와 개인 동기({motivation}) 연결
-5. **성장 패턴**: {position_dna['growth_narrative']} 구조로 경험 서술
-
-**{position_key} 개발자만의 차별화 포인트:**
-- 핵심 강점: {', '.join(position_dna['unique_strengths'])}
-- 고유 성격: {', '.join(position_dna['personality_traits'])}
-- 전문 영역에서의 구체적 경험과 성과 강조
-
-**답변 예시 방향:**
-- "{position_key} 개발자로서 {position_dna['motivation_dna']}"
-- "특히 {', '.join(position_dna['unique_strengths'][:1])}에 강점이 있어서..."
-- "{position_dna['growth_narrative']}의 과정을 거쳐 성장해왔습니다"
-
-**절대 하지 말 것:**
-- 다른 직무({[k for k in self.position_dna_system.keys() if k != position_key]})의 관점이나 표현 혼용
-- {position_key}의 고유한 매력과 전문성을 드러내지 못한 일반적 답변
-- 직무 DNA와 맞지 않는 성격이나 동기 표현
+활용 정보: 동기({motivation}), 경험({personal_experience.get('experience', '개인적 경험') if personal_experience else '개인적 경험'}), 목표({career_goal}), 강점({', '.join(main_strengths)})
 """
         return prompt.strip()
 
-    def build_motivation_prompt(self, request: AnswerRequest, persona: 'CandidatePersona', company_data: Dict) -> str:
+    def build_motivation_prompt(self, request: AnswerRequest, persona: 'CandidatePersona', company_data: Dict, interview_context: Dict = None) -> str:
         """지원동기 질문 전용 프롬프트 빌더 - 1단계 인간적 스토리 전환"""
         
         company_name = company_data.get('name', request.company_id)
@@ -431,16 +377,13 @@ class CandidatePromptBuilder:
 === 🎯 인간적 지원동기 답변 구조 (기존 형식적 답변 → 진솔한 스토리 전환) ===
 
 **1단계: 개인적 계기와 진솔한 관심 표현 (20-25초)**
-❌ 기존: "{company_name}은 업계 선도기업으로서 혁신적인 기술과 우수한 개발 문화로 유명합니다"
-✅ 개선: "{personal_experiences[0].get('experience', '개인적 경험') if personal_experiences else '개발하면서 겪었던 경험'}을 하면서 {company_name}의 {', '.join(core_competencies[:1]) if core_competencies else '기술 철학'}에 깊이 공감하게 되었습니다. 특히 (구체적인 감정과 이유)"
+"{personal_experiences[0].get('experience', '개인적 경험') if personal_experiences else '개발하면서 겪었던 경험'}을 하면서 {company_name}의 {', '.join(core_competencies[:1]) if core_competencies else '기술 철학'}에 깊이 공감하게 되었습니다. 특히 (구체적인 감정과 이유)"
 
 **2단계: 개인 경험과 회사의 자연스러운 연결 (20-25초)**
-❌ 기존: "제가 보유한 {', '.join(strengths[:2])} 역량을 활용하여 회사에 기여할 수 있을 것 같습니다"
-✅ 개선: "{key_projects[0].get('name', '프로젝트') if key_projects else '개발 프로젝트'}를 진행하면서 {', '.join(key_projects[0].get('challenges', ['겪었던 어려움']) if key_projects else ['기술적 고민'])}을 해결하는 과정에서, {company_name}에서 다루는 {', '.join(business_focus[:1]) if business_focus else '기술 영역'}에 대한 관심이 더욱 커졌습니다"
+"{key_projects[0].get('name', '프로젝트') if key_projects else '개발 프로젝트'}를 진행하면서 {', '.join(key_projects[0].get('challenges', ['겪었던 어려움']) if key_projects else ['기술적 고민'])}을 해결하는 과정에서, {company_name}에서 다루는 {', '.join(business_focus[:1]) if business_focus else '기술 영역'}에 대한 관심이 더욱 커졌습니다"
 
 **3단계: 미래 비전과 진심어린 기여 의지 (15-20초)**
-❌ 기존: "회사와 함께 성장하며 좋은 성과를 내고 싶습니다"
-✅ 개선: "{career_goal}라는 목표를 가지고 있는데, {company_name}에서라면 {motivation}이라는 초심을 잃지 않으면서도 더 큰 임팩트를 만들어갈 수 있을 것 같아서 정말 기대가 됩니다"
+"{career_goal}라는 목표를 가지고 있는데, {company_name}에서라면 {motivation}이라는 초심을 잃지 않으면서도 더 큰 임팩트를 만들어갈 수 있을 것 같아서 정말 기대가 됩니다"
 
 === 🌟 스토리텔링 지원동기 가이드라인 ===
 
@@ -466,7 +409,7 @@ class CandidatePromptBuilder:
 - 개인적 경험과 단절된 일방적인 회사 분석
 - 취업을 위한 답변이라는 느낌이 드는 인위적인 연결
 
-=== 🎯 직무별 맞춤 지원동기 가이드라인 ({position_key} DNA 적용) ===
+=== 직무별 맞춤 지원동기 가이드라인 ({position_key} DNA 적용) ===
 
 **직무 정체성 반영 방법:**
 1. **{position_key} 관점**: {position_dna['core_identity']}의 시각으로 회사와 업무 이해
@@ -551,27 +494,27 @@ class CandidatePromptBuilder:
 
 === 🎭 H.U.M.A.N 프레임워크 적용 인성 답변 ===
 
-**💝 Honesty (진정성)**: 완벽한 사람 연기가 아닌 진솔한 자기 인식
+** Honesty (진정성)**: 완벽한 사람 연기가 아닌 진솔한 자기 인식
 - 약점 인정: {', '.join(weaknesses)[:1]}와 같은 부분을 솔직하게 인정
 - 성장 의지: 이를 개선하기 위한 구체적 노력과 경험
 - 개인 동기: {motivation}에서 우러나오는 진짜 가치관
 
-**🌟 Uniqueness (독특함)**: 남들과 다른 나만의 관점과 경험
+** Uniqueness (독특함)**: 남들과 다른 나만의 관점과 경험
 - 특별한 시각: {position_key} 개발자로서의 독특한 관점
 - 개인적 경험: {personal_experiences[0].get('experience', '독특한 개인 경험') if personal_experiences else '차별화된 학습 경험'}
 - 고유한 해결법: {', '.join(position_dna['unique_strengths'][:1])}를 활용한 문제 해결
 
-**⚡ Moment (순간)**: 구체적이고 생생한 경험의 순간들
+** Moment (순간)**: 구체적이고 생생한 경험의 순간들
 - 전환점 순간: {personal_experiences[0].get('lesson', '인생을 바꾼 깨달음의 순간') if personal_experiences else '성장의 결정적 순간'}
 - 감정적 순간: 그때 느꼈던 구체적 감정과 생각
 - 행동 변화: 그 순간 이후 달라진 구체적 행동
 
-**❤️ Affection (애정)**: 일과 성장에 대한 진심어린 애정
+** Affection (애정)**: 일과 성장에 대한 진심어린 애정
 - 일에 대한 애정: {position_dna['motivation_dna']}
 - 성장 열망: 지속적으로 발전하고 싶은 진심
 - 팀에 대한 마음: 함께 일하는 사람들에 대한 진심
 
-**📖 Narrative (서사)**: 과거-현재-미래로 이어지는 성장 스토리
+** Narrative (서사)**: 과거-현재-미래로 이어지는 성장 스토리
 - 과거: 어려움이나 실패를 겪었던 시점
 - 현재: 그 경험을 통해 배우고 성장한 현재 모습  
 - 미래: 앞으로 더 발전하고 싶은 방향
@@ -580,17 +523,16 @@ class CandidatePromptBuilder:
 당신의 성격 특성({', '.join(personality_traits)})과 {position_key} DNA를 바탕으로 
 아래 3가지 스타일 중 가장 자연스러운 방식을 선택하여 답변하세요:
 
-**🎭 감정 중심 스타일**: 내면의 감정과 성찰에 집중
+** 감정 중심 스타일**: 내면의 감정과 성찰에 집중
 - 핵심: 경험 속에서 느꼈던 감정과 그로 인한 깊은 성찰 강조
-- 강조점: "그때 정말 많이 고민했어요", "깊이 반성하게 되었습니다" 등
 - 적합한 성격: 감성적, 내성적, 성찰적인 특성을 가진 경우
 
-**📊 논리 중심 스타일**: 체계적이고 분석적인 접근
+** 논리 중심 스타일**: 체계적이고 분석적인 접근
 - 핵심: 상황 → 원인 분석 → 해결책 → 결과의 논리적 구조
 - 강조점: 구체적 데이터나 방법론, 체계적인 개선 계획
 - 적합한 성격: 논리적, 계획적, 분석적인 특성을 가진 경우
 
-**📖 경험 중심 스타일**: 생생한 스토리텔링 활용  
+** 경험 중심 스타일**: 생생한 스토리텔링 활용
 - 핵심: 개인적 경험을 중심으로 한 생동감 있는 이야기 전개
 - 강조점: 구체적 상황 묘사와 그 속에서의 깨달음
 - 적합한 성격: 사교적, 표현력이 풍부한, 스토리텔링을 좋아하는 특성
@@ -682,14 +624,14 @@ class CandidatePromptBuilder:
 
         prompt += f"""
 
-=== 🎭 H.U.M.A.N 프레임워크 적용 기술 답변 ===
+===  H.U.M.A.N 프레임워크 적용 기술 답변 ===
 
-**💝 Honesty (진정성)**: 기술 과시가 아닌 진솔한 학습 여정
+** Honesty (진정성)**: 기술 과시가 아닌 진솔한 학습 여정
 - 어려웠던 점: 기술 학습/적용 과정에서 실제로 겪었던 어려움
 - 한계 인정: 완벽하지 않았던 부분이나 아직 부족한 영역
 - 학습 동기: {motivation}에서 시작된 기술에 대한 진짜 관심
 
-**🌟 Uniqueness (독특함)**: 남들과 다른 나만의 기술적 접근
+** Uniqueness (독특함)**: 남들과 다른 나만의 기술적 접근
 - {position_key} 관점: {position_dna['core_identity']}로서의 독특한 기술 해석
 - 창의적 해결: {', '.join(position_dna['unique_strengths'][:1])}를 활용한 문제 해결
 - 개인적 통찰: 기술 사용 과정에서 얻은 나만의 인사이트
@@ -699,12 +641,12 @@ class CandidatePromptBuilder:
 - 실패와 극복: 기술적 문제로 막혔다가 해결한 구체적 경험
 - 성취감: 기술 적용 후 얻은 구체적 성과와 그때의 감정
 
-**❤️ Affection (애정)**: 기술과 문제 해결에 대한 진심
+** Affection (애정)**: 기술과 문제 해결에 대한 진심
 - 기술 애정: {position_dna['motivation_dna']}에 대한 진짜 열정
 - 지속적 관심: 해당 기술 분야를 계속 파고들고 싶은 마음
 - 적용 의지: 배운 기술을 실제 문제 해결에 활용하려는 의지
 
-**📖 Narrative (서사)**: 기술 학습과 성장의 연결된 이야기
+** Narrative (서사)**: 기술 학습과 성장의 연결된 이야기
 - 과거: 기술을 처음 접하게 된 계기와 초기 어려움
 - 현재: 지금까지 쌓은 경험과 역량 수준
 - 미래: 해당 기술로 이루고 싶은 목표와 발전 계획
@@ -713,19 +655,19 @@ class CandidatePromptBuilder:
 {position_key} 개발자로서의 정체성과 H.U.M.A.N 프레임워크를 바탕으로 
 아래 3가지 스타일 중 가장 자연스러운 방식을 선택하여 답변하세요:
 
-**🔬 깊이 우선 스타일**: 특정 기술에 대한 심층적 이해 강조
+** 깊이 우선 스타일**: 특정 기술에 대한 심층적 이해 강조
 - 핵심: 하나의 기술을 깊게 파고들어 전문성 어필
 - 강조점: 기술의 내부 동작 원리, 성능 특성, 최적화 방법
 - 구조: 기술 원리 → 심화 활용 → 성능 최적화 → 전문적 인사이트
 - 적합한 경우: 해당 기술에 대한 깊은 경험이 있을 때
 
-**🌐 폭넓은 접근 스타일**: 다양한 기술 조합과 연결성 강조  
+** 폭넓은 접근 스타일**: 다양한 기술 조합과 연결성 강조  
 - 핵심: 여러 기술들의 조합과 시너지 효과에 집중
 - 강조점: 기술 간 상호작용, 아키텍처 설계, 전체적 시스템 구성
 - 구조: 기술 선택 배경 → 다른 기술과의 연동 → 전체 시스템 관점 → 확장성
 - 적합한 경우: 풀스택 경험이나 시스템 설계 경험이 많을 때
 
-**🚀 실무 중심 스타일**: 프로젝트 성과와 문제 해결 경험 중심
+** 실무 중심 스타일**: 프로젝트 성과와 문제 해결 경험 중심
 - 핵심: 실제 프로젝트에서의 문제 해결과 성과에 집중
 - 강조점: 구체적 문제 상황, 해결 과정, 측정 가능한 성과
 - 구조: 문제 상황 → 해결 과정 → 구체적 성과 → 교훈과 개선점
@@ -822,19 +764,19 @@ class CandidatePromptBuilder:
 당신의 성격과 경험을 바탕으로 
 아래 3가지 스타일 중 가장 자연스러운 방식을 선택하여 답변하세요:
 
-**👑 리더십 중심 스타일**: 팀을 이끄는 역할과 책임감 강조
+** 리더십 중심 스타일**: 팀을 이끄는 역할과 책임감 강조
 - 핵심: 팀의 목표 달성을 위한 리더십과 의사결정에 집중
 - 강조점: 팀원 동기부여, 갈등 조정, 목표 설정과 달성 과정
 - 구조: 상황 인식 → 리더십 발휘 → 팀 성과 → 리더로서의 성장
 - 적합한 성격: 추진력 있는, 책임감 강한, 결단력 있는 특성
 
-**🤝 조화 중심 스타일**: 팀 내 소통과 화합을 중시하는 접근
+** 조화 중심 스타일**: 팀 내 소통과 화합을 중시하는 접근
 - 핵심: 팀원 간의 원활한 소통과 상호 이해를 통한 시너지 창출
 - 강조점: 경청, 중재, 배려, 팀워크 향상을 위한 노력
 - 구조: 소통 문제 인식 → 화합 노력 → 팀 분위기 개선 → 협업 성과
 - 적합한 성격: 친화적, 공감 능력 높은, 중재 능력 있는 특성
 
-**🔧 문제해결 중심 스타일**: 협업 과정의 문제를 체계적으로 해결
+** 문제해결 중심 스타일**: 협업 과정의 문제를 체계적으로 해결
 - 핵심: 협업에서 발생하는 구체적 문제를 분석하고 해결하는 능력
 - 강조점: 문제 분석, 해결책 도출, 프로세스 개선, 효율성 증대
 - 구조: 문제 상황 → 원인 분석 → 해결 방안 → 개선된 결과
