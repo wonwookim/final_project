@@ -235,8 +235,8 @@ class AICandidateModel:
             llm_response = self._generate_persona_with_extended_tokens(prompt, system_prompt)
             
             if llm_response.error:
-                print(f"ERROR [PERSONA DEBUG] LLM 응답 오류: {llm_response.error}")
-                return None
+                print(f"ERROR [PERSONA DEBUG] LLM 응답 오류: {llm_response.error}, 기본 페르소나 생성 시도")
+                return self._create_default_persona(company_korean_name, position_name)
             
             persona = self._parse_llm_response_to_persona(llm_response.content, resume_data.get('ai_resume_id', 0))
             
@@ -244,14 +244,14 @@ class AICandidateModel:
                 print(f"OK [PERSONA DEBUG] 페르소나 생성 완료: {persona.name} ({company_name} {position_name})")
                 return persona
             else:
-                print(f"ERROR [PERSONA DEBUG] 페르소나 파싱 실패")
-                return None
+                print(f"ERROR [PERSONA DEBUG] 페르소나 파싱 실패, 기본 페르소나 생성 시도")
+                return self._create_default_persona(company_korean_name, position_name)
                 
         except Exception as e:
-            print(f"ERROR [PERSONA DEBUG] 페르소나 생성 중 오류: {e}")
+            print(f"ERROR [PERSONA DEBUG] 페르소나 생성 중 오류: {e}, 기본 페르소나 생성 시도")
             import traceback
             traceback.print_exc()
-            return None
+            return self._create_default_persona(company_korean_name, position_name)
     
     def _get_position_id(self, position_name: str, company_name: str = None) -> Optional[int]:
         """직군명을 position_id로 변환"""
@@ -370,10 +370,33 @@ class AICandidateModel:
                 interview_style="진정성 있고 논리적으로 답변하는 스타일",
                 resume_id=0
             )
+            print(f"OK [DEFAULT PERSONA] 기본 페르소나 생성 완료: {default_persona.name}")
             return default_persona
         except Exception as e:
-            print(f"ERROR [DEFAULT PERSONA] 기본 페르소나 생성 실패: {e}")
-            return None
+            print(f"ERROR [DEFAULT PERSONA] 기본 페르소나 생성 실패: {e}, 최소 페르소나 생성")
+            # 최종 안전장치: 최소한의 페르소나라도 반환
+            try:
+                minimal_persona = CandidatePersona(
+                    name="춘식이",
+                    summary=f"{position_name or '개발'} 관련 경험이 있는 지원자입니다.",
+                    background={"career_years": "2"},
+                    technical_skills=["개발"],
+                    projects=[],
+                    experiences=[],
+                    strengths=["성실함"],
+                    weaknesses=[],
+                    motivation="성장하고 싶습니다.",
+                    inferred_personal_experiences=[],
+                    career_goal="전문가가 되고 싶습니다.",
+                    personality_traits=["성실함"],
+                    interview_style="정중하게 답변합니다.",
+                    resume_id=0
+                )
+                print(f"OK [MINIMAL PERSONA] 최소 페르소나 생성 완료: {minimal_persona.name}")
+                return minimal_persona
+            except Exception as final_error:
+                print(f"CRITICAL [PERSONA] 모든 페르소나 생성 실패: {final_error}")
+                return None
 
     def _get_company_korean_name(self, company_code: str) -> str:
         """회사 코드를 한국어 회사명으로 변환"""

@@ -69,7 +69,7 @@ class InterviewServiceTemp:
             company_id = self.get_company_id(settings['company'])
             
             interview_logger.info(f"🎯 텍스트 기반 면접 시작: {company_id} - {settings['position']}")
-            
+            print(settings)
             # 이력서 데이터 검증 및 로깅
             if 'resume' in settings and settings['resume']:
                 resume_data = settings['resume']
@@ -408,7 +408,9 @@ class InterviewServiceTemp:
             'HR': QuestionType.HR,
             'TECH': QuestionType.TECH,
             'COLLABORATION': QuestionType.COLLABORATION,
-            'SYSTEM': QuestionType.FOLLOWUP
+            'SYSTEM': QuestionType.FOLLOWUP,
+            'INTRO': QuestionType.INTRO,
+            'MOTIVATION': QuestionType.MOTIVATION,
         }
         return mapping.get(interviewer_type, QuestionType.HR)
     

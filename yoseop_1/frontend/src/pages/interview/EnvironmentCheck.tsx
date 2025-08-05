@@ -222,13 +222,20 @@ const EnvironmentCheck: React.FC = () => {
 
   const handleStartInterview = () => {
     setIsLoading(true);
+
+    const getDifficultyFromLevel = (level: number | undefined): string => {
+      if (level === undefined) return '중간'; // 기본값
+      if (level <= 3) return '초급';
+      if (level <= 7) return '중급';
+      return '고급';
+    };
     
     // 4단계 플로우 데이터를 기존 InterviewActive가 기대하는 형식으로 변환
     const finalSettings = {
       company: state.jobPosting?.company || '',  // 회사명 사용
       position: state.jobPosting?.position || '',
       mode: state.aiSettings?.mode || 'personalized',
-      difficulty: '중간',
+      difficulty: getDifficultyFromLevel(state.aiSettings?.aiQualityLevel),
       candidate_name: state.resume?.name || '사용자',
       resume: state.resume,  // 전체 이력서 데이터 포함
       documents: [] as string[]
