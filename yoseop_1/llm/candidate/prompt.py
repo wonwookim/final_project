@@ -273,7 +273,7 @@ class CandidatePromptBuilder:
         return prompt.strip()
 
     def build_motivation_prompt(self, request: AnswerRequest, persona: 'CandidatePersona', company_data: Dict, interview_context: Dict = None) -> str:
-        """지원동기 질문 전용 프롬프트 빌더 - 1단계 인간적 스토리 전환"""
+        """지원동기 질문 전용 프롬프트 빌더 - 인간적 스토리 전환"""
         
         company_name = company_data.get('name', request.company_id)
         
@@ -290,7 +290,7 @@ class CandidatePromptBuilder:
         key_projects = persona.projects[:2]  # 상위 2개 프로젝트
         personal_experiences = persona.inferred_personal_experiences[:2]
         
-        # 2단계: 직무별 정체성 DNA 추출 및 적용  
+        # 직무별 정체성 DNA 추출 및 적용  
         position_key = self._extract_position_key(request.position)
         position_dna = self.position_dna_system.get(position_key, self.position_dna_system["백엔드"])
 
@@ -374,42 +374,7 @@ class CandidatePromptBuilder:
 - 현재: 그 경험이 어떻게 {company_name} 지원으로 이어졌는가
 - 미래: 회사에서 실현하고 싶은 구체적 비전
 
-=== 🎯 인간적 지원동기 답변 구조 (기존 형식적 답변 → 진솔한 스토리 전환) ===
-
-**1단계: 개인적 계기와 진솔한 관심 표현 (20-25초)**
-"{personal_experiences[0].get('experience', '개인적 경험') if personal_experiences else '개발하면서 겪었던 경험'}을 하면서 {company_name}의 {', '.join(core_competencies[:1]) if core_competencies else '기술 철학'}에 깊이 공감하게 되었습니다. 특히 (구체적인 감정과 이유)"
-
-**2단계: 개인 경험과 회사의 자연스러운 연결 (20-25초)**
-"{key_projects[0].get('name', '프로젝트') if key_projects else '개발 프로젝트'}를 진행하면서 {', '.join(key_projects[0].get('challenges', ['겪었던 어려움']) if key_projects else ['기술적 고민'])}을 해결하는 과정에서, {company_name}에서 다루는 {', '.join(business_focus[:1]) if business_focus else '기술 영역'}에 대한 관심이 더욱 커졌습니다"
-
-**3단계: 미래 비전과 진심어린 기여 의지 (15-20초)**
-"{career_goal}라는 목표를 가지고 있는데, {company_name}에서라면 {motivation}이라는 초심을 잃지 않으면서도 더 큰 임팩트를 만들어갈 수 있을 것 같아서 정말 기대가 됩니다"
-
-=== 🌟 스토리텔링 지원동기 가이드라인 ===
-
-**핵심 원칙:**
-1. **개인적 계기**: 회사 정보 나열이 아닌 개인적 경험에서 시작
-2. **감정적 연결**: 논리적 분석보다 진솔한 감정과 끌림
-3. **구체적 순간**: 추상적 이유보다 구체적 경험의 순간들
-4. **자연스러운 연결**: 억지스럽지 않은 개인 경험과 회사의 연결점
-5. **미래 지향**: 단순한 취업이 아닌 함께 성장하려는 의지
-
-**답변 길이**: 55-70초 분량 (스토리가 풍부해져서 기존보다 길어짐)
-**답변 톤**: 진정성 있고 따뜻하면서도 전문성을 잃지 않는, 함께 일하고 싶게 만드는 모습
-
-**필수 포함 요소:**
-- 회사에 관심을 갖게 된 개인적 계기나 순간
-- 단순한 회사 소개가 아닌 개인적 감정과 연결된 끌림 포인트
-- 과거 경험이 현재 지원으로 자연스럽게 이어지는 스토리
-- 회사에서 실현하고 싶은 구체적이고 진솔한 미래 비전
-
-**절대 피해야 할 것:**
-- 회사 홈페이지에서 복사한 듯한 형식적 칭찬
-- "글로벌 기업이라서", "성장 가능성이 커서" 같은 뻔한 이유
-- 개인적 경험과 단절된 일방적인 회사 분석
-- 취업을 위한 답변이라는 느낌이 드는 인위적인 연결
-
-=== 직무별 맞춤 지원동기 가이드라인 ({position_key} DNA 적용) ===
+=== 직무별 맞춤 {position_key} DNA 적용 ===
 
 **직무 정체성 반영 방법:**
 1. **{position_key} 관점**: {position_dna['core_identity']}의 시각으로 회사와 업무 이해
@@ -422,23 +387,13 @@ class CandidatePromptBuilder:
 - 핵심 강점: {', '.join(position_dna['unique_strengths'])}을 회사 업무와 연결
 - 고유 성격: {', '.join(position_dna['personality_traits'])}이 회사 문화와 맞는 부분 강조
 - {position_key} 전문성을 통해 회사에 기여할 수 있는 구체적 방안
-
-**답변 예시 방향:**
-- "{position_key}로서 {position_dna['motivation_dna']}를 추구하는데, {company_name}에서..."
-- "특히 {', '.join(position_dna['unique_strengths'][:1])} 경험을 통해 {company_name}의 {', '.join(business_focus[:1]) if business_focus else '비즈니스'}에..."
-- "{position_dna['growth_narrative']}의 과정에서 {company_name}과의 접점을 발견했습니다"
-
-**절대 하지 말 것:**
-- 다른 직무({[k for k in self.position_dna_system.keys() if k != position_key]})의 관점으로 회사 분석
-- {position_key}의 전문성과 관련 없는 일반적인 지원 이유
-- 직무 DNA와 맞지 않는 성격이나 동기로 회사 어필
 """
         return prompt.strip()
 
     def build_hr_prompt(self, request: AnswerRequest, persona: 'CandidatePersona', company_data: Dict, interview_context: Dict = None) -> str:
-        """인성 질문 전용 프롬프트 빌더 - 4단계 H.U.M.A.N 프레임워크 전면 적용"""
+        """인성 질문 전용 프롬프트 빌더 - H.U.M.A.N 프레임워크 적용"""
         
-        # 페르소나의 인성 관련 정보 추출 + 4단계 H.U.M.A.N 요소
+        # 페르소나의 인성 관련 정보 추출
         personality_traits = persona.personality_traits
         strengths = persona.strengths  
         weaknesses = persona.weaknesses
@@ -494,107 +449,89 @@ class CandidatePromptBuilder:
 
 === 🎭 H.U.M.A.N 프레임워크 적용 인성 답변 ===
 
-** Honesty (진정성)**: 완벽한 사람 연기가 아닌 진솔한 자기 인식
+**💝 Honesty (진정성)**: 완벽한 사람 연기가 아닌 진솔한 자기 인식
 - 약점 인정: {', '.join(weaknesses)[:1]}와 같은 부분을 솔직하게 인정
 - 성장 의지: 이를 개선하기 위한 구체적 노력과 경험
 - 개인 동기: {motivation}에서 우러나오는 진짜 가치관
 
-** Uniqueness (독특함)**: 남들과 다른 나만의 관점과 경험
+**🌟 Uniqueness (독특함)**: 남들과 다른 나만의 관점과 경험
 - 특별한 시각: {position_key} 개발자로서의 독특한 관점
 - 개인적 경험: {personal_experiences[0].get('experience', '독특한 개인 경험') if personal_experiences else '차별화된 학습 경험'}
 - 고유한 해결법: {', '.join(position_dna['unique_strengths'][:1])}를 활용한 문제 해결
 
-** Moment (순간)**: 구체적이고 생생한 경험의 순간들
+**⚡ Moment (순간)**: 구체적이고 생생한 경험의 순간들
 - 전환점 순간: {personal_experiences[0].get('lesson', '인생을 바꾼 깨달음의 순간') if personal_experiences else '성장의 결정적 순간'}
 - 감정적 순간: 그때 느꼈던 구체적 감정과 생각
 - 행동 변화: 그 순간 이후 달라진 구체적 행동
 
-** Affection (애정)**: 일과 성장에 대한 진심어린 애정
+**❤️ Affection (애정)**: 일과 성장에 대한 진심어린 애정
 - 일에 대한 애정: {position_dna['motivation_dna']}
 - 성장 열망: 지속적으로 발전하고 싶은 진심
 - 팀에 대한 마음: 함께 일하는 사람들에 대한 진심
 
-** Narrative (서사)**: 과거-현재-미래로 이어지는 성장 스토리
+**📖 Narrative (서사)**: 과거-현재-미래로 이어지는 성장 스토리
 - 과거: 어려움이나 실패를 겪었던 시점
 - 현재: 그 경험을 통해 배우고 성장한 현재 모습  
 - 미래: 앞으로 더 발전하고 싶은 방향
 
-=== HR 질문 인간적 답변 스타일 ===
-당신의 성격 특성({', '.join(personality_traits)})과 {position_key} DNA를 바탕으로 
-아래 3가지 스타일 중 가장 자연스러운 방식을 선택하여 답변하세요:
+=== {position_key} DNA 기반 인성 답변 스타일 ===
 
-** 감정 중심 스타일**: 내면의 감정과 성찰에 집중
+당신의 성격 특성({', '.join(personality_traits)})과 {position_key} DNA를 바탕으로 
+가장 자연스러운 방식으로 답변하세요:
+
+**감정 중심 스타일**: 내면의 감정과 성찰에 집중
 - 핵심: 경험 속에서 느꼈던 감정과 그로 인한 깊은 성찰 강조
 - 적합한 성격: 감성적, 내성적, 성찰적인 특성을 가진 경우
 
-** 논리 중심 스타일**: 체계적이고 분석적인 접근
+**논리 중심 스타일**: 체계적이고 분석적인 접근
 - 핵심: 상황 → 원인 분석 → 해결책 → 결과의 논리적 구조
 - 강조점: 구체적 데이터나 방법론, 체계적인 개선 계획
 - 적합한 성격: 논리적, 계획적, 분석적인 특성을 가진 경우
 
-** 경험 중심 스타일**: 생생한 스토리텔링 활용
+**경험 중심 스타일**: 생생한 스토리텔링 활용
 - 핵심: 개인적 경험을 중심으로 한 생동감 있는 이야기 전개
 - 강조점: 구체적 상황 묘사와 그 속에서의 깨달음
 - 적합한 성격: 사교적, 표현력이 풍부한, 스토리텔링을 좋아하는 특성
 
-=== 선택한 스타일에 따른 필수 포함 요소 ===
+=== 필수 포함 요소 ===
 
 **모든 스타일 공통:**
 1. **솔직한 자기 인식**: 약점이라면 {', '.join(weaknesses)} 중 관련된 내용을 솔직하게 인정
 2. **구체적 경험 연결**: 위의 개인적 경험 중 관련성 높은 사례 활용
 3. **성장 과정**: 그 경험을 통한 배움과 현재의 개선 노력
 4. **미래 지향**: 지속적인 발전 의지 표현
-
-**답변 길이**: 40-60초 분량 (200-300자)
-**답변 톤**: 선택한 스타일에 맞는 자연스러운 진정성
-
-=== 주의사항 ===
-- 지나치게 완벽한 사람으로 포장하지 말고 인간적인 면모 유지
-- 약점을 언급할 때는 개선 노력도 함께 제시
-- 구체적인 상황과 결과를 포함하여 신뢰성 확보
-- 질문의 의도를 정확히 파악하고 그에 맞는 답변 구성
 """
         return prompt.strip()
 
     def build_tech_prompt(self, request: AnswerRequest, persona: 'CandidatePersona', company_data: Dict, interview_context: Dict = None) -> str:
-        """기술 질문 전용 프롬프트 빌더 - 4단계 H.U.M.A.N 프레임워크 전면 적용"""
+        """기술 질문 전용 프롬프트 빌더 - H.U.M.A.N 프레임워크 적용"""
         
         # 페르소나의 기술 관련 정보 추출 + H.U.M.A.N 요소
         technical_skills = persona.technical_skills
         projects = persona.projects
-        motivation = persona.motivation
-        personal_experiences = persona.inferred_personal_experiences
+        experiences = persona.experiences
+        strengths = persona.strengths
         
-        # 직무별 DNA 적용
+        # 직무별 정체성 적용
         position_key = self._extract_position_key(request.position)
         position_dna = self.position_dna_system.get(position_key, self.position_dna_system["백엔드"])
         
-        # 질문에서 언급된 기술이나 관련 프로젝트 찾기
+        # 기술 질문과 관련된 프로젝트 찾기
         question_lower = request.question_content.lower()
         relevant_projects = []
-        relevant_skills = []
         
-        # 질문에서 기술 키워드 추출 시도
-        for skill in technical_skills:
-            if skill.lower() in question_lower:
-                relevant_skills.append(skill)
-        
-        # 관련 프로젝트 찾기 (기술 스택 기준)
         for project in projects:
-            project_tech = [tech.lower() for tech in project.get('tech_stack', [])]
-            if relevant_skills:
-                # 언급된 기술과 관련된 프로젝트 우선
-                if any(skill.lower() in project_tech for skill in relevant_skills):
-                    relevant_projects.append(project)
-            else:
-                # 모든 프로젝트 포함
+            # 프로젝트의 기술 스택이나 설명에서 질문과 관련된 키워드 찾기
+            project_tech = ' '.join(project.get('tech_stack', [])).lower()
+            project_desc = project.get('description', '').lower()
+            
+            if any(tech in project_tech or tech in project_desc 
+                   for tech in ['python', 'java', 'react', 'node', 'database', 'api']):
                 relevant_projects.append(project)
         
-        # 최대 2개 프로젝트만 선별
+        # 관련 프로젝트가 없으면 모든 프로젝트 포함
         if not relevant_projects:
             relevant_projects = projects[:2]
-        else:
-            relevant_projects = relevant_projects[:2]
         
         prompt = f"""
 === 면접 상황 ===
@@ -604,207 +541,182 @@ class CandidatePromptBuilder:
 질문: {request.question_content}
 질문 의도: {request.question_intent}
 
-=== 당신의 기술 역량 ===
-**보유 기술 스킬:**
+=== 당신의 기술적 배경 ===
+**보유 기술:**
 {', '.join(technical_skills)}
 
-**질문 관련 기술 (추출됨):**
-{', '.join(relevant_skills) if relevant_skills else '일반적인 기술 경험'}
-
-=== 활용할 프로젝트 경험 ==="""
+**관련 프로젝트 경험:**"""
 
         for i, project in enumerate(relevant_projects, 1):
             prompt += f"""
-**{i}. {project.get('name', '프로젝트')}**
-- 설명: {project.get('description', '')}
-- 사용 기술: {', '.join(project.get('tech_stack', []))}
-- 역할: {project.get('role', '개발자')}
-- 주요 성과: {', '.join(project.get('achievements', []))}
-- 겪었던 어려움: {', '.join(project.get('challenges', []))}"""
+{i}. **{project.get('name', '프로젝트')}**
+   - 사용 기술: {', '.join(project.get('tech_stack', []))}
+   - 역할: {project.get('role', '개발자')}
+   - 주요 성과: {', '.join(project.get('achievements', []))[:100]}...
+   - 기술적 도전: {', '.join(project.get('challenges', []))[:100]}..."""
 
         prompt += f"""
 
-===  H.U.M.A.N 프레임워크 적용 기술 답변 ===
+=== 🧬 {position_key} 개발자 정체성 DNA ===
+**핵심 정체성**: {position_dna['core_identity']}
+**기술적 접근법**: {position_dna['technical_approach'] if 'technical_approach' in position_dna else '체계적이고 안정적인 기술 구현'}
+**고유 강점**: {', '.join(position_dna['unique_strengths'])}
 
-** Honesty (진정성)**: 기술 과시가 아닌 진솔한 학습 여정
-- 어려웠던 점: 기술 학습/적용 과정에서 실제로 겪었던 어려움
-- 한계 인정: 완벽하지 않았던 부분이나 아직 부족한 영역
-- 학습 동기: {motivation}에서 시작된 기술에 대한 진짜 관심
+=== 🎭 H.U.M.A.N 프레임워크 적용 기술 답변 ===
 
-** Uniqueness (독특함)**: 남들과 다른 나만의 기술적 접근
-- {position_key} 관점: {position_dna['core_identity']}로서의 독특한 기술 해석
-- 창의적 해결: {', '.join(position_dna['unique_strengths'][:1])}를 활용한 문제 해결
-- 개인적 통찰: 기술 사용 과정에서 얻은 나만의 인사이트
+**💝 Honesty (진정성)**: 과장 없는 솔직한 기술 경험
+- 실제 경험: 직접 해본 것과 배우고 있는 것을 명확히 구분
+- 한계 인정: 모르는 부분이나 어려웠던 점을 솔직하게 인정
+- 학습 과정: 기술을 배워가는 과정에서의 진짜 어려움과 극복
 
-**⚡ Moment (순간)**: 기술적 성장의 결정적 순간들  
-- 브레이크스루: 기술을 처음 이해했거나 돌파구를 찾은 순간
-- 실패와 극복: 기술적 문제로 막혔다가 해결한 구체적 경험
-- 성취감: 기술 적용 후 얻은 구체적 성과와 그때의 감정
+**🌟 Uniqueness (독특함)**: 남들과 다른 나만의 기술적 접근
+- 특별한 관점: {position_key}로서 문제를 바라보는 독특한 시각
+- 차별화된 해결법: {', '.join(position_dna['unique_strengths'][:1])}를 활용한 기술적 해결책
+- 창의적 구현: 기존과 다른 나만의 방식으로 문제 해결한 경험
 
-** Affection (애정)**: 기술과 문제 해결에 대한 진심
-- 기술 애정: {position_dna['motivation_dna']}에 대한 진짜 열정
-- 지속적 관심: 해당 기술 분야를 계속 파고들고 싶은 마음
-- 적용 의지: 배운 기술을 실제 문제 해결에 활용하려는 의지
+**⚡ Moment (순간)**: 기술적 깨달음이나 돌파구를 찾은 구체적 순간
+- 문제 해결 순간: 막혔던 기술적 문제를 해결한 그 순간의 경험
+- 학습의 순간: 새로운 기술을 이해하게 된 결정적 순간
+- 성장의 순간: 기술적으로 한 단계 성장했다고 느꼈던 경험
 
-** Narrative (서사)**: 기술 학습과 성장의 연결된 이야기
-- 과거: 기술을 처음 접하게 된 계기와 초기 어려움
-- 현재: 지금까지 쌓은 경험과 역량 수준
-- 미래: 해당 기술로 이루고 싶은 목표와 발전 계획
+**❤️ Affection (애정)**: 기술과 개발에 대한 진심어린 열정
+- 기술 사랑: 특정 기술이나 개발 자체에 대한 진짜 애정
+- 품질 추구: 좋은 코드, 좋은 아키텍처에 대한 진심
+- 지속적 학습: 새로운 기술을 배우고 싶은 진심어린 욕구
 
-=== 기술 질문 인간적 답변 스타일 ===
+**📖 Narrative (서사)**: 기술 학습과 성장의 일관된 스토리
+- 과거: 처음 이 기술을 접했을 때의 상황과 동기
+- 현재: 그 기술을 어떻게 발전시켜왔는지의 과정
+- 미래: 이 기술을 어떻게 더 발전시키고 활용하고 싶은지
+
+=== {position_key} 개발자로서의 기술적 정체성 ===
+
+**{position_key} 관점에서의 기술 답변:**
+1. **전문성 강조**: {position_dna['core_identity']}로서의 깊이 있는 기술 이해
+2. **실무 중심**: 이론보다는 실제 프로젝트에서의 적용 경험 중심
+3. **문제 해결**: {', '.join(position_dna['unique_strengths'])}를 통한 기술적 문제 해결
+4. **지속적 학습**: {position_key} 개발자로서의 기술 학습 여정
+
+**기술 설명 시 포함할 요소:**
+- 해당 기술을 선택한 이유와 배경
+- 실제 구현 과정에서의 고민과 해결책
+- 다른 기술 대안과의 비교 및 선택 근거
+- 프로젝트나 팀에 미친 구체적 영향
+- 그 경험을 통해 배운 점과 개선 방향
+
 {position_key} 개발자로서의 정체성과 H.U.M.A.N 프레임워크를 바탕으로 
-아래 3가지 스타일 중 가장 자연스러운 방식을 선택하여 답변하세요:
-
-** 깊이 우선 스타일**: 특정 기술에 대한 심층적 이해 강조
-- 핵심: 하나의 기술을 깊게 파고들어 전문성 어필
-- 강조점: 기술의 내부 동작 원리, 성능 특성, 최적화 방법
-- 구조: 기술 원리 → 심화 활용 → 성능 최적화 → 전문적 인사이트
-- 적합한 경우: 해당 기술에 대한 깊은 경험이 있을 때
-
-** 폭넓은 접근 스타일**: 다양한 기술 조합과 연결성 강조  
-- 핵심: 여러 기술들의 조합과 시너지 효과에 집중
-- 강조점: 기술 간 상호작용, 아키텍처 설계, 전체적 시스템 구성
-- 구조: 기술 선택 배경 → 다른 기술과의 연동 → 전체 시스템 관점 → 확장성
-- 적합한 경우: 풀스택 경험이나 시스템 설계 경험이 많을 때
-
-** 실무 중심 스타일**: 프로젝트 성과와 문제 해결 경험 중심
-- 핵심: 실제 프로젝트에서의 문제 해결과 성과에 집중
-- 강조점: 구체적 문제 상황, 해결 과정, 측정 가능한 성과
-- 구조: 문제 상황 → 해결 과정 → 구체적 성과 → 교훈과 개선점
-- 적합한 경우: 실무에서의 명확한 성과와 도전 경험이 있을 때
-
-=== 선택한 스타일에 따른 필수 포함 요소 ===
-
-**모든 스타일 공통:**
-1. **관련 기술 활용**: {', '.join(relevant_skills) if relevant_skills else '해당 기술'}에 대한 실제 경험
-2. **프로젝트 연결**: 위 프로젝트 중 관련성 높은 사례 활용
-3. **구체적 성과**: achievements 중 기술적 성과를 구체적으로 언급
-4. **기술적 근거**: 기술 선택이나 문제 해결의 논리적 근거 제시
-
-**답변 길이**: 45-70초 분량 (250-350자)
-**답변 톤**: 선택한 스타일에 맞는 기술적 전문성과 자신감
-
-=== 기술 질문 답변 가이드라인 ===
-- **구체적 수치 포함**: 성능 개선률, 처리량, 응답시간 등
-- **문제-해결-결과 구조**: 어떤 문제를 어떻게 해결했고 무슨 결과를 얻었는지
-- **기술적 판단 근거**: 왜 그 기술을 선택했는지, 다른 대안은 무엇이었는지
-- **현실적 어려움 인정**: 완벽하지 않았던 부분이나 아쉬웠던 점도 솔직하게
-- **지속적 학습 의지**: 해당 기술 분야에서의 추가 학습 계획이나 관심사
-
-**주의사항:**
-- 모르는 기술에 대해서는 솔직히 인정하되, 학습 의지 표현
-- 과도한 기술 용어 남발보다는 핵심 포인트 중심으로 설명
-- 면접관이 이해할 수 있는 수준에서 적절한 깊이 유지
+기술적 전문성을 갖추면서도 인간적인 매력이 느껴지는 답변을 만들어주세요.
 """
         return prompt.strip()
 
     def build_collaboration_prompt(self, request: AnswerRequest, persona: 'CandidatePersona', company_data: Dict, interview_context: Dict = None) -> str:
-        """협업 질문 전용 프롬프트 빌더 - 4단계 H.U.M.A.N 프레임워크 전면 적용"""
+        """협업 질문 전용 프롬프트 빌더 - H.U.M.A.N 프레임워크 적용"""
         
-        # 페르소나의 협업 관련 정보 추출
+        # 페르소나의 협업 관련 정보
+        experiences = persona.experiences
+        strengths = persona.strengths
         personality_traits = persona.personality_traits
         projects = persona.projects
-        experiences = persona.experiences
         
-        # 협업 관련 프로젝트 선별 (팀 규모나 역할 기준)
-        team_projects = []
-        for project in projects:
-            role = project.get('role', '').lower()
-            if any(keyword in role for keyword in ['팀', '리더', '협업', '멘토', '관리']):
-                team_projects.append(project)
+        # 직무별 DNA 적용
+        position_key = self._extract_position_key(request.position)
+        position_dna = self.position_dna_system.get(position_key, self.position_dna_system["백엔드"])
         
-        if not team_projects:
-            team_projects = projects[:2]  # 기본적으로 상위 2개 프로젝트
-        
-        # 협업 관련 경험 선별
-        collab_experiences = []
+        # 협업 관련 경험 필터링
+        collaboration_experiences = []
         for exp in experiences:
-            category = exp.get('category', '').lower()
-            experience = exp.get('experience', '').lower()
-            if any(keyword in category + experience for keyword in ['협업', '팀', '소통', '갈등', '리더십', '멘토']):
-                collab_experiences.append(exp)
+            exp_text = exp.get('experience', '').lower()
+            if any(keyword in exp_text for keyword in ['팀', '협업', '소통', '갈등', '리더', '프로젝트']):
+                collaboration_experiences.append(exp)
         
-        if not collab_experiences:
-            collab_experiences = experiences[:2]
+        if not collaboration_experiences:
+            collaboration_experiences = experiences[:2]
+        
+        # 팀 프로젝트 경험
+        team_projects = [p for p in projects if p.get('team_size', 1) > 1][:2]
         
         prompt = f"""
 === 면접 상황 ===
 회사: {company_data.get('name', request.company_id)}
 직군: {request.position}
-질문 유형: {request.question_type.value} (협업 능력 평가)
+질문 유형: {request.question_type.value} (협업 질문)
 질문: {request.question_content}
 질문 의도: {request.question_intent}
 
-=== 당신의 성격 특성 ===
-**협업에 영향하는 성격:**
-{', '.join(personality_traits)}
+=== 당신의 협업 관련 배경 ===
+**성격 특성 (협업 관련):**
+{', '.join([trait for trait in personality_traits if any(keyword in trait.lower() for keyword in ['소통', '협력', '리더', '팀', '배려'])])}
 
-=== 활용할 팀 프로젝트 경험 ==="""
+**협업 경험:**"""
 
-        for i, project in enumerate(team_projects, 1):
+        for i, exp in enumerate(collaboration_experiences, 1):
             prompt += f"""
-**{i}. {project.get('name', '팀 프로젝트')}**
-- 팀 구성: {project.get('description', '다인 팀 프로젝트')}
-- 본인 역할: {project.get('role', '팀원')}
-- 주요 성과: {', '.join(project.get('achievements', []))}
-- 협업 과정의 어려움: {', '.join(project.get('challenges', []))}"""
-
-        prompt += f"""
-
-=== 활용할 협업 경험 ==="""
-
-        for i, exp in enumerate(collab_experiences, 1):
-            prompt += f"""
-{i}. **[{exp.get('category', '협업 경험')}]** {exp.get('experience', '')}
+{i}. **[{exp.get('category', '경험')}]** {exp.get('experience', '')}
    - 배운 점: {exp.get('lesson', '')}"""
 
         prompt += f"""
 
-=== 협업 질문 다양한 답변 스타일 ===
-당신의 성격과 경험을 바탕으로 
-아래 3가지 스타일 중 가장 자연스러운 방식을 선택하여 답변하세요:
+**팀 프로젝트 경험:**"""
 
-** 리더십 중심 스타일**: 팀을 이끄는 역할과 책임감 강조
-- 핵심: 팀의 목표 달성을 위한 리더십과 의사결정에 집중
-- 강조점: 팀원 동기부여, 갈등 조정, 목표 설정과 달성 과정
-- 구조: 상황 인식 → 리더십 발휘 → 팀 성과 → 리더로서의 성장
-- 적합한 성격: 추진력 있는, 책임감 강한, 결단력 있는 특성
+        for i, project in enumerate(team_projects, 1):
+            prompt += f"""
+{i}. **{project.get('name', '팀 프로젝트')}**
+   - 팀 규모: {project.get('team_size', '팀')}명
+   - 역할: {project.get('role', '팀원')}
+   - 협업 도구: {', '.join(project.get('collaboration_tools', ['일반적인 협업 도구']))}
+   - 성과: {', '.join(project.get('achievements', []))[:100]}..."""
 
-** 조화 중심 스타일**: 팀 내 소통과 화합을 중시하는 접근
-- 핵심: 팀원 간의 원활한 소통과 상호 이해를 통한 시너지 창출
-- 강조점: 경청, 중재, 배려, 팀워크 향상을 위한 노력
-- 구조: 소통 문제 인식 → 화합 노력 → 팀 분위기 개선 → 협업 성과
-- 적합한 성격: 친화적, 공감 능력 높은, 중재 능력 있는 특성
+        prompt += f"""
 
-** 문제해결 중심 스타일**: 협업 과정의 문제를 체계적으로 해결
-- 핵심: 협업에서 발생하는 구체적 문제를 분석하고 해결하는 능력
-- 강조점: 문제 분석, 해결책 도출, 프로세스 개선, 효율성 증대
-- 구조: 문제 상황 → 원인 분석 → 해결 방안 → 개선된 결과
-- 적합한 성격: 분석적, 논리적, 문제 해결 지향적 특성
+=== 🧬 {position_key} 개발자의 협업 DNA ===
+**핵심 정체성**: {position_dna['core_identity']}
+**협업 스타일**: {position_dna.get('collaboration_style', '체계적이고 책임감 있는 협업')}
+**커뮤니케이션**: {position_dna['speech_patterns']['tone']}
 
-=== 선택한 스타일에 따른 필수 포함 요소 ===
+=== 🎭 H.U.M.A.N 프레임워크 적용 협업 답변 ===
 
-**모든 스타일 공통:**
-1. **구체적 팀 상황**: 위 프로젝트 중 관련성 높은 팀 경험 활용
-2. **본인의 역할**: 팀에서 담당한 구체적 역할과 기여도
-3. **협업 성과**: 팀워크를 통해 달성한 측정 가능한 결과
-4. **배운 점**: 협업 경험을 통한 개인적 성장과 깨달음
+**💝 Honesty (진정성)**: 완벽한 팀플레이어 연기가 아닌 솔직한 협업 경험
+- 어려웠던 점: 협업 과정에서 실제로 겪었던 어려움이나 갈등
+- 개인적 성향: 협업에서의 나의 장단점을 솔직하게 인정
+- 성장 과정: 협업 능력이 어떻게 발전해왔는지의 진실한 여정
 
-**답변 길이**: 40-60초 분량 (220-320자)
-**답변 톤**: 선택한 스타일에 맞는 팀플레이어로서의 성숙함
+**🌟 Uniqueness (독특함)**: 남들과 다른 나만의 협업 방식
+- 특별한 접근: {position_key} 개발자로서의 독특한 협업 관점
+- 고유한 기여: {', '.join(position_dna['unique_strengths'][:1])}를 활용한 팀 기여 방식
+- 차별화된 소통: 나만의 특별한 커뮤니케이션 스타일
 
-=== 협업 질문 답변 가이드라인 ===
-- **STAR 구조 활용**: Situation → Task → Action → Result
-- **균형잡힌 시각**: 개인 기여도와 팀 성과의 균형있는 언급
-- **갈등 상황 솔직**: 협업 과정의 어려움을 솔직하게 인정하되 해결 과정 강조
-- **다양성 존중**: 서로 다른 팀원들과의 협업 경험과 그로부터의 배움
-- **지속적 개선**: 앞으로의 협업에서 적용할 교훈이나 개선 의지
+**⚡ Moment (순간)**: 협업에서의 결정적이고 구체적인 순간들
+- 갈등 해결 순간: 팀 내 갈등이나 문제를 해결한 구체적 순간
+- 성과 창출 순간: 팀워크로 큰 성과를 이뤄낸 그 순간
+- 깨달음의 순간: 협업의 중요성을 실감한 결정적 경험
 
-**주의사항:**
-- 본인만의 성과를 과도하게 강조하지 말고 팀 전체의 관점 유지
-- 갈등 상황을 언급할 때는 상대방을 비판하기보다 상황 해결에 집중
-- 구체적인 협업 도구나 방법론이 있다면 자연스럽게 포함
-- 회사의 협업 문화와 연결지을 수 있는 포인트 모색
+**❤️ Affection (애정)**: 팀과 협업에 대한 진심어린 애정
+- 팀에 대한 마음: 함께 일하는 동료들에 대한 진심어린 마음
+- 협업의 가치: 혼자가 아닌 함께 할 때의 시너지에 대한 믿음
+- 성장 욕구: 팀과 함께 더 나아지고 싶은 진심
+
+**📖 Narrative (서사)**: 협업 능력의 성장 스토리
+- 과거: 처음 팀 작업을 했을 때의 어색함이나 어려움
+- 현재: 그 경험들을 통해 발전한 현재의 협업 능력
+- 미래: 앞으로 팀에서 어떤 역할을 하고 싶은지의 비전
+
+=== {position_key} 협업 스타일 가이드 ===
+
+**{position_key} 개발자로서의 협업 정체성:**
+1. **전문성 기반 기여**: {position_dna['core_identity']}로서 팀에 제공하는 가치
+2. **체계적 소통**: {position_key}다운 논리적이고 명확한 커뮤니케이션
+3. **책임감**: 맡은 부분에 대한 확실한 책임감과 완수 의지
+4. **학습 자세**: 다른 분야 동료들로부터 배우려는 열린 마음
+
+**협업 경험 설명 시 포함할 요소:**
+- 구체적인 상황과 배경 설명
+- 그때 내가 취한 구체적 행동과 이유
+- 다른 팀원들과의 상호작용 과정
+- 그 경험을 통해 배운 점과 개선한 점
+- 팀과 프로젝트에 미친 실제 영향
+
+{position_key} 개발자로서의 전문성을 바탕으로 하되, 
+인간적인 따뜻함과 협업 정신이 느껴지는 답변을 만들어주세요.
 """
         return prompt.strip()
 

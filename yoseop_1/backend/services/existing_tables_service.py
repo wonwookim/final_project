@@ -238,6 +238,8 @@ class ExistingTablesService:
     async def find_posting_by_company_position(self, company_name: str, position_name: str) -> Optional[Dict[str, Any]]:
         """회사명과 직무명으로 채용공고 찾기"""
         try:
+            print(company_name, position_name)
+            print(f'회사명 {company_name}, 직무명 {position_name}으로 채용공고 검색 중...')
             # 1단계: 회사명으로 company_id 찾기
             company_result = self.client.table('company').select('company_id').ilike('name', f'%{company_name}%').execute()
             if not company_result.data:
@@ -248,13 +250,32 @@ class ExistingTablesService:
             logger.info(f"✅ 회사 매핑 성공: {company_name} -> company_id={company_id}")
             
             # 2단계: 직무명으로 position_id 찾기 (⚠️ company_id 제약 조건 제거)
-            position_result = self.client.table('position').select('position_id').ilike('position_name', f'%{position_name}%').execute()
-            if not position_result.data:
+            position_id = None
+            
+            # 먼저 정확한 매칭 시도
+            try:
+                position_result = self.client.table('position').select('position_id').eq('position_name', position_name).execute()
+                if position_result.data:
+                    position_id = position_result.data[0]['position_id']
+                    logger.info(f"✅ 직무 정확 매칭 성공: {position_name} -> position_id={position_id}")
+            except Exception as exact_match_error:
+                logger.warning(f"정확 매칭 실패: {exact_match_error}")
+            
+            # 정확 매칭 실패 시 fallback: 전체 position 조회 후 Python에서 필터링
+            if not position_id:
+                try:
+                    all_positions = self.client.table('position').select('position_id, position_name').execute()
+                    for pos in all_positions.data:
+                        if position_name.lower() in pos['position_name'].lower():
+                            position_id = pos['position_id']
+                            logger.info(f"✅ 직무 fallback 매칭 성공: {position_name} -> position_id={position_id} (실제: {pos['position_name']})")
+                            break
+                except Exception as fallback_error:
+                    logger.error(f"Fallback 검색 실패: {fallback_error}")
+            
+            if not position_id:
                 logger.warning(f"직무를 찾을 수 없음: {position_name}")
                 return None
-            
-            position_id = position_result.data[0]['position_id']
-            logger.info(f"✅ 직무 매핑 성공: {position_name} -> position_id={position_id}")
             
             # 3단계: posting 테이블에서 company_id + position_id로 채용공고 찾기
             posting_result = self.client.table('posting').select(

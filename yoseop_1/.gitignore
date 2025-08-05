@@ -148,4 +148,6 @@ dmypy.json*.pyc
 __pycache__/
 
 .serena
-.claude
+.claude/settings.local.json
+.claude/settings.json
+
