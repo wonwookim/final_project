@@ -431,14 +431,15 @@ class AICandidateModel:
         
         company_data = self._get_company_info(request.company_id)
         
-        prompt = self.prompt_builder.build_prompt(request, persona, company_data)
-        
+        prompt = self.prompt_builder.build_prompt(request, persona, company_data, interview_context=None)
+
         config = self.quality_controller.get_quality_config(request.quality_level)
+
         quality_prompt = self.quality_controller.generate_quality_prompt(prompt, request.quality_level, request.question_type.value)
-        
+
         # system_prompt 생성
-        system_prompt = self.prompt_builder.build_system_prompt(persona, company_data, request.question_type, request.llm_provider)
-        
+
+        system_prompt = self.prompt_builder.build_system_prompt(persona, company_data.get('name', request.company_id), company_data, request.question_type, request.llm_provider)
         llm_response = self._generate_llm_answer(quality_prompt, system_prompt, config)
         
         response_time = (datetime.now() - start_time).total_seconds()
