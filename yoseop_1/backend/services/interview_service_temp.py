@@ -123,6 +123,15 @@ class InterviewServiceTemp:
                 }
                 print(f"⚠️ 이력서 데이터 없음 - 기본값 사용: {user_resume['name']}")
             
+            # 🆕 난이도 변환 및 저장
+            difficulty_map = {
+                '초급': QualityLevel.INADEQUATE,
+                '중급': QualityLevel.AVERAGE,
+                '고급': QualityLevel.EXCELLENT
+            }
+            quality_level = difficulty_map.get(settings.get('difficulty', '중급'), QualityLevel.AVERAGE)
+            interview_logger.info(f"🔡 텍스트 면접 난이도 설정: {settings.get('difficulty')} -> {quality_level.name}")
+
             session_data = {
                 'session_id': session_id,
                 'company_id': company_id,
@@ -130,6 +139,7 @@ class InterviewServiceTemp:
                 'candidate_name': settings['candidate_name'],
                 'user_resume': user_resume,
                 'ai_persona': ai_persona,
+                'ai_quality_level': quality_level,  # 🆕 세션에 난이도 저장
                 'qa_history': [],
                 'user_answers': [],
                 'ai_answers': [],
@@ -199,7 +209,7 @@ class InterviewServiceTemp:
                 question_intent=current_question.get('intent', '면접 평가'),
                 company_id=session_data['company_id'],
                 position=session_data['position'],
-                quality_level=QualityLevel.GOOD,
+                quality_level=session_data.get('ai_quality_level', QualityLevel.AVERAGE),  # 🆕 세션 난이도 사용
                 llm_provider="openai_gpt4o_mini"
             )
             

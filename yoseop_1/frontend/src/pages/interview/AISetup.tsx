@@ -151,7 +151,7 @@ const AISetup: React.FC = () => {
           </div>
 
           {/* AI 경쟁 모드 설정 */}
-          {selectedMode === 'ai_competition' && (
+          {(selectedMode === 'ai_competition' || selectedMode === 'text_competition') && (
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 border border-slate-200">
               <h3 className="text-xl font-bold text-slate-900 mb-6 text-center">
                 AI 지원자 설정

@@ -163,7 +163,8 @@ async def start_ai_competition(
                     "posting_id": settings.posting_id,
                     "company_id": posting_info.get('company_id'),
                     "position_id": posting_info.get('position_id'),
-                    "use_interviewer_service": settings.use_interviewer_service  # 🎯 플래그 포함
+                    "difficulty": settings.difficulty,  # 🎯 난이도 값 추가
+                    "use_interviewer_service": settings.use_interviewer_service
                 }
             else:
                 interview_logger.warning(f"⚠️ 채용공고를 찾을 수 없음: posting_id={settings.posting_id}, fallback to original")
@@ -171,7 +172,8 @@ async def start_ai_competition(
                     "company": settings.company,
                     "position": settings.position,
                     "candidate_name": settings.candidate_name,
-                    "use_interviewer_service": settings.use_interviewer_service  # 🎯 플래그 포함
+                    "difficulty": settings.difficulty,  # 🎯 난이도 값 추가
+                    "use_interviewer_service": settings.use_interviewer_service
                 }
         else:
             # 기존 방식: company/position 문자열 사용
@@ -179,7 +181,8 @@ async def start_ai_competition(
                 "company": settings.company,
                 "position": settings.position,
                 "candidate_name": settings.candidate_name,
-                "use_interviewer_service": settings.use_interviewer_service  # 🎯 플래그 포함
+                "difficulty": settings.difficulty,  # 🎯 난이도 값 추가
+                "use_interviewer_service": settings.use_interviewer_service
             }
         
         # 🐛 디버깅: 서비스에 전달할 settings_dict 로깅
@@ -341,7 +344,8 @@ async def start_text_competition(
             "position": settings.position,
             "candidate_name": settings.candidate_name,
             "documents": settings.documents or [],
-            "resume": settings.resume  # 🆕 이력서 데이터 추가
+            "resume": settings.resume,  # 🆕 이력서 데이터 추가
+            "difficulty": settings.difficulty  # 🆕 난이도 추가
         }
         
         result = await temp_service.start_text_interview(settings_dict)

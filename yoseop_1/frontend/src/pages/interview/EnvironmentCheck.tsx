@@ -234,6 +234,7 @@ const EnvironmentCheck: React.FC = () => {
     const finalSettings = {
       company: state.jobPosting?.company || '',  // 회사명 사용
       position: state.jobPosting?.position || '',
+      posting_id: state.jobPosting?.posting_id, // 🆕 posting_id 추가
       mode: state.aiSettings?.mode || 'personalized',
       difficulty: getDifficultyFromLevel(state.aiSettings?.aiQualityLevel),
       candidate_name: state.resume?.name || '사용자',

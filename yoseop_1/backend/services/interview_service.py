@@ -44,6 +44,7 @@ class SessionState:
     question_generator: QuestionGenerator
     ai_candidate_model: AICandidateModel
     ai_persona: CandidatePersona
+    ai_quality_level: QualityLevel = QualityLevel.AVERAGE  # 🆕 AI 지원자 난이도
     
     # 면접 진행 상태
     qa_history: List[Dict[str, Any]] = field(default_factory=list)
@@ -511,6 +512,15 @@ class InterviewService:
             self._log_interview_event("AI_COMPETITION_START", session_id, f"지원자: {settings['candidate_name']}")
             
             company_id = self.get_company_id(settings['company'])
+
+            # 🆕 난이도 변환
+            difficulty_map = {
+                '초급': QualityLevel.VERY_POOR,
+                '중급': QualityLevel.AVERAGE,
+                '고급': QualityLevel.EXCELLENT
+            }
+            quality_level = difficulty_map.get(settings.get('difficulty', '중급'), QualityLevel.AVERAGE)
+            self._log_interview_event("SET_DIFFICULTY", session_id, f"설정된 난이도: {settings.get('difficulty')} -> {quality_level.name}")
             
             # 1. LLM 엔진 인스턴스 생성
             question_generator = QuestionGenerator()
@@ -524,6 +534,7 @@ class InterviewService:
                 session_id, company_id, settings, question_generator, 
                 ai_candidate_model, ai_persona, is_regular_interview=False
             )
+            session_state.ai_quality_level = quality_level  # 🆕 세션에 난이도 저장
             self.active_sessions[session_id] = session_state
             
             # 4. 첫 질문 생성 (공통 로직 사용)
@@ -684,7 +695,7 @@ class InterviewService:
                 question_intent=previous_question_obj.get("intent", ""),
                 company_id=session_state.company_id,
                 position=session_state.position,
-                quality_level=QualityLevel.AVERAGE,
+                quality_level=session_state.ai_quality_level,  # 🆕 세션에 저장된 난이도 사용
                 llm_provider=LLMProvider.OPENAI_GPT4O
             )
             ai_answer_response = await asyncio.to_thread(
