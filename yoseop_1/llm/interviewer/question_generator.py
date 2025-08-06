@@ -104,8 +104,12 @@ class QuestionGenerator:
         """고정 질문 생성 (자기소개, 지원동기)"""
         if question_index == 0:
             # 첫 번째 질문: 자기소개
+            candidate_name = user_resume.get('name', '지원자') if user_resume else '지원자'
+            base_question = '자기소개를 부탁드립니다.'
+            question_with_name = self._add_candidate_name_to_question(base_question, candidate_name)
+            
             return {
-                'question': '자기소개를 부탁드립니다.',
+                'question': question_with_name,
                 'intent': '지원자의 기본 정보와 성격, 역량을 파악',
                 'interviewer_type': 'INTRO'
             }
@@ -122,7 +126,7 @@ class QuestionGenerator:
             return {
                 'question': question_with_name,
                 'intent': '회사에 대한 관심도와 지원 동기 파악',
-                'interviewer_type': 'MOTIVATION'
+                'interviewer_type': 'INTRO'
             }
         
         else:

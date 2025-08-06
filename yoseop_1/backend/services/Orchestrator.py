@@ -23,7 +23,6 @@ class Content:
 class Metrics:
     total_time: Optional[float] = None
     duration: Optional[float] = None
-    answer_seq: Optional[int] = None
 
 @dataclass
 class AgentMessage:
@@ -69,8 +68,6 @@ class Orchestrator:
         """메시지로부터 세션 상태 업데이트"""
         if task == "question_generated":
             self.session_state['current_question'] = content
-            self.session_state['answer_seq'] = 1
-            self.session_state['who_answers_first'] = 'user' if self.session_state['turn_count'] % 2 == 0 else 'ai'
             
         elif task == "answer_generated":
             self.session_state['qa_history'].append({
@@ -79,61 +76,46 @@ class Orchestrator:
                 "answer": content
             })
             
-            if self.session_state['answer_seq'] == 1:
-                self.session_state['answer_seq'] = 2
-            else:
-                self.session_state['answer_seq'] = 0
+            # 두 답변이 모두 완료되면 턴 증가
+            current_answers = len([qa for qa in self.session_state['qa_history'] 
+                                 if qa['question'] == self.session_state['current_question']])
+            
+            if current_answers >= 2:
                 self.session_state['turn_count'] += 1
                 self.session_state['current_question'] = None
 
     def _decide_next_message(self) -> Dict[str, Any]:
         """다음 메시지 결정 - 실제 플로우 제어 로직"""
-        next_agent_options = ['user', 'ai']
-
         # 완료 조건 체크
         if self.session_state['turn_count'] >= self.session_state.get('total_question_limit', 15):
             self.session_state['is_completed'] = True
             return self.create_message("면접이 종료되었습니다.", "end_interview", "system")
 
-        # answer_seq에 따른 다음 액션 결정
-        if self.session_state['answer_seq'] == 0:
-            # 첫 번째: 면접관이 질문 생성
-            self.session_state['random_choice'] = self._random_select()
+        # 현재 질문이 없으면 새 질문 생성
+        if not self.session_state['current_question']:
             return self.create_message("다음 질문을 생성해주세요.", "generate_question", "interviewer")
         
-        elif self.session_state['answer_seq'] == 1:
-            # 두 번째: 랜덤 선택된 에이전트가 답변
-            selected_agent = next_agent_options[0] if self.session_state['random_choice'] == -1 else next_agent_options[1]
-            self.session_state['who_answers_first'] = selected_agent
+        # 현재 질문에 대한 답변 수 확인
+        current_answers = len([qa for qa in self.session_state['qa_history'] 
+                             if qa['question'] == self.session_state['current_question']])
+        
+        # 첫 번째 답변: 랜덤 선택
+        if current_answers == 0:
+            selected_agent = 'user' if self._random_select() == -1 else 'ai'
             return self.create_message(self.session_state['current_question'], "generate_answer", selected_agent)
-            
-        elif self.session_state['answer_seq'] == 2:
-            # 세 번째: 반대 에이전트가 답변
-            selected_agent = next_agent_options[1] if self.session_state['random_choice'] == -1 else next_agent_options[0]
+        
+        # 두 번째 답변: 반대 에이전트
+        elif current_answers == 1:
+            # 첫 번째 답변자 확인
+            first_answerer = self.session_state['qa_history'][-1]['answerer']
+            selected_agent = 'ai' if first_answerer == 'user' else 'user'
             return self.create_message(self.session_state['current_question'], "generate_answer", selected_agent)
+        
+        # 모든 답변 완료: 다음 질문으로
+        else:
+            return self.create_message("다음 질문을 생성해주세요.", "generate_question", "interviewer")
 
-    def create_message(self, content_text: str, task: str, next_agent: str, content_type: str = "text") -> Dict[str, Any]:
-        """메시지 생성"""
-        current_time = time.perf_counter()
-        return {
-            "metadata": {
-                "interview_id": self.session_id,
-                "step": self.session_state['turn_count'],
-                "task": task,
-                "from_agent": "orchestrator",
-                "next_agent": next_agent,
-                "status_code": 200
-            },
-            "content": {
-                "type": content_type,
-                "content": content_text
-            },
-            "metrics": {
-                "total_time": current_time - self.session_state.get('start_time', current_time),
-                "duration": 0,
-                "answer_seq": self.session_state['answer_seq']
-            }
-        }
+   
 
     def _random_select(self) -> int:
         """사용자와 AI 중 랜덤으로 선택"""
@@ -319,8 +301,6 @@ class Orchestrator:
         # 턴 정보 추가
         response['turn_info'] = {
             'current_turn': self.session_state.get('turn_count', 0),
-            'answer_seq': self.session_state.get('answer_seq', 0),
-            'who_answers_first': self.session_state.get('who_answers_first', 'user'),
             'is_user_turn': True
         }
         

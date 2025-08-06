@@ -47,15 +47,11 @@ class InterviewService:
     def create_session_state(self, session_id: str, initial_settings: Dict[str, Any]) -> Dict[str, Any]:
         """새로운 세션 상태 생성"""
         session_state = {
-            "session_id": session_id,
             "turn_count": 0,
-            "answer_seq": 0,  # 0: 질문생성, 1: 첫 답변, 2: 두 번째 답변
             "current_question": None,
             "qa_history": [],
-            "who_answers_first": None, # 'user' 또는 'ai'
             "is_completed": False,
             "start_time": time.perf_counter(),
-            "random_choice": None,
             **initial_settings
         }
         self.session_states[session_id] = session_state
