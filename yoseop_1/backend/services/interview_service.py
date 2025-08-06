@@ -17,6 +17,14 @@ class InterviewService:
         self.active_orchestrators: Dict[str, Orchestrator] = {}
         self.question_generator = QuestionGenerator()
         self.ai_candidate_model = AICandidateModel()
+        
+        # 에이전트 핸들러 등록
+        self.agent_handlers = {
+            "interviewer": self._handle_interviewer_message,
+            "ai": self._handle_ai_candidate_message,
+            "user": self._handle_user_message
+        }
+        
         self.company_name_map = {
             "네이버": "naver", "카카오": "kakao", "라인": "line",
             "라인플러스": "라인플러스", "쿠팡": "coupang", "배달의민족": "baemin",
@@ -79,6 +87,11 @@ class InterviewService:
             
             # 해당 메시지를 처리하여 면접의 첫 단계를 시작
             result = await self._process_orchestrator_message(session_id, initial_message)
+
+            # 최종 결과에 session_id 추가
+            if isinstance(result, dict) and 'session_id' not in result:
+                result['session_id'] = session_id
+
             print(f"[InterviewService] ➡️ [Client]")
             print(json.dumps(result, indent=2, ensure_ascii=False))
             return result
@@ -112,6 +125,11 @@ class InterviewService:
             
             # Orchestrator가 결정한 다음 행동을 처리
             result = await self._process_orchestrator_message(session_id, next_message_from_orchestrator)
+            
+            # 최종 결과에 session_id 추가
+            if isinstance(result, dict) and 'session_id' not in result:
+                result['session_id'] = session_id
+
             print(f"[InterviewService] ➡️ [Client]")
             print(json.dumps(result, indent=2, ensure_ascii=False))
             return result
@@ -129,11 +147,9 @@ class InterviewService:
 
         task = message.get("metadata", {}).get("task")
         next_agent = message.get("metadata", {}).get("next_agent")
-        content = message.get("content", {}).get("content")
 
         print(f"[InterviewService] ⬅️ [Orchestrator]")
         print(json.dumps(message, indent=2, ensure_ascii=False))
-
         interview_logger.info(f"🔄 Processing task: {task} for agent: {next_agent}")
 
         if task == "end_interview":
@@ -143,55 +159,64 @@ class InterviewService:
                 "qa_history": orchestrator.state.get('qa_history', [])
             }
 
-        elif task == "generate_question":
-            # 1. 면접관에게 질문 생성 요청
-            question_content = await self._request_question_from_interviewer(orchestrator)
-            
-            # 2. 생성된 질문을 Orchestrator에게 표준 메시지로 전달
-            response_message_to_orchestrator = Orchestrator.create_agent_message(
-                session_id=session_id,
-                task="question_generated",
-                from_agent="interviewer",
-                content_text=question_content,
-                turn_count=orchestrator.state.get('turn_count', 0)
-            )
-            print(f"[InterviewService] ➡️ [Orchestrator]")
-            print(json.dumps(response_message_to_orchestrator, indent=2, ensure_ascii=False))
-            
-            next_message_from_orchestrator = orchestrator.handle_message(response_message_to_orchestrator)
-            
-            # 3. Orchestrator가 결정한 다음 행동 처리
-            return await self._process_orchestrator_message(session_id, next_message_from_orchestrator)
-
-        elif task == "generate_answer":
-            if next_agent == "user":
-                # 사용자 답변 대기 상태 반환
-                return {
-                    "status": "waiting_for_user",
-                    "question": orchestrator.state.get('current_question'),
-                    "message": "답변을 입력해주세요."
-                }
-            elif next_agent == "ai":
-                # AI에게 답변 생성 요청
-                ai_answer = await self._request_answer_from_ai_candidate(orchestrator, content)
-                
-                # 생성된 답변을 Orchestrator에게 표준 메시지로 전달
-                response_message_to_orchestrator = Orchestrator.create_agent_message(
-                    session_id=session_id,
-                    task="answer_generated",
-                    from_agent="ai",
-                    content_text=ai_answer,
-                    turn_count=orchestrator.state.get('turn_count', 0)
-                )
-                print(f"[InterviewService] ➡️ [Orchestrator]")
-                print(json.dumps(response_message_to_orchestrator, indent=2, ensure_ascii=False))
-                
-                next_message_from_orchestrator = orchestrator.handle_message(response_message_to_orchestrator)
-                
-                # Orchestrator가 결정한 다음 행동 처리
-                return await self._process_orchestrator_message(session_id, next_message_from_orchestrator)
+        # 에이전트 핸들러를 통해 다음 작업 처리
+        handler = self.agent_handlers.get(next_agent)
+        if not handler:
+            return {"error": f"알 수 없는 next_agent: {next_agent}"}
         
-        return {"error": f"알 수 없는 task: {task} 또는 next_agent: {next_agent}"}
+        # 핸들러는 항상 Orchestrator에게 보낼 메시지를 반환해야 함
+        response_message_to_orchestrator = await handler(orchestrator, message)
+        
+        print(f"[InterviewService] ➡️ [Orchestrator]")
+        print(json.dumps(response_message_to_orchestrator, indent=2, ensure_ascii=False))
+
+        # 사용자에게 응답을 기다리라는 메시지가 아닌 경우에만 Orchestrator의 handle_message를 호출
+        if response_message_to_orchestrator.get("metadata", {}).get("task") == "wait_for_user_input":
+            return response_message_to_orchestrator
+
+        next_message_from_orchestrator = orchestrator.handle_message(response_message_to_orchestrator)
+        
+        # Orchestrator가 결정한 다음 행동을 재귀적으로 처리
+        return await self._process_orchestrator_message(session_id, next_message_from_orchestrator)
+
+    async def _handle_interviewer_message(self, orchestrator: Orchestrator, message: Dict[str, Any]) -> Dict[str, Any]:
+        """면접관 에이전트의 메시지를 처리"""
+        question_content = await self._request_question_from_interviewer(orchestrator)
+        
+        return Orchestrator.create_agent_message(
+            session_id=orchestrator.state['session_id'],
+            task="question_generated",
+            from_agent="interviewer",
+            content_text=question_content,
+            turn_count=orchestrator.state.get('turn_count', 0)
+        )
+
+    async def _handle_ai_candidate_message(self, orchestrator: Orchestrator, message: Dict[str, Any]) -> Dict[str, Any]:
+        """AI 지원자 에이전트의 메시지를 처리"""
+        question = message.get("content", {}).get("content")
+        ai_answer = await self._request_answer_from_ai_candidate(orchestrator, question)
+        
+        return Orchestrator.create_agent_message(
+            session_id=orchestrator.state['session_id'],
+            task="answer_generated",
+            from_agent="ai",
+            content_text=ai_answer,
+            turn_count=orchestrator.state.get('turn_count', 0)
+        )
+
+    async def _handle_user_message(self, orchestrator: Orchestrator, message: Dict[str, Any]) -> Dict[str, Any]:
+        """사용자 입력을 기다리는 상태를 클라이언트에게 반환"""
+        # 사용자에게 전달할 메시지는 Orchestrator의 표준 메시지 형식을 따르되,
+        # 재귀 호출을 멈추기 위해 특별한 task명을 사용하고, 바로 클라이언트에게 반환됩니다.
+        response_to_client = orchestrator.create_message(
+            content_text=orchestrator.state.get('current_question'),
+            task="wait_for_user_input", # 클라이언트가 이 task를 보고 사용자 입력을 활성화
+            next_agent="user"
+        )
+        # 추가적으로 클라이언트가 UI를 구성하는 데 필요한 정보를 덧붙여줍니다.
+        response_to_client['status'] = 'waiting_for_user'
+        response_to_client['message'] = '답변을 입력해주세요.'
+        return response_to_client
                 
 
     async def _request_question_from_interviewer(self, orchestrator: Orchestrator) -> str:

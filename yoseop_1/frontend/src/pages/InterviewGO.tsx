@@ -1,9 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Header from '../components/common/Header';
-import LoadingSpinner from '../components/common/LoadingSpinner';
-import VoiceControls from '../components/voice/VoiceControls';
-import SpeechIndicator from '../components/voice/SpeechIndicator';
 import { useInterview } from '../contexts/InterviewContext';
 import { sessionApi, interviewApi } from '../services/api';
 
@@ -94,6 +90,9 @@ const InterviewGO: React.FC = () => {
   const [canSubmit, setCanSubmit] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState<string>('');
   
+  // 🆕 currentPhase 상태 추가
+  const [currentPhase, setCurrentPhase] = useState<'user_turn' | 'ai_processing' | 'interview_completed' | 'waiting' | 'unknown'>('waiting');
+  
   const answerRef = useRef<HTMLTextAreaElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -151,7 +150,51 @@ const InterviewGO: React.FC = () => {
     return 'text-red-600';
   };
 
-  // 🆕 턴 상태 업데이트 함수 (JSON 응답 기반)
+  // 🆕 백엔드 응답에 따른 currentPhase 업데이트 함수
+  const updatePhaseFromResponse = (response: any) => {
+    console.log('🔄 currentPhase 업데이트 (단순화된 로직):', response);
+    
+    const nextAgent = response?.metadata?.next_agent;
+    const task = response?.metadata?.task;
+
+    console.log('🔍 Phase 판단:', { nextAgent, task });
+
+    if (task === 'end_interview') {
+        setCurrentPhase('interview_completed');
+        setCurrentTurn('waiting');
+        setIsTimerActive(false);
+        setCanSubmit(false);
+        console.log('✅ 면접 완료로 설정됨');
+    } else if (nextAgent === 'user') {
+        setCurrentPhase('user_turn');
+        setCurrentTurn('user');
+        setIsTimerActive(true);
+        setTimeLeft(120);
+        setCanSubmit(true);
+        console.log('✅ 사용자 턴으로 설정됨');
+    } else if (nextAgent === 'ai' || nextAgent === 'interviewer') {
+        setCurrentPhase('ai_processing');
+        setCurrentTurn('ai');
+        setIsTimerActive(false);
+        setCanSubmit(false);
+        console.log('✅ AI/면접관 처리 중으로 설정됨');
+    } else {
+        console.log('⚠️ 명확한 턴 정보가 없어서 unknown 상태로 설정');
+        setCurrentPhase('unknown');
+        setCurrentTurn('waiting');
+        setIsTimerActive(false);
+        setCanSubmit(false);
+    }
+
+    // 현재 질문 업데이트 (content.content 사용)
+    const question = response?.content?.content;
+    if (question) {
+        setCurrentQuestion(question);
+        console.log('📝 질문 업데이트:', question);
+    }
+  };
+
+  // 🆕 턴 상태 업데이트 함수 (JSON 응답 기반) - 기존 함수 유지
   const updateTurnFromResponse = (response: any) => {
     console.log('🔄 턴 상태 업데이트:', response);
     
@@ -201,52 +244,99 @@ const InterviewGO: React.FC = () => {
     }
   };
 
-  // 🆕 주기적으로 턴 상태 확인
-  useEffect(() => {
-    if (!state.sessionId || isRestoring) return;
-
-    const checkTurnStatus = async () => {
-      try {
-        console.log('🔍 턴 상태 확인 시작...');
-        // 세션 상태 확인 API 호출 (실제 API에 맞게 수정 필요)
-        const response = await sessionApi.getSessionState(state.sessionId!);
-        console.log('📋 세션 상태 응답:', response);
-        updateTurnFromResponse(response);
-      } catch (error) {
-        console.error('❌ 턴 상태 확인 실패:', error);
-        // API 실패 시 기본적으로 사용자 턴으로 설정
-        console.log('🔄 API 실패로 인한 기본 사용자 턴 설정');
-        setCurrentTurn('user');
-        setIsTimerActive(true);
-        setTimeLeft(120);
-        setCanSubmit(true);
-      }
-    };
-
-    // 초기 확인
-    checkTurnStatus();
-
-    // 5초마다 상태 확인
-    const interval = setInterval(checkTurnStatus, 5000);
-
-    return () => clearInterval(interval);
-  }, [state.sessionId, isRestoring]);
-
   // 🆕 초기 턴 상태 설정 (세션 로드 완료 후)
   useEffect(() => {
     if (!isRestoring && state.sessionId) {
       console.log('🚀 초기 턴 상태 설정');
-      // 기본적으로 사용자 턴으로 시작
-      setCurrentTurn('user');
-      setIsTimerActive(true);
-      setTimeLeft(120);
-      setCanSubmit(true);
       
-      // 테스트용 질문 설정
-      setCurrentQuestion("자기소개를 해주세요.");
+      // 면접 시작 시 받은 응답에서 턴 정보 확인
+      const checkInitialTurnStatus = async () => {
+        try {
+          // 1. 먼저 localStorage에서 면접 시작 응답 확인
+          const savedState = localStorage.getItem('interview_state');
+          if (savedState) {
+            const parsedState = JSON.parse(savedState);
+            console.log('📦 localStorage에서 면접 상태 확인:', parsedState);
+            
+            // 면접 시작 응답에서 턴 정보 확인
+            if (parsedState.interviewStartResponse && parsedState.interviewStartResponse.status === 'waiting_for_user') {
+              console.log('✅ localStorage에서 사용자 턴 정보 발견');
+              setCurrentPhase('user_turn');
+              setCurrentTurn('user');
+              setIsTimerActive(true);
+              setTimeLeft(120);
+              setCanSubmit(true);
+              setCurrentQuestion(parsedState.interviewStartResponse.content?.content || "질문을 불러오는 중...");
+              console.log('✅ 초기 사용자 턴 설정 완료 (localStorage)');
+              return;
+            }
+          }
+          
+          // 2. localStorage에 없으면 현재 면접 상태만 확인 (API 재호출 없이)
+          console.log('🔄 현재 면접 상태 확인');
+          if (state.settings) {
+            try {
+              // 면접 시작 API를 재호출하지 않고, 현재 상태만 확인
+              // AI 경쟁 면접은 보통 사용자 턴으로 시작하므로 기본값 설정
+              console.log('✅ AI 경쟁 면접 기본값으로 사용자 턴 설정');
+              setCurrentPhase('user_turn');
+              setCurrentTurn('user');
+              setIsTimerActive(true);
+              setTimeLeft(120);
+              setCanSubmit(true);
+              setCurrentQuestion("면접을 시작합니다. 첫 번째 질문을 기다려주세요.");
+              console.log('✅ 초기 사용자 턴 설정 완료 (기본값)');
+              return;
+            } catch (apiError) {
+              console.log('⚠️ 기본값 설정 실패, 세션 상태로 fallback:', apiError);
+            }
+          }
+          
+          // 3. 세션 상태 확인 (fallback)
+          const sessionState = await sessionApi.getSessionState(state.sessionId!);
+          console.log('📋 초기 세션 상태:', sessionState);
+          
+          // 세션 상태에서 턴 정보 확인
+          if (sessionState && sessionState.state?.status) {
+            const status = sessionState.state.status;
+            console.log('🔍 초기 세션에서 턴 상태 발견:', status);
+            
+            if (status === 'waiting_for_user') {
+              setCurrentPhase('user_turn');
+              setCurrentTurn('user');
+              setIsTimerActive(true);
+              setTimeLeft(120);
+              setCanSubmit(true);
+              setCurrentQuestion(sessionState.state?.current_question || "질문을 불러오는 중...");
+              console.log('✅ 초기 사용자 턴 설정 완료 (세션 상태)');
+              return;
+            }
+          }
+          
+          // 4. 턴 정보가 없으면 unknown 상태로 시작
+          setCurrentPhase('unknown');
+          setCurrentTurn('waiting');
+          setIsTimerActive(false);
+          setCanSubmit(false);
+          setCurrentQuestion("답변을 제출하여 턴을 시작하세요.");
+          
+        } catch (error) {
+          console.error('❌ 초기 턴 상태 확인 실패:', error);
+          setCurrentPhase('unknown');
+          setCurrentTurn('waiting');
+          setIsTimerActive(false);
+          setCanSubmit(false);
+          setCurrentQuestion("턴 정보를 확인하는 중...");
+        }
+      };
+      
+      checkInitialTurnStatus();
     }
-  }, [isRestoring, state.sessionId]);
+  }, [isRestoring, state.sessionId, state.settings]);
 
+  // 🆕 주기적 턴 상태 확인 제거 - 턴 정보는 답변 제출 후 응답에서만 받아옴
+
+  // 답변 제출 실패 시에도 unknown 상태로 복구
   const submitAnswer = async () => {
     if (!currentAnswer.trim()) {
       console.log('❌ 답변이 입력되지 않았습니다.');
@@ -259,20 +349,17 @@ const InterviewGO: React.FC = () => {
     }
 
     // 사용자 턴이 아니면 제출 불가
-    if (currentTurn !== 'user') {
+    if (currentPhase !== 'user_turn') {
       console.log('❌ 사용자 턴이 아닙니다.');
       return;
     }
 
-    // InterviewService에서 sessionId 확인
     let sessionId = state.sessionId;
     if (!sessionId) {
-      console.log('🔍 Context에 sessionId가 없습니다. InterviewService에서 재조회...');
       try {
         sessionId = await sessionApi.getLatestSessionId();
         if (sessionId) {
           dispatch({ type: 'SET_SESSION_ID', payload: sessionId });
-          console.log('✅ InterviewService에서 sessionId 복원:', sessionId);
         }
       } catch (error) {
         console.error('❌ sessionId 조회 실패:', error);
@@ -280,7 +367,6 @@ const InterviewGO: React.FC = () => {
     }
 
     if (!sessionId) {
-      console.log('❌ sessionId가 없습니다. 면접을 다시 시작해주세요.');
       alert('세션이 만료되었습니다. 면접을 다시 시작해주세요.');
       navigate('/interview/environment-check');
       return;
@@ -295,52 +381,36 @@ const InterviewGO: React.FC = () => {
         sessionId: sessionId,
         answer: currentAnswer,
         answerLength: currentAnswer.length,
-        timeSpent: 120 - timeLeft, // 사용한 시간
-        apiBaseUrl: 'http://127.0.0.1:8000'
+        timeSpent: 120 - timeLeft
       });
 
-      // interviewApi를 사용해 답변 제출
       const result = await interviewApi.submitUserAnswer(
         sessionId,
         currentAnswer.trim(),
-        120 - timeLeft // 실제 사용한 시간
+        120 - timeLeft
       );
 
       console.log('✅ 답변 제출 성공:', result);
-
-      // 답변 초기화
-      setCurrentAnswer('');
+      setCurrentAnswer(''); // 답변 초기화
       
-      // 응답에 따른 턴 상태 업데이트
-      updateTurnFromResponse(result);
-
+      // 백엔드 응답에 따른 턴 상태 업데이트
+      updatePhaseFromResponse(result);
+      
     } catch (error: any) {
       console.error('❌ 답변 제출 오류:', error);
-      
-      // 에러 발생 시 사용자 턴 상태 복구
-      setCurrentTurn('user');
-      setIsTimerActive(true);
-      setCanSubmit(true);
-      
+      // 에러 발생 시 unknown 상태로 복구
+      setCurrentPhase('unknown');
+      setCurrentTurn('waiting');
+      setIsTimerActive(false);
+      setCanSubmit(false);
       let errorMessage = '알 수 없는 오류';
       if (error.response) {
-        // 서버가 응답했지만 에러 상태 코드
-        console.error('서버 응답 에러:', {
-          status: error.response.status,
-          data: error.response.data,
-          url: error.config?.url
-        });
         errorMessage = `HTTP ${error.response.status}: ${error.response.data?.detail || error.response.statusText}`;
       } else if (error.request) {
-        // 요청이 만들어졌지만 응답을 받지 못함
-        console.error('네트워크 에러:', error.request);
         errorMessage = '백엔드 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.';
       } else {
-        // 요청 설정 중 에러 발생
-        console.error('요청 설정 에러:', error.message);
         errorMessage = error.message;
       }
-      
       alert(`답변 제출 실패: ${errorMessage}`);
     } finally {
       setIsLoading(false);
@@ -349,11 +419,6 @@ const InterviewGO: React.FC = () => {
 
   return (
     <div className="h-screen bg-black text-white flex flex-col overflow-hidden">
-      <Header 
-        title={`${state.settings?.company || '쿠팡'} 면접`}
-        subtitle={`${state.settings?.position || '개발자'} - 춘식이와의 실시간 경쟁`}
-      />
-
       {/* 메인 인터페이스 */}
       <div className="flex-1 flex flex-col">
         {/* 상단 면접관 영역 */}
@@ -406,7 +471,7 @@ const InterviewGO: React.FC = () => {
           {/* 사용자 영역 */}
           <div className={`bg-gray-900 rounded-lg overflow-hidden relative border-2 transition-all duration-300 ${
             // 사용자 턴일 때
-            currentTurn === 'user'
+            currentPhase === 'user_turn'
               ? 'border-yellow-500 shadow-lg shadow-yellow-500/50 animate-pulse'
             // 대기 상태
             : 'border-gray-600'
@@ -416,7 +481,7 @@ const InterviewGO: React.FC = () => {
             </div>
             
             {/* 🆕 턴 상태 표시 */}
-            {currentTurn === 'user' && (
+            {currentPhase === 'user_turn' && (
               <div className="absolute top-4 right-4 bg-yellow-500 text-black px-3 py-1 rounded-full text-xs font-bold z-10">
                 🎯 답변 차례
               </div>
@@ -452,16 +517,16 @@ const InterviewGO: React.FC = () => {
                 ref={answerRef}
                 value={currentAnswer}
                 onChange={(e) => setCurrentAnswer(e.target.value)}
-                disabled={currentTurn !== 'user'}
+                disabled={currentPhase !== 'user_turn'}
                 className={`w-full h-20 p-2 bg-gray-800 text-white border border-gray-600 rounded-lg resize-none text-sm ${
-                  currentTurn !== 'user' ? 'opacity-50 cursor-not-allowed' : ''
+                  currentPhase !== 'user_turn' ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
-                placeholder={currentTurn === 'user' ? "답변을 입력해주세요..." : "대기 중..."}
+                placeholder={currentPhase === 'user_turn' ? "답변을 입력해주세요..." : "대기 중..."}
               />
               <div className="flex items-center justify-between mt-2">
                 <div className="text-gray-400 text-xs">{currentAnswer.length}자</div>
                 {/* 🆕 타이머 표시 */}
-                {currentTurn === 'user' && isTimerActive && (
+                {currentPhase === 'user_turn' && isTimerActive && (
                   <div className={`text-lg font-bold ${getTimerColor()}`}>
                     {formatTime(timeLeft)}
                   </div>
@@ -475,17 +540,19 @@ const InterviewGO: React.FC = () => {
             {/* 🆕 현재 턴 상태 표시 */}
             <div className="text-center mb-4">
               <div className={`text-sm font-bold mb-2 ${
-                currentTurn === 'user' ? 'text-yellow-400' : 
-                currentTurn === 'ai' ? 'text-green-400' : 
+                currentPhase === 'user_turn' ? 'text-yellow-400' : 
+                currentPhase === 'ai_processing' ? 'text-green-400' : 
+                currentPhase === 'interview_completed' ? 'text-blue-400' :
                 'text-gray-400'
               }`}>
-                {currentTurn === 'user' ? '🎯 사용자 답변 차례' :
-                 currentTurn === 'ai' ? '🤖 AI 답변 중' :
+                {currentPhase === 'user_turn' ? '🎯 사용자 답변 차례' :
+                 currentPhase === 'ai_processing' ? '🤖 AI 답변 중' :
+                 currentPhase === 'interview_completed' ? '✅ 면접 완료' :
                  '⏳ 대기 중'}
               </div>
               
               {/* 🆕 타이머 표시 */}
-              {currentTurn === 'user' && isTimerActive && (
+              {currentPhase === 'user_turn' && isTimerActive && (
                 <div className={`text-2xl font-bold ${getTimerColor()} mb-2`}>
                   {formatTime(timeLeft)}
                 </div>
@@ -500,45 +567,50 @@ const InterviewGO: React.FC = () => {
               </div>
             </div>
 
-            {/* 컨트롤 버튼 */}
-            <div className="space-y-3">
-              {(() => {
-                const hasAnswer = !!currentAnswer.trim();
-                const hasSessionId = !!state.sessionId || !isRestoring;
-                const isUserTurn = currentTurn === 'user';
-                const isButtonDisabled = !hasAnswer || isLoading || isRestoring || !isUserTurn || !canSubmit;
-                
-                return (
-                  <button 
-                    className={`w-full py-3 text-white rounded-lg font-semibold transition-colors ${
-                      isButtonDisabled 
-                        ? 'bg-gray-600 cursor-not-allowed' 
-                        : 'bg-green-600 hover:bg-green-500'
-                    }`}
-                    onClick={submitAnswer}
-                    disabled={isButtonDisabled}
-                  >
-                    {isLoading 
-                      ? '제출 중...' 
-                      : isRestoring
-                      ? '세션 로드 중...'
-                      : !hasSessionId 
-                      ? '세션 없음' 
-                      : !isUserTurn
-                      ? '대기 중...'
-                      : !canSubmit
-                      ? '준비 중...'
-                      : '🚀 답변 제출'
-                    }
-                  </button>
-                );
-              })()}
-            </div>
+                         {/* 컨트롤 버튼 */}
+             <div className="space-y-3">
+               {(() => {
+                 const hasAnswer = !!currentAnswer.trim();
+                 const hasSessionId = !!state.sessionId || !isRestoring;
+                 const isUserTurn = currentPhase === 'user_turn';
+                 const isButtonDisabled = !hasAnswer || isLoading || isRestoring || !isUserTurn || !canSubmit;
+                 
+                 return (
+                   <button 
+                     className={`w-full py-3 text-white rounded-lg font-semibold transition-colors ${
+                       isButtonDisabled 
+                         ? 'bg-gray-600 cursor-not-allowed' 
+                         : 'bg-green-600 hover:bg-green-500'
+                     }`}
+                     onClick={submitAnswer}
+                     disabled={isButtonDisabled}
+                   >
+                     {isLoading 
+                       ? '제출 중...' 
+                       : isRestoring
+                       ? '세션 로드 중...'
+                       : !hasSessionId 
+                       ? '세션 없음' 
+                       : !isUserTurn
+                       ? '대기 중...'
+                       : !canSubmit
+                       ? '준비 중...'
+                       : !hasAnswer
+                       ? '답변을 입력해주세요'
+                       : '🚀 답변 제출'
+                     }
+                   </button>
+                 );
+               })()}
+             </div>
 
             {/* 🆕 진행 상황 표시 */}
             <div className="mt-4 text-center">
               <div className="text-white text-sm mb-2">
-                상태: {currentTurn === 'user' ? '사용자 턴' : currentTurn === 'ai' ? 'AI 턴' : '대기'}
+                상태: {currentPhase === 'user_turn' ? '사용자 턴' : 
+                       currentPhase === 'ai_processing' ? 'AI 처리 중' : 
+                       currentPhase === 'interview_completed' ? '면접 완료' : 
+                       '대기'}
               </div>
               
               {/* 🆕 디버깅 정보 */}
@@ -553,6 +625,7 @@ const InterviewGO: React.FC = () => {
               <div className="mt-2 space-y-1">
                 <button
                   onClick={() => {
+                    setCurrentPhase('user_turn');
                     setCurrentTurn('user');
                     setIsTimerActive(true);
                     setTimeLeft(120);
@@ -565,6 +638,7 @@ const InterviewGO: React.FC = () => {
                 </button>
                 <button
                   onClick={() => {
+                    setCurrentPhase('ai_processing');
                     setCurrentTurn('ai');
                     setIsTimerActive(false);
                     setCanSubmit(false);
@@ -574,6 +648,18 @@ const InterviewGO: React.FC = () => {
                 >
                   🧪 AI 턴 테스트
                 </button>
+                <button
+                  onClick={() => {
+                    setCurrentPhase('interview_completed');
+                    setCurrentTurn('waiting');
+                    setIsTimerActive(false);
+                    setCanSubmit(false);
+                    console.log('🧪 수동으로 면접 완료 설정');
+                  }}
+                  className="w-full py-1 px-2 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded"
+                >
+                  🧪 면접 완료 테스트
+                </button>
               </div>
             </div>
           </div>
@@ -581,7 +667,7 @@ const InterviewGO: React.FC = () => {
           {/* AI 지원자 춘식이 */}
           <div className={`bg-blue-900 rounded-lg overflow-hidden relative border-2 transition-all duration-300 ${
             // AI 턴일 때
-            currentTurn === 'ai'
+            currentPhase === 'ai_processing'
               ? 'border-green-500 shadow-lg shadow-green-500/50 animate-pulse'
             // 대기 상태
             : 'border-gray-600'
@@ -591,7 +677,7 @@ const InterviewGO: React.FC = () => {
             </div>
             
             {/* 🆕 AI 턴 상태 표시 */}
-            {currentTurn === 'ai' && (
+            {currentPhase === 'ai_processing' && (
               <div className="absolute top-4 right-4 bg-green-500 text-black px-3 py-1 rounded-full text-xs font-bold z-10">
                 🤖 답변 중
               </div>
@@ -606,10 +692,15 @@ const InterviewGO: React.FC = () => {
               />
               
               {/* 상태 표시 오버레이 */}
-              {currentTurn === 'ai' ? (
+              {currentPhase === 'ai_processing' ? (
                 <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center bg-black/70 rounded-lg p-4">
                   <div className="text-green-400 text-sm font-semibold mb-2">답변 중...</div>
                   <div className="w-6 h-6 border-2 border-green-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                </div>
+              ) : currentPhase === 'interview_completed' ? (
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center bg-black/70 rounded-lg p-4">
+                  <div className="text-blue-400 text-sm font-semibold mb-2">면접 완료</div>
+                  <div className="text-blue-300 text-xs">수고하셨습니다!</div>
                 </div>
               ) : (
                 <div className="absolute bottom-4 right-4 bg-black/70 rounded-lg p-2">
