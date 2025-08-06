@@ -241,7 +241,7 @@ class QuestionGenerator:
                     previous_qa_pairs=session_info['qa_history']
                 )
             
-            print(f"[SUCCESS] {question_flow_type} 질문 생성 ({interviewer_role}): {state['session_id']}")
+            print(f"[SUCCESS] {question_flow_type} 질문 생성 ({interviewer_role})")
             return question
             
         except Exception as e:

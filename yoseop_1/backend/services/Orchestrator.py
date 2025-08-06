@@ -89,11 +89,27 @@ class Orchestrator:
         # 완료 조건 체크
         if self.session_state['turn_count'] >= self.session_state.get('total_question_limit', 15):
             self.session_state['is_completed'] = True
-            return self.create_message("면접이 종료되었습니다.", "end_interview", "system")
+            message = self.create_agent_message(
+                session_id=self.session_id,
+                task="end_interview",
+                from_agent="orchestrator",
+                content_text="면접이 종료되었습니다.",
+                turn_count=self.session_state.get('turn_count', 0)
+            )
+            message["metadata"]["next_agent"] = "orchestrator"
+            return message
 
         # 현재 질문이 없으면 새 질문 생성
         if not self.session_state['current_question']:
-            return self.create_message("다음 질문을 생성해주세요.", "generate_question", "interviewer")
+            message = self.create_agent_message(
+                session_id=self.session_id,
+                task="generate_question",
+                from_agent="orchestrator",
+                content_text="다음 질문을 생성해주세요.",
+                turn_count=self.session_state.get('turn_count', 0)
+            )
+            message["metadata"]["next_agent"] = "interviewer"
+            return message
         
         # 현재 질문에 대한 답변 수 확인
         current_answers = len([qa for qa in self.session_state['qa_history'] 
@@ -102,18 +118,42 @@ class Orchestrator:
         # 첫 번째 답변: 랜덤 선택
         if current_answers == 0:
             selected_agent = 'user' if self._random_select() == -1 else 'ai'
-            return self.create_message(self.session_state['current_question'], "generate_answer", selected_agent)
+            message = self.create_agent_message(
+                session_id=self.session_id,
+                task="generate_answer",
+                from_agent="orchestrator",
+                content_text=self.session_state['current_question'],
+                turn_count=self.session_state.get('turn_count', 0)
+            )
+            message["metadata"]["next_agent"] = selected_agent
+            return message
         
         # 두 번째 답변: 반대 에이전트
         elif current_answers == 1:
             # 첫 번째 답변자 확인
             first_answerer = self.session_state['qa_history'][-1]['answerer']
             selected_agent = 'ai' if first_answerer == 'user' else 'user'
-            return self.create_message(self.session_state['current_question'], "generate_answer", selected_agent)
+            message = self.create_agent_message(
+                session_id=self.session_id,
+                task="generate_answer",
+                from_agent="orchestrator",
+                content_text=self.session_state['current_question'],
+                turn_count=self.session_state.get('turn_count', 0)
+            )
+            message["metadata"]["next_agent"] = selected_agent
+            return message
         
         # 모든 답변 완료: 다음 질문으로
         else:
-            return self.create_message("다음 질문을 생성해주세요.", "generate_question", "interviewer")
+            message = self.create_agent_message(
+                session_id=self.session_id,
+                task="generate_question",
+                from_agent="orchestrator",
+                content_text="다음 질문을 생성해주세요.",
+                turn_count=self.session_state.get('turn_count', 0)
+            )
+            message["metadata"]["next_agent"] = "interviewer"
+            return message
 
    
 
@@ -218,14 +258,21 @@ class Orchestrator:
     
     async def _process_complete_flow(self) -> Dict[str, Any]:
         """완전한 플로우를 처리하여 최종 결과 반환"""
+        print(f"[Orchestrator] 🔄 _process_complete_flow 시작: {self.session_id}")
+        
         while True:
+            print(f"[Orchestrator] 🔄 while 루프 시작 - turn_count: {self.session_state.get('turn_count', 0)}")
+            
             # 다음 메시지 결정
             next_message = self._decide_next_message()
             next_agent = next_message.get("metadata", {}).get("next_agent")
             task = next_message.get("metadata", {}).get("task")
             
+            print(f"[Orchestrator] 🔄 다음 액션 결정: {next_agent} - {task}")
+            
             # 완료 조건 체크
             if task == "end_interview":
+                print(f"[Orchestrator] ✅ 면접 완료")
                 result = {
                     "status": "completed",
                     "message": "면접이 종료되었습니다.",
@@ -238,6 +285,7 @@ class Orchestrator:
             
             # 사용자 입력 대기 상태인 경우
             if next_agent == "user":
+                print(f"[Orchestrator] 👤 사용자 입력 대기")
                 result = self.create_user_waiting_message()
                 print(f"[Orchestrator] -> [Client]")
                 print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -245,9 +293,13 @@ class Orchestrator:
             
             # 에이전트 작업 수행 (handle_message에서 JSON 출력됨)
             if next_agent == "interviewer":
+                print(f"[Orchestrator] 🎤 면접관 작업 시작")
                 await self._process_interviewer_task()
             elif next_agent == "ai":
+                print(f"[Orchestrator] 🤖 AI 지원자 작업 시작")
                 await self._process_ai_task(next_message.get("content", {}).get("content"))
+            
+            print(f"[Orchestrator] 🔄 while 루프 끝")
     
     async def _process_interviewer_task(self):
         """면접관 작업 처리"""
