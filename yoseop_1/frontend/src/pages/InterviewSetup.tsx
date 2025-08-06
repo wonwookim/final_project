@@ -582,7 +582,7 @@ const InterviewSetup: React.FC = () => {
         </div>
       </main>
     </div>
-  );
-};
-
-export default InterviewSetup;
+     );
+ };
+ 
+ export default InterviewSetup;

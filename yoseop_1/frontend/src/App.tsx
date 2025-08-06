@@ -28,7 +28,7 @@ function App() {
     <ErrorBoundary>
       <InterviewProvider>
         <Router>
-          <div className="App">
+          <div className="App min-h-screen flex flex-col">
             <Routes>
               {/* Main Routes */}
               <Route path="/" element={<MainPage />} />

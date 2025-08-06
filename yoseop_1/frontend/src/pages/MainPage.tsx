@@ -56,102 +56,106 @@ const MainPage: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 flex flex-col">
       <Header />
       
-      <main className="container mx-auto px-6 py-12">
+      <main className="flex-1 container mx-auto">
         {/* Hero Section */}
-        <div className="text-center mb-16 animate-fadeIn">
-          <h1 className="text-5xl md:text-6xl font-bold text-slate-900 mb-6">
-            AI와 함께하는
-            <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              {" "}스마트 면접{" "}
-            </span>
-            준비
-          </h1>
-          
-          <p className="text-xl text-slate-600 mb-8 max-w-3xl mx-auto">
-            개인화된 AI 면접관과 함께 실전같은 면접을 연습하고, 
-            상세한 피드백으로 면접 실력을 한 단계 업그레이드하세요.
-          </p>
-          
-                          <div className="flex justify-center">
-                  <button
-                    onClick={handleStartInterview}
-                    disabled={isLoading}
-                    className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-full text-lg font-bold hover:shadow-lg hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isLoading ? (
-                      <div className="flex items-center gap-2">
-                        <LoadingSpinner size="sm" color="white" />
-                        준비 중...
-                      </div>
-                    ) : (
-                      "면접 시작하기"
-                    )}
-                  </button>
-                </div>
-        </div>
+        <section className="section text-center">
+          <div className="animate-fadeIn">
+            <h1 className="responsive-heading font-bold text-slate-900 mb-4 sm:mb-6">
+              AI와 함께하는
+              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                {" "}스마트 면접{" "}
+              </span>
+              준비
+            </h1>
+            
+            <p className="responsive-text text-slate-600 mb-6 sm:mb-8 max-w-3xl mx-auto">
+              개인화된 AI 면접관과 함께 실전같은 면접을 연습하고, 
+              상세한 피드백으로 면접 실력을 한 단계 업그레이드하세요.
+            </p>
+            
+            <div className="flex-center">
+              <button
+                onClick={handleStartInterview}
+                disabled={isLoading}
+                className="btn btn-primary text-base sm:text-lg px-6 sm:px-8 py-3 sm:py-4"
+              >
+                {isLoading ? (
+                  <div className="flex items-center gap-2">
+                    <LoadingSpinner size="sm" color="white" />
+                    준비 중...
+                  </div>
+                ) : (
+                  "면접 시작하기"
+                )}
+              </button>
+            </div>
+          </div>
+        </section>
 
         {/* Stats Section */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200 text-center">
-            <div className="text-3xl font-bold text-blue-600 mb-2">{stats.totalInterviews}</div>
-            <div className="text-slate-600">총 면접 횟수</div>
+        <section className="section">
+          <div className="responsive-grid">
+            <div className="card text-center">
+              <div className="text-2xl sm:text-3xl font-bold text-blue-600 mb-2">{stats.totalInterviews}</div>
+              <div className="text-slate-600 text-sm sm:text-base">총 면접 횟수</div>
+            </div>
+            
+            <div className="card text-center">
+              <div className="text-2xl sm:text-3xl font-bold text-green-600 mb-2">{stats.averageScore}</div>
+              <div className="text-slate-600 text-sm sm:text-base">평균 점수</div>
+            </div>
+            
+            <div className="card text-center">
+              <div className="text-2xl sm:text-3xl font-bold text-purple-600 mb-2">1</div>
+              <div className="text-slate-600 text-sm sm:text-base">면접 기록</div>
+            </div>
           </div>
-          
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200 text-center">
-            <div className="text-3xl font-bold text-green-600 mb-2">{stats.averageScore}</div>
-            <div className="text-slate-600">평균 점수</div>
-          </div>
-          
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200 text-center">
-            <div className="text-3xl font-bold text-purple-600 mb-2">1</div>
-            <div className="text-slate-600">면접 기록</div>
-          </div>
-        </div>
+        </section>
 
         {/* Features Section */}
-        <div className="mb-16">
-          <h2 className="text-3xl font-bold text-slate-900 text-center mb-12">
+        <section className="section">
+          <h2 className="responsive-subheading font-bold text-slate-900 text-center mb-8 sm:mb-12">
             왜 Beta-GO Interview를 선택해야 할까요?
           </h2>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 justify-items-center">
+          <div className="responsive-grid">
             {features.map((feature, index) => (
               <div
                 key={index}
-                className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200 hover:shadow-lg transition-all duration-300 text-center"
+                className="card text-center animate-scaleIn"
                 style={{ animationDelay: `${index * 0.1}s` }}
               >
-                <div className={`w-16 h-16 rounded-full bg-gradient-to-r ${feature.color} flex items-center justify-center text-2xl mb-4 mx-auto`}>
+                <div className={`w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-gradient-to-r ${feature.color} flex-center text-xl sm:text-2xl mb-4 mx-auto`}>
                   {feature.icon}
                 </div>
                 
-                <h3 className="text-lg font-bold text-slate-900 mb-2">
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-2">
                   {feature.title}
                 </h3>
                 
-                <p className="text-slate-600 text-sm">
+                <p className="text-slate-600 text-xs sm:text-sm">
                   {feature.description}
                 </p>
               </div>
             ))}
           </div>
-        </div>
+        </section>
 
         {/* Companies Section */}
-        <div className="mb-16">
-          <h2 className="text-3xl font-bold text-slate-900 text-center mb-8">
+        <section className="section">
+          <h2 className="responsive-subheading font-bold text-slate-900 text-center mb-6 sm:mb-8">
             다양한 기업 면접을 연습하세요
           </h2>
 
-          <div className="mb-8">
-            <p className="text-slate-600 text-center">
+          <div className="mb-6 sm:mb-8">
+            <p className="text-slate-600 text-center text-sm sm:text-base">
               다양한 기업의 면접 질문을 연습하고, AI가 제공하는 피드백을 통해 면접 준비를 완벽하게 할 수 있습니다.
             </p>
           </div>
-          <div className="flex flex-wrap justify-center gap-4">
+          <div className="flex flex-wrap justify-center gap-3 sm:gap-4">
             {recentCompanies.map((company, index) => (
               <div
                 key={index}
@@ -165,34 +169,36 @@ const MainPage: React.FC = () => {
               </div>
             ))}
           </div>
-        </div>
+        </section>
 
         {/* CTA Section */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-center text-white">
-          <h2 className="text-3xl font-bold mb-4">
-            지금 바로 시작해보세요!
-          </h2>
-          
-          <p className="text-blue-100 mb-6 max-w-2xl mx-auto">
-            5분만 투자하면 당신만의 맞춤형 면접 연습을 시작할 수 있습니다. 
-            AI가 실시간으로 분석하고 피드백을 제공합니다.
-          </p>
-          
-          <button
-            onClick={handleStartInterview}
-            disabled={isLoading}
-            className="bg-white text-blue-600 px-8 py-4 rounded-full text-lg font-bold hover:shadow-lg hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoading ? (
-              <div className="flex items-center gap-2">
-                <LoadingSpinner size="sm" color="primary" />
-                준비 중...
-              </div>
-            ) : (
-              "무료로 시작하기"
-            )}
-          </button>
-        </div>
+        <section className="section">
+          <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-center text-white">
+            <h2 className="text-3xl font-bold mb-4">
+              지금 바로 시작해보세요!
+            </h2>
+            
+            <p className="text-blue-100 mb-6 max-w-2xl mx-auto">
+              5분만 투자하면 당신만의 맞춤형 면접 연습을 시작할 수 있습니다. 
+              AI가 실시간으로 분석하고 피드백을 제공합니다.
+            </p>
+            
+            <button
+              onClick={handleStartInterview}
+              disabled={isLoading}
+              className="bg-white text-blue-600 px-8 py-4 rounded-full text-lg font-bold hover:shadow-lg hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <LoadingSpinner size="sm" color="primary" />
+                  준비 중...
+                </div>
+              ) : (
+                "무료로 시작하기"
+              )}
+            </button>
+          </div>
+        </section>
       </main>
     </div>
   );
