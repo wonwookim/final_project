@@ -156,8 +156,10 @@ const InterviewGO: React.FC = () => {
     
     const nextAgent = response?.metadata?.next_agent;
     const task = response?.metadata?.task;
+    const status = response?.status;
+    const turnInfo = response?.turn_info;
 
-    console.log('🔍 Phase 판단:', { nextAgent, task });
+    console.log('🔍 Phase 판단:', { nextAgent, task, status, turnInfo });
 
     if (task === 'end_interview') {
         setCurrentPhase('interview_completed');
@@ -165,13 +167,13 @@ const InterviewGO: React.FC = () => {
         setIsTimerActive(false);
         setCanSubmit(false);
         console.log('✅ 면접 완료로 설정됨');
-    } else if (nextAgent === 'user') {
+    } else if (nextAgent === 'user' || status === 'waiting_for_user' || turnInfo?.is_user_turn) {
         setCurrentPhase('user_turn');
         setCurrentTurn('user');
         setIsTimerActive(true);
         setTimeLeft(120);
         setCanSubmit(true);
-        console.log('✅ 사용자 턴으로 설정됨');
+        console.log('✅ 사용자 턴으로 설정됨 (턴 정보:', turnInfo, ')');
     } else if (nextAgent === 'ai' || nextAgent === 'interviewer') {
         setCurrentPhase('ai_processing');
         setCurrentTurn('ai');
@@ -179,11 +181,13 @@ const InterviewGO: React.FC = () => {
         setCanSubmit(false);
         console.log('✅ AI/면접관 처리 중으로 설정됨');
     } else {
-        console.log('⚠️ 명확한 턴 정보가 없어서 unknown 상태로 설정');
-        setCurrentPhase('unknown');
-        setCurrentTurn('waiting');
-        setIsTimerActive(false);
-        setCanSubmit(false);
+        // 기본적으로 사용자 턴으로 설정 (대기 상태 방지)
+        console.log('⚠️ 명확한 턴 정보가 없어서 사용자 턴으로 기본 설정');
+        setCurrentPhase('user_turn');
+        setCurrentTurn('user');
+        setIsTimerActive(true);
+        setTimeLeft(120);
+        setCanSubmit(true);
     }
 
     // 현재 질문 업데이트 (content.content 사용)
