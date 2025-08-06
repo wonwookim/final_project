@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import random
+import time
 import openai
 from typing import Dict, List, Any, Optional
 from dotenv import load_dotenv
@@ -44,9 +45,8 @@ class QuestionGenerator:
         self.companies_data = self._load_companies_data()
         self.fixed_questions = self._load_fixed_questions()
         
-        # 면접관 역할 정의
-        self.interviewer_roles = ['HR', 'TECH', 'COLLABORATION']
-        self.question_type_mapping = {
+        # DB 질문 타입 ID 매핑 (면접관 역할 → DB ID)
+        self.interviewer_role_to_db_id = {
             'HR': 1,
             'TECH': 2, 
             'COLLABORATION': 3
@@ -185,6 +185,78 @@ class QuestionGenerator:
         return self._get_generic_question(interviewer_role, selected_topic, 
                                         user_resume.get('name', '지원자') if user_resume else '지원자')
     
+    def generate_question_with_orchestrator_state(self, state: Dict[str, Any]) -> Dict:
+        """
+        Orchestrator의 state 딕셔너리를 받아서 질문을 생성하는 메서드
+        
+        Args:
+            state: Orchestrator의 state 객체
+        """
+        try:
+            # Orchestrator의 state에서 직접 정보 추출
+            turn_count = state.get('turn_count', 0)
+            
+            # 간단한 턴 기반으로 질문 유형 결정 (기존 로직 간소화)
+            if turn_count == 0:
+                question_flow_type = 'fixed'
+                interviewer_role = 'HR'
+            elif turn_count == 1:
+                question_flow_type = 'fixed'
+                interviewer_role = 'HR'
+            else:
+                question_flow_type = 'by_role'
+                # 간단하게 턴마다 역할을 번갈아가며 선택
+                roles = ['HR', 'TECH', 'COLLABORATION']
+                interviewer_role = roles[(turn_count - 2) % len(roles)]
+
+            # 세션 정보 구성
+            session_info = {
+                'company_id': state.get('company_id'),
+                'user_name': state.get('user_name'),
+                'position': state.get('position'),
+                'turn_count': turn_count + 1, # 1-based로 변환
+                'qa_history': state.get('qa_history', []),
+                'question_flow_type': question_flow_type,
+                'interviewer_role': interviewer_role,
+            }
+            
+            # 기본 user_resume 구성
+            user_resume = {
+                'name': session_info['user_name'],
+                'position': session_info['position']
+            }
+            
+            # 질문 생성 방식에 따라 적절한 질문 생성 함수 호출
+            if question_flow_type == 'fixed':
+                question = self.generate_fixed_question(turn_count, session_info['company_id'], user_resume)
+            else: # by_role 또는 다른 모든 경우
+                question = self.generate_question_by_role(
+                    interviewer_role=interviewer_role,
+                    company_id=session_info['company_id'],
+                    user_resume=user_resume,
+                    previous_qa_pairs=session_info['qa_history']
+                )
+            
+            print(f"[SUCCESS] {question_flow_type} 질문 생성 ({interviewer_role}): {state['session_id']}")
+            return question
+            
+        except Exception as e:
+            print(f"[ERROR] state 기반 질문 생성 실패: {e}")
+            user_name = state.get('user_name', '지원자')
+            return {
+                'question': f'{user_name}님, 자유롭게 본인에 대해 말씀해 주세요.',
+                'intent': '일반적인 면접 질문',
+                'interviewer_type': 'HR'
+            }
+
+    def generate_question_with_orchestrator(self, orchestrator) -> Dict:
+        """
+        Orchestrator 객체를 받아서 직접 질문 생성 및 상태 업데이트를 처리하는 메서드
+        [DEPRECATED] 이제 generate_question_with_orchestrator_state를 사용하세요.
+        """
+        print("[WARNING] `generate_question_with_orchestrator` is deprecated. Use `generate_question_with_orchestrator_state` instead.")
+        return self.generate_question_with_orchestrator_state(orchestrator.get_current_state())
+
     def generate_follow_up_question(self, previous_question: str, user_answer: str, 
                                    chun_sik_answer: str, company_info: Dict, 
                                    interviewer_role: str, user_resume: Dict = None) -> Dict:
@@ -236,7 +308,7 @@ class QuestionGenerator:
             result['question'] = self._add_candidate_name_to_question(result['question'], candidate_name)
             
             result['interviewer_type'] = interviewer_role
-            result['question_type'] = 'follow_up'
+            result['question_flow_type'] = 'follow_up'
             result['question_source'] = 'llm_follow_up'
             return result
             
@@ -270,7 +342,7 @@ class QuestionGenerator:
     def _generate_from_db_template_with_topic(self, user_resume: Dict, company_info: Dict, 
                                             interviewer_role: str, topic: str) -> Dict:
         """주제 특화 DB 템플릿 기반 질문 생성"""
-        question_type_id = self.question_type_mapping.get(interviewer_role)
+        question_type_id = self.interviewer_role_to_db_id.get(interviewer_role)
         if not question_type_id:
             raise ValueError(f"지원되지 않는 면접관 역할: {interviewer_role}")
         
@@ -406,7 +478,7 @@ class QuestionGenerator:
             'question': question_text,
             'intent': template['intent'],
             'interviewer_type': interviewer_role,
-            'question_type': 'follow_up',
+            'question_flow_type': 'follow_up',
             'question_source': 'fallback_follow_up'
         }
     

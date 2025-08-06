@@ -8,6 +8,7 @@ import ProtectedRoute from './components/auth/ProtectedRoute';
 import MainPage from './pages/MainPage';
 import InterviewSetup from './pages/InterviewSetup';
 import InterviewActive from './pages/InterviewActive';
+import InterviewGO from './pages/InterviewGO';
 import InterviewActiveTemp from './pages/InterviewActive_temp';
 import InterviewResults from './pages/InterviewResults';
 import InterviewHistory from './pages/InterviewHistory';
@@ -74,7 +75,7 @@ function App() {
               {/* Interview Execution */}
               <Route path="/interview/active" element={
                 <ProtectedRoute>
-                  <InterviewActive />
+                  <InterviewGO />
                 </ProtectedRoute>
               } />
               <Route path="/interview/active-temp" element={
@@ -93,45 +94,21 @@ function App() {
                 </ProtectedRoute>
               } />
               
+              {/* AI Interview Start Route */}
+              <Route path="/interview/ai/start" element={
+                <ProtectedRoute>
+                  <InterviewGO />
+                </ProtectedRoute>
+              } />
+              
               {/* Legacy routes - redirect to new flow */}
               <Route path="/interview" element={<Navigate to="/interview/job-posting" replace />} />
-              <Route path="/interview/setup" element={<Navigate to="/interview/job-posting" replace />} />
               
               {/* TODO: Implement these pages */}
-              {/* <Route path="/profile" element={<ProfilePage />} /> */}
+              <Route path="/interview/setup" element={<InterviewSetup />} />
               
-              {/* Demo routes for development */}
-              <Route path="/demo" element={
-                <div className="min-h-screen flex items-center justify-center bg-gray-50">
-                  <div className="text-center">
-                    <h1 className="text-3xl font-bold text-gray-900 mb-4">데모 페이지</h1>
-                    <p className="text-gray-600 mb-6">곧 구현될 예정입니다.</p>
-                    <button 
-                      onClick={() => window.history.back()}
-                      className="bg-primary text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors"
-                    >
-                      돌아가기
-                    </button>
-                  </div>
-                </div>
-              } />
-              
-              {/* 404 Route */}
-              <Route path="*" element={
-                <div className="min-h-screen flex items-center justify-center bg-gray-50">
-                  <div className="text-center">
-                    <h1 className="text-6xl font-bold text-gray-300 mb-4">404</h1>
-                    <h2 className="text-2xl font-bold text-gray-900 mb-4">페이지를 찾을 수 없습니다</h2>
-                    <p className="text-gray-600 mb-6">요청하신 페이지가 존재하지 않습니다.</p>
-                    <button 
-                      onClick={() => window.location.href = '/'}
-                      className="bg-primary text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors"
-                    >
-                      홈으로 이동
-                    </button>
-                  </div>
-                </div>
-              } />
+              {/* Catch all route */}
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>
         </Router>

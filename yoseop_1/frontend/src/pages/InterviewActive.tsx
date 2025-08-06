@@ -15,8 +15,7 @@ import {
   TextToSpeech
 } from '../utils/speechUtils';
 
-// 페이지 레벨 초기화 플래그 (컴포넌트 외부)
-let pageInitialized = false;
+
 
 const InterviewActive: React.FC = () => {
   const navigate = useNavigate();
@@ -51,7 +50,7 @@ const InterviewActive: React.FC = () => {
     isAnswering?: boolean;
   }>>([]);
   const [currentAnswer, setCurrentAnswer] = useState('');
-  const [timeLeft, setTimeLeft] = useState(0);
+      const [timeLeft, setTimeLeft] = useState(120); // 기본 2분으로 설정
   const [isLoading, setIsLoading] = useState(false);
   const [questionCount, setQuestionCount] = useState(0); // 질문 개수 추적
   const [showStartPopup, setShowStartPopup] = useState(false); // 면접 시작 팝업
@@ -81,21 +80,29 @@ const InterviewActive: React.FC = () => {
   const isSettingUpRef = useRef<boolean>(false);  // 스트림 설정 중 플래그
   const lastTTSQuestionRef = useRef<string>('');  // 마지막 TTS 재생한 질문 추적
   const useEffectExecutedRef = useRef<boolean>(false); // React.StrictMode 중복 실행 방지
+  const apiCallInProgressRef = useRef<boolean>(false); // API 호출 중복 방지
 
-  // Initialize interview - simplified to always restart from localStorage
+  // 통합 초기화 useEffect
   useEffect(() => {
-    // 페이지 레벨 중복 실행 방지 (최우선)
-    if (pageInitialized) {
-      console.log('⚠️ 페이지 이미 초기화됨 - 중복 실행 방지');
-      return;
-    }
-    pageInitialized = true;
     
     // React.StrictMode 중복 실행 방지
     if (useEffectExecutedRef.current) {
       console.log('⚠️ useEffect 이미 실행됨 - StrictMode 중복 방지');
       return;
     }
+    
+    // 이미 초기화된 경우 방지
+    if (initializationRef.current) {
+      console.log('⚠️ 이미 초기화됨 - 중복 방지');
+      return;
+    }
+    
+    // API 호출 중인 경우 방지
+    if (apiCallInProgressRef.current) {
+      console.log('⚠️ API 호출 중 - 중복 방지');
+      return;
+    }
+    
     useEffectExecutedRef.current = true;
 
     // 🔍 카메라 스트림 상태 디버깅
@@ -142,6 +149,8 @@ const InterviewActive: React.FC = () => {
       }
     }
 
+
+
     if (!state.sessionId || !state.settings) {
       // localStorage 확인
       console.log('🔄 면접 상태가 없음 - localStorage 확인');
@@ -183,7 +192,54 @@ const InterviewActive: React.FC = () => {
             dispatch({ type: 'SET_AI_SETTINGS', payload: parsedState.aiSettings });
           }
           
-          // 무조건 새로운 면접 재시작
+          // 초기화 플래그 미리 설정 (중복 방지)
+          initializationRef.current = true;
+          apiCallInProgressRef.current = true;
+          
+          // API 호출 완료 여부 확인
+          if (parsedState.apiCallCompleted) {
+            console.log('✅ 환경체크에서 이미 API 호출 완료 - 바로 면접 화면 표시');
+            
+            // 이미 API가 호출되었으므로 상태만 복원하고 바로 시작
+            dispatch({ type: 'SET_SETTINGS', payload: parsedState.settings });
+            if (parsedState.sessionId) {
+              dispatch({ type: 'SET_SESSION_ID', payload: parsedState.sessionId });
+            }
+            if (parsedState.questions) {
+              parsedState.questions.forEach((question: any) => {
+                dispatch({ type: 'ADD_QUESTION', payload: question });
+              });
+            }
+            
+            // 면접 상태를 활성으로 설정
+            setInterviewState('active');
+            setComparisonMode(parsedState.settings.mode === 'ai_competition');
+            if (parsedState.settings.mode === 'ai_competition') {
+              setCurrentPhase('user_turn');
+            }
+            
+            // 현재 질문 설정 (첫 번째 질문)
+            if (parsedState.questions && parsedState.questions.length > 0) {
+              const firstQuestion = parsedState.questions[0];
+              dispatch({ type: 'SET_CURRENT_QUESTION_INDEX', payload: 0 });
+              setTimeLeft(firstQuestion.time_limit || 120);
+              
+              console.log('📝 첫 번째 질문 설정:', firstQuestion.question);
+              console.log('⏰ 타이머 설정:', firstQuestion.time_limit || 120);
+              
+              // 면접 시작 팝업 표시 안함
+              setShowStartPopup(false);
+            }
+            
+            initializationRef.current = true;
+            setHasInitialized(true);
+            apiCallInProgressRef.current = false;
+            
+            console.log('🎯 환경체크 완료된 면접 복원 완료 - 바로 시작');
+            return;
+          }
+          
+          // API 호출이 필요한 경우 새로운 면접 재시작
           console.log('🚀 localStorage 설정으로 새로운 면접 재시작');
           handleInterviewRestartFromLocalStorage(parsedState.settings);
           return;
@@ -200,15 +256,24 @@ const InterviewActive: React.FC = () => {
       return;
     }
     
-    // 일반 초기화 로직 (기존 state가 있을 때만 실행)
+    // 일반 초기화 로직 (localStorage 복원이 아닌 경우에만 실행)
     if (
       state.settings?.mode === 'ai_competition' &&
-      !initializationRef.current
+      !initializationRef.current &&
+      !apiCallInProgressRef.current &&
+      !localStorage.getItem('interview_state') // localStorage 복원이 아닌 경우에만
     ) {
+      console.log('🎯 정상 플로우: AI 경쟁 면접 모드 감지 (localStorage 아님)');
+      console.log('🎯 settings:', state.settings);
+      
       initializationRef.current = true;
+      apiCallInProgressRef.current = true;
       setHasInitialized(true);
       setComparisonMode(true);
       setShowStartPopup(true);
+      
+      // AI 경쟁 면접 API 호출
+      console.log('🚀 정상 플로우에서 AI 경쟁 면접 시작');
       handleNewInterviewStart(state.settings);
     } else if (state.settings?.mode !== 'ai_competition' && !initializationRef.current) {
       initializationRef.current = true;
@@ -621,6 +686,7 @@ const InterviewActive: React.FC = () => {
       console.log('🧹 카메라 설정 정리 중...');
       isSettingUpRef.current = false;
       
+      // videoRef.current를 변수에 복사 (cleanup 함수에서 안전하게 사용)
       const videoElement = videoRef.current;
       if (videoElement) {
         // 이벤트 리스너 정리
@@ -701,7 +767,18 @@ const InterviewActive: React.FC = () => {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [interviewState, ttsInstance, state.jobPosting, state.resume, state.interviewMode, state.aiSettings, state.settings, state.sessionId, state.interviewStatus]);
+  }, [
+    interviewState, 
+    ttsInstance, 
+    state.jobPosting, 
+    state.resume, 
+    state.interviewMode, 
+    state.aiSettings, 
+    state.settings, 
+    state.sessionId, 
+    state.interviewStatus,
+    state.questions.length // 누락된 의존성 추가
+  ]);
 
   // 추가 페이지 이탈 감지 이벤트들 (beforeunload 보완)
   useEffect(() => {
@@ -810,13 +887,19 @@ const InterviewActive: React.FC = () => {
     interviewState, 
     state.sessionId, 
     state.settings, 
-    state.questions.length, 
-    state.answers.length, 
+    state.questions, // .length 제거하고 전체 배열 사용
+    state.answers, // .length 제거하고 전체 배열 사용
     state.currentQuestionIndex,
-    currentAnswer // 답변 입력 중에도 저장
+    currentAnswer, // 답변 입력 중에도 저장
+    state.aiSettings, // 누락된 의존성 추가
+    state.interviewMode, // 누락된 의존성 추가
+    state.interviewStatus, // 누락된 의존성 추가
+    state.jobPosting, // 누락된 의존성 추가
+    state.resume // 누락된 의존성 추가
   ]);
 
-  // localStorage에서 복원된 설정으로 새로운 면접 시작
+  /*
+  // 사용되지 않는 함수 - 주석 처리
   const restartInterviewFromLocalStorage = async (settings: any) => {
     if (!settings) {
       console.error('❌ restartInterviewFromLocalStorage - settings가 없음');
@@ -843,13 +926,18 @@ const InterviewActive: React.FC = () => {
         const response = await interviewApi.startAICompetition(settings);
         
         // 새로운 세션 정보 설정
-        dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
-        setComparisonSessionId(response.comparison_session_id);
+        if (response.session_id) {
+          dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
+        }
+        if ((response as any).comparison_session_id) {
+          setComparisonSessionId((response as any).comparison_session_id);
+        }
         
         // 첫 번째 질문 추가
-        if (response.question) {
-          dispatch({ type: 'ADD_QUESTION', payload: response.question });
-          setCurrentInterviewerType(mapQuestionCategoryToInterviewer(response.question.category));
+        if (response.question && typeof response.question === 'object') {
+          const questionData = response.question as any;
+          dispatch({ type: 'ADD_QUESTION', payload: questionData });
+          setCurrentInterviewerType(mapQuestionCategoryToInterviewer(questionData.category || '일반'));
         }
         
         // AI 경쟁 모드 상태 설정
@@ -888,11 +976,13 @@ const InterviewActive: React.FC = () => {
       setIsLoading(false);
     }
   };
+  */
 
   // localStorage 설정으로 새로운 면접 재시작 핸들러
   const handleInterviewRestartFromLocalStorage = async (settings: any) => {
     if (!settings) {
       console.error('❌ handleInterviewRestartFromLocalStorage - settings가 없음');
+      apiCallInProgressRef.current = false; // 플래그 해제
       navigate('/interview/setup');
       return;
     }
@@ -908,14 +998,21 @@ const InterviewActive: React.FC = () => {
       dispatch({ type: 'SET_SETTINGS', payload: settings });
       
       setIsLoading(true);
-      setInterviewState('ready');
       
-      // Hook을 사용한 API 호출 (완전히 새로운 면접)
-      const response = await startInterviewAPI(settings, 'restart');
+      // AI 경쟁 모드는 직접 API 호출, 일반 모드는 Hook 사용
+      let response;
+      if (settings.mode === 'ai_competition') {
+        console.log('🤖 localStorage에서 AI 경쟁 면접 재시작 - 직접 API 호출');
+        response = await interviewApi.startAICompetition(settings);
+      } else {
+        console.log('📞 localStorage에서 일반 면접 재시작 - Hook 사용');
+        response = await startInterviewAPI(settings, 'restart');
+      }
       
       if (!response) {
         console.log('⚠️ API 호출이 차단됨 (중복 방지) - 잠시 후 다시 시도');
         setIsLoading(false);
+        apiCallInProgressRef.current = false; // 플래그 해제
         
         // 잠시 후 다시 시도하거나 설정 페이지로 이동
         setTimeout(() => {
@@ -928,42 +1025,83 @@ const InterviewActive: React.FC = () => {
       if (response) {
         console.log('✅ 새로운 면접 재시작 성공:', response);
         
-        // 새로운 세션 정보 설정
-        dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
-        
         if (settings.mode === 'ai_competition') {
           // AI 경쟁 모드 설정
-          setComparisonSessionId(response.comparison_session_id);
+          console.log('🤖 AI 경쟁 모드 응답 처리:', response);
+          
+          // 세션 정보 설정
+          if (response.session_id) {
+            dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
+          }
+          
           setComparisonMode(true);
           setCurrentPhase('user_turn');
           
-          // 첫 번째 질문 추가
+          // 질문 처리 (문자열 또는 객체 모두 처리)
           if (response.question) {
-            dispatch({ type: 'ADD_QUESTION', payload: response.question });
-            setCurrentInterviewerType(mapQuestionCategoryToInterviewer(response.question.category));
+            const questionData = typeof response.question === 'string' 
+              ? { question: response.question, category: 'HR', time_limit: 120 }
+              : response.question;
+              
+            const normalizedQuestion = {
+              id: `q_${Date.now()}`,
+              question: questionData.question || questionData,
+              category: questionData.category || 'HR',
+              time_limit: questionData.time_limit || 120,
+              keywords: [],
+              intent: ''
+            };
             
-            // 타임라인 설정
-            const firstTurn = {
+            dispatch({ type: 'ADD_QUESTION', payload: normalizedQuestion });
+            setCurrentInterviewerType(mapQuestionCategoryToInterviewer(normalizedQuestion.category));
+            setTimeLeft(normalizedQuestion.time_limit);
+            
+            // 타임라인에 질문 추가
+            const questionTurn = {
               id: `interviewer_${Date.now()}`,
               type: 'interviewer' as const,
-              question: response.question.question,
-              questionType: response.question.category
+              question: normalizedQuestion.question,
+              questionType: normalizedQuestion.category
             };
-            setTimeline([firstTurn]);
+            setTimeline([questionTurn]);
           }
           
-          // 면접 시작 팝업 표시
-          setShowStartPopup(true);
+          // AI 답변이 있으면 타임라인에 추가
+          if (response.ai_answer) {
+            const aiTurn = {
+              id: `ai_${Date.now()}`,
+              type: 'ai' as const,
+              question: response.question || '',
+              answer: response.ai_answer,
+              persona_name: '춘식이'
+            };
+            setTimeline(prev => [...prev, aiTurn]);
+          }
           
-          console.log('🤖 AI 경쟁 모드 재시작 완료');
+          // AI 경쟁 모드는 바로 시작 (팝업 없이)
+          setInterviewState('active');
+          setShowStartPopup(false);
+          
+          console.log('🤖 AI 경쟁 모드 재시작 완료 - 바로 시작:', {
+            interviewState: 'active',
+            comparisonMode: true,
+            hasInitialized: true,
+            sessionId: response.session_id,
+            questionExists: !!response.question
+          });
         } else {
           // 일반 모드 설정
+          if (response.session_id) {
+            dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
+          }
+          
           if (response.question) {
             dispatch({ type: 'ADD_QUESTION', payload: response.question });
           }
-          setShowStartPopup(true);
+          setInterviewState('active');
+          setShowStartPopup(false);
           
-          console.log('👤 일반 모드 재시작 완료');
+          console.log('👤 일반 모드 재시작 완료 - 바로 시작');
         }
         
         // 초기화 플래그 설정
@@ -974,6 +1112,7 @@ const InterviewActive: React.FC = () => {
     } catch (error) {
       console.error('❌ localStorage 면접 재시작 실패:', error);
       setIsLoading(false);
+      apiCallInProgressRef.current = false; // 플래그 해제
       
       // 사용자에게 에러 메시지 표시
       const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
@@ -983,6 +1122,7 @@ const InterviewActive: React.FC = () => {
       navigate('/interview/setup');
     } finally {
       setIsLoading(false);
+      apiCallInProgressRef.current = false; // 플래그 해제
     }
   };
 
@@ -1043,8 +1183,12 @@ const InterviewActive: React.FC = () => {
 
   // 일반적인 새로운 면접 시작 핸들러
   const handleNewInterviewStart = async (settings: any) => {
+    console.log('🔥 handleNewInterviewStart 함수 진입');
+    console.log('🔥 전달받은 settings:', settings);
+    
     if (!settings) {
       console.error('❌ handleNewInterviewStart - settings가 없음');
+      apiCallInProgressRef.current = false; // 플래그 해제
       return;
     }
 
@@ -1053,21 +1197,101 @@ const InterviewActive: React.FC = () => {
       
       setIsLoading(true);
       
-      // Hook을 사용한 API 호출
-      const response = await startInterviewAPI(settings, 'new');
+      // AI 경쟁 모드인 경우 직접 API 호출, 아니면 Hook 사용
+      let response;
+      if (settings.mode === 'ai_competition') {
+        console.log('🤖 AI 경쟁 면접 직접 API 호출 시작');
+        console.log('🤖 호출할 API: interviewApi.startAICompetition');
+        console.log('🤖 전달할 settings:', settings);
+        
+        response = await interviewApi.startAICompetition(settings);
+        
+        console.log('🤖 API 응답 받음:', response);
+      } else {
+        console.log('📞 Hook을 사용한 API 호출');
+        // Hook을 사용한 API 호출
+        response = await startInterviewAPI(settings, 'new');
+      }
       
       if (response) {
-        // 세션 정보 설정
-        dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
-        setComparisonSessionId(response.comparison_session_id);
-        
-        // 첫 번째 질문 추가
-        if (response.question) {
-          dispatch({ type: 'ADD_QUESTION', payload: response.question });
-          setCurrentInterviewerType(mapQuestionCategoryToInterviewer(response.question.category));
+        if (settings.mode === 'ai_competition') {
+          // AI 경쟁 면접 응답 처리
+          console.log('🤖 AI 경쟁 면접 응답 처리:', response);
+          
+          // 세션 정보 설정
+          if (response.session_id) {
+            dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
+          }
+          
+          // 질문이 있으면 처리
+          if (response.question) {
+            const questionData = typeof response.question === 'string' 
+              ? { question: response.question, category: 'HR', time_limit: 120 }
+              : response.question;
+              
+            const normalizedQuestion = {
+              id: `q_${Date.now()}`,
+              question: questionData.question || questionData,
+              category: questionData.category || 'HR',
+              time_limit: questionData.time_limit || 120,
+              keywords: [],
+              intent: ''
+            };
+            
+            dispatch({ type: 'ADD_QUESTION', payload: normalizedQuestion });
+            setCurrentInterviewerType(mapQuestionCategoryToInterviewer(normalizedQuestion.category));
+            setTimeLeft(normalizedQuestion.time_limit);
+            
+            // 타임라인에 질문 추가
+            const questionTurn = {
+              id: `interviewer_${Date.now()}`,
+              type: 'interviewer' as const,
+              question: normalizedQuestion.question,
+              questionType: normalizedQuestion.category
+            };
+            setTimeline([questionTurn]);
+          }
+          
+          // AI 답변이 있으면 타임라인에 추가
+          if (response.ai_answer) {
+            const aiTurn = {
+              id: `ai_${Date.now()}`,
+              type: 'ai' as const,
+              question: response.question || '',
+              answer: response.ai_answer,
+              persona_name: '춘식이'
+            };
+            setTimeline(prev => [...prev, aiTurn]);
+          }
+          
+          // 경쟁 모드 상태 설정
+          setComparisonMode(true);
+          setCurrentPhase('user_turn');
+          setShowStartPopup(true);
+          setHasInitialized(true); // 🔥 초기화 완료 설정 추가
+          
+          console.log('✅ AI 경쟁 면접 시작 완료 - 초기화 설정됨');
+          console.log('🎯 현재 상태:', { 
+            comparisonMode: true, 
+            hasInitialized: true, 
+            currentPhase: 'user_turn',
+            showStartPopup: true 
+          });
+        } else {
+          // 일반 면접 응답 처리
+          dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
+          setComparisonSessionId(response.comparison_session_id);
+          
+          // 첫 번째 질문 추가
+          if (response.question) {
+            dispatch({ type: 'ADD_QUESTION', payload: response.question });
+            setCurrentInterviewerType(mapQuestionCategoryToInterviewer(response.question.category));
+            // 질문의 시간 제한으로 타이머 설정
+            setTimeLeft(response.question.time_limit || 120);
+          }
+          
+          console.log('✅ 새로운 면접 시작 완료');
         }
-        
-        console.log('✅ 새로운 면접 시작 완료');
       }
       
     } catch (error) {
@@ -1075,6 +1299,7 @@ const InterviewActive: React.FC = () => {
       alert(`면접 시작 실패: ${handleApiError(error)}`);
     } finally {
       setIsLoading(false);
+      apiCallInProgressRef.current = false; // 플래그 해제
     }
   };
 
@@ -1224,10 +1449,15 @@ const InterviewActive: React.FC = () => {
             keywords: questionData.keywords || []
           };
           
-          dispatch({ type: 'ADD_QUESTION', payload: normalizedQuestion });
-          setTimeLeft(normalizedQuestion.time_limit || 120);
-          setInterviewState('comparison_mode');
-          setQuestionCount(1); // 첫 번째 질문 카운트
+                     dispatch({ type: 'ADD_QUESTION', payload: normalizedQuestion });
+           
+           // 타이머 설정
+           const timeLimit = normalizedQuestion.time_limit || 120;
+           console.log('⏰ 초기 질문 타이머 설정:', timeLimit);
+           setTimeLeft(timeLimit);
+           
+           setInterviewState('comparison_mode');
+           setQuestionCount(1); // 첫 번째 질문 카운트
           
           // 첫 번째 질문을 타임라인에 직접 추가
           const firstTurn = {
@@ -1401,6 +1631,36 @@ const InterviewActive: React.FC = () => {
     answerRef.current?.focus();
   };
 
+  // 다음 턴 처리 함수
+  const handleNextTurn = (response: any) => {
+    if (response.ai_answer) {
+      // AI 답변이 있으면 타임라인에 추가
+      const aiTurn = {
+        id: `ai_${Date.now()}`,
+        type: 'ai' as const,
+        question: currentQuestion?.question || '',
+        answer: response.ai_answer,
+        persona_name: '춘식이'
+      };
+      setTimeline(prev => [...prev, aiTurn]);
+    }
+    
+    // 다음 질문 생성 또는 면접 종료
+    if (response.interview_progress?.turn_count >= response.interview_progress?.total_questions) {
+      console.log('🎉 면접 완료');
+      setInterviewState('completed');
+    } else {
+      console.log('🔄 다음 질문 생성 중...');
+      setCurrentPhase('ai_turn');
+      // 백엔드에서 자동으로 다음 질문 생성됨
+      setTimeout(() => {
+        // 면접 상태 새로고침 로직이 필요할 수 있음
+        console.log('⏳ 다음 질문 준비 완료');
+        setCurrentPhase('user_turn');
+      }, 1000);
+    }
+  };
+
   const submitAnswer = async () => {
     // 🐛 디버깅: 버튼 클릭 시 상태 확인
     console.log('🔘 submitAnswer 함수 호출됨');
@@ -1469,94 +1729,42 @@ const InterviewActive: React.FC = () => {
         return [...prev, userAnswer];
       });
       
-      // 사용자 답변 제출 (새로운 통합 API 사용)
-      const response = await interviewApi.processCompetitionTurn(sessionIdToUse, currentAnswer);
+      // 사용자 답변 제출 (새로운 Orchestrator 기반 API 사용)
+      const timeSpent = timeLeft > 0 ? (120 - timeLeft) : 0; // 소요 시간 계산
+      const response = await interviewApi.submitUserAnswer(sessionIdToUse, currentAnswer, timeSpent);
       
       console.log('✅ 사용자 답변 제출 완료:', response);
       setCurrentAnswer('');
       
-      // 면접 완료 확인
-      if (response.interview_status === 'completed') {
-        console.log('🎉 면접 완료');
-        setInterviewState('completed');
-        return;
-      }
-      
-      // AI 답변이 응답에 포함되어 있으므로 바로 처리
-      console.log('🤖 AI 답변 및 다음 질문 처리 시작...');
-      setCurrentPhase('ai_turn');
-      
-      try {
-        // AI 답변이 있는 경우 타임라인에 추가
-        if (response.ai_answer?.content) {
-          const aiTurnId = `ai_${Date.now()}`;
-          const aiTurn = {
-            id: aiTurnId,
-            type: 'ai' as const,
-            question: currentQuestion?.question || '질문을 불러올 수 없습니다',
-            questionType: currentQuestion?.category || '일반',
-            answer: response.ai_answer.content,
-            isAnswering: false,
-            persona_name: '춘식이'
-          };
-          
-          // 중복 방지: 같은 질문에 대한 AI 답변이 이미 있는지 확인
-          setTimeline(prev => {
-            const hasExistingAIAnswer = prev.some(turn => 
-              turn.type === 'ai' && 
-              turn.question === aiTurn.question && 
-              turn.answer
-            );
+      // 새로운 응답 구조에 맞게 처리
+      if (response.status === 'success') {
+        // flow_state에 따라 다음 동작 결정
+        switch (response.flow_state) {
+          case 'waiting_for_user_answer':
+            // 첫 번째 턴이고 사용자가 먼저 답변했을 때
+            console.log('💬 사용자 답변 완료 - AI 차례');
+            setCurrentPhase('ai_turn');
+            // AI 답변 자동 생성은 백엔드에서 처리됨
+            break;
             
-            if (hasExistingAIAnswer) {
-              console.log('⚠️ 같은 질문에 대한 AI 답변이 이미 존재함, 추가하지 않음');
-              return prev;
-            }
+          case 'ai_answered_first':
+            // AI가 먼저 답변하고 사용자가 두 번째로 답변했을 때
+            console.log('✅ 턴 완료 - 다음 질문 준비');
+            handleNextTurn(response);
+            break;
             
-            return [...prev, aiTurn];
-          });
+          case 'turn_completed':
+            // 턴이 완전히 완료되었을 때
+            console.log('🎯 턴 완료 - 다음 질문으로');
+            handleNextTurn(response);
+            break;
+            
+          default:
+            console.log('📋 응답 상태:', response.flow_state);
+            break;
         }
-        
-        // AI 답변 TTS 재생 후 다음 질문으로 전환
-        if (response.ai_answer?.content) {
-          console.log('✅ AI 답변 및 다음 질문 수신 완룼:', response.ai_answer.content);
-          
-          if (ttsInstance) {
-            console.log('🤖 AI 답변 TTS 재생 시작');
-            setIsTTSActive(true);
-            setTtsType('ai_answer');
-            ttsInstance.speakAsAICandidate(response.ai_answer.content)
-              .then(() => {
-                console.log('✅ AI 답변 TTS 재생 완료');
-                setIsTTSActive(false);
-                setTtsType('general');
-                // TTS 완료 후 1초 딜레이를 두고 다음 질문으로 전환
-                setTimeout(() => {
-                  handleNextQuestion(response);
-                }, 1000);
-              })
-              .catch(error => {
-                console.error('❌ AI 답변 TTS 재생 실패:', error);
-                setIsTTSActive(false);
-                setTtsType('general');
-                // TTS 실패 시에도 다음 질문으로 전환
-                handleNextQuestion(response);
-              });
-          } else {
-            // TTS 인스턴스가 없으면 바로 다음 질문으로 전환
-            handleNextQuestion(response);
-          }
-          
-        } else {
-          console.error('❌ AI 답변이 응답에 포함되지 않음');
-          // AI 답변이 없어도 다음 질문으로 진행
-          handleNextQuestion(response);
-        }
-        
-      } catch (error) {
-        console.error('❌ AI 답변 생성 중 오류:', error);
-        handleNextQuestion(response);
       }
+
       
     } catch (error) {
       console.error('답변 제출 실패:', error);
@@ -1617,12 +1825,17 @@ const InterviewActive: React.FC = () => {
         }
         
         return [...prev, interviewerTurn];
-      });
-      dispatch({ type: 'ADD_QUESTION', payload: normalizedNextQuestion });
-      setTimeLeft(questionData.time_limit || 120);
-      setCurrentPhase('user_turn');
-      setInterviewState('active');
-      setQuestionCount(nextQuestionCount); // 질문 개수 증가
+             });
+       dispatch({ type: 'ADD_QUESTION', payload: normalizedNextQuestion });
+       
+       // 타이머 설정 (질문에서 time_limit이 있으면 사용, 없으면 기본 120초)
+       const timeLimit = questionData.time_limit || normalizedNextQuestion.time_limit || 120;
+       console.log('⏰ 새 질문 타이머 설정:', timeLimit);
+       setTimeLeft(timeLimit);
+       
+       setCurrentPhase('user_turn');
+       setInterviewState('active');
+       setQuestionCount(nextQuestionCount); // 질문 개수 증가
       
       // 새 질문에 대한 자동 TTS 재생 (1초 딜레이로 조정)
       setTimeout(() => {
@@ -1953,147 +2166,9 @@ const InterviewActive: React.FC = () => {
     );
   };
 
-  // Ready State
-  if (interviewState === 'ready') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
-        <Header 
-          title={`${state.settings?.company || '쿠팡'} 면접`}
-          subtitle={`${state.settings?.position || '개발자'} ${comparisonMode ? '- 춘식이와의 실시간 경쟁' : ''}`}
-        />
-        <div className="max-w-4xl mx-auto px-6 py-8">
-          <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
-            <div className="mb-8">
-              <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <svg className="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-4">면접 준비 완료</h1>
-              <p className="text-lg text-gray-600">
-                {comparisonMode ? '춘식이와의 경쟁 면접' : '일반 면접'}이 곧 시작됩니다.
-              </p>
-            </div>
-
-            <div className="mb-8 p-6 bg-gray-50 rounded-xl">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">면접 정보</h3>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-500">회사:</span>
-                  <span className="ml-2 font-medium">{state.settings?.company}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">직군:</span>
-                  <span className="ml-2 font-medium">{state.settings?.position}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">모드:</span>
-                  <span className="ml-2 font-medium">
-                    {comparisonMode ? 'AI 경쟁 면접' : '일반 면접'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-500">난이도:</span>
-                  <span className="ml-2 font-medium">{state.settings?.difficulty}</span>
-                </div>
-              </div>
-            </div>
-
-            {isLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <LoadingSpinner />
-                <span className="ml-3 text-gray-600">
-                  {state.sessionId ? '면접 준비 중...' : '면접 재시작 중...'}
-                </span>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <p className="text-gray-600 mb-6">
-                  준비가 되었으면 아래 버튼을 클릭해 면접을 시작하세요.
-                </p>
-                <button
-                  onClick={() => setShowStartPopup(true)}
-                  className="px-8 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
-                >
-                  면접 시작
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-        
-        {/* 면접 시작 팝업 */}
-        {renderStartPopup()}
-        
-        {/* 질문 모달 */}
-        {renderQuestionModal()}
-      </div>
-    );
-  }
-
-  // Paused State
-  if (interviewState === 'paused') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
-        <Header 
-          title={`${state.settings?.company || '쿠팡'} 면접`}
-          subtitle={`${state.settings?.position || '개발자'} ${comparisonMode ? '- 춘식이와의 실시간 경쟁' : ''}`}
-        />
-        <div className="max-w-4xl mx-auto px-6 py-8">
-          <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
-            <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg className="w-10 h-10 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-4">면접 일시정지</h1>
-            <p className="text-lg text-gray-600 mb-8">
-              면접이 일시정지되었습니다. 준비가 되면 계속 진행하세요.
-            </p>
-            <button
-              onClick={resumeInterview}
-              className="px-8 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
-            >
-              면접 재개
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Completed State
-  if (interviewState === 'completed') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
-        <Header 
-          title={`${state.settings?.company || '쿠팡'} 면접`}
-          subtitle={`${state.settings?.position || '개발자'} ${comparisonMode ? '- 춘식이와의 실시간 경쟁' : ''}`}
-        />
-        <div className="max-w-4xl mx-auto px-6 py-8">
-          <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
-            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-4">면접 완료!</h1>
-            <p className="text-lg text-gray-600 mb-8">
-              수고하셨습니다. 곧 결과 페이지로 이동합니다.
-            </p>
-            <div className="flex items-center justify-center">
-              <LoadingSpinner />
-              <span className="ml-3 text-gray-600">결과 분석 중...</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Comparison Mode State - 화상회의 스타일
-  
+  // AI 경쟁 모드 우선 체크 (Ready State보다 먼저)
   if (comparisonMode && hasInitialized) {
+    console.log('🎯 AI 경쟁 모드 렌더링:', { comparisonMode, hasInitialized, interviewState });
     return (
       <div className="min-h-screen bg-black">
         {/* 면접 시작 팝업 */}
@@ -2385,16 +2460,6 @@ const InterviewActive: React.FC = () => {
                 const isValidPhase = (currentPhase === 'user_turn' || currentPhase === 'interviewer_question');
                 const isButtonDisabled = !hasAnswer || isLoading || !isValidPhase;
                 
-                // 🐛 디버깅: 버튼 상태 로깅
-                console.log('🔘 버튼 상태 체크 (첫 번째 버튼):', {
-                  hasAnswer,
-                  isLoading,
-                  currentPhase,
-                  isValidPhase,
-                  isButtonDisabled,
-                  currentAnswerLength: currentAnswer?.length || 0
-                });
-                
                 return (
                   <button 
                     className="w-full py-3 bg-green-600 text-white rounded-lg hover:bg-green-500 transition-colors font-semibold"
@@ -2470,6 +2535,147 @@ const InterviewActive: React.FC = () => {
     );
   }
 
+  // Ready State
+  if (interviewState === 'ready') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+        <Header 
+          title={`${state.settings?.company || '쿠팡'} 면접`}
+          subtitle={`${state.settings?.position || '개발자'} ${comparisonMode ? '- 춘식이와의 실시간 경쟁' : ''}`}
+        />
+        <div className="max-w-4xl mx-auto px-6 py-8">
+          <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
+            <div className="mb-8">
+              <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <svg className="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-4">면접 준비 완료</h1>
+              <p className="text-lg text-gray-600">
+                {comparisonMode ? '춘식이와의 경쟁 면접' : '일반 면접'}이 곧 시작됩니다.
+              </p>
+            </div>
+
+            <div className="mb-8 p-6 bg-gray-50 rounded-xl">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">면접 정보</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-500">회사:</span>
+                  <span className="ml-2 font-medium">{state.settings?.company}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">직군:</span>
+                  <span className="ml-2 font-medium">{state.settings?.position}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">모드:</span>
+                  <span className="ml-2 font-medium">
+                    {comparisonMode ? 'AI 경쟁 면접' : '일반 면접'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-500">난이도:</span>
+                  <span className="ml-2 font-medium">{state.settings?.difficulty}</span>
+                </div>
+              </div>
+            </div>
+
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <LoadingSpinner />
+                <span className="ml-3 text-gray-600">
+                  {state.sessionId ? '면접 준비 중...' : '면접 재시작 중...'}
+                </span>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-gray-600 mb-6">
+                  준비가 되었으면 아래 버튼을 클릭해 면접을 시작하세요.
+                </p>
+                <button
+                  onClick={() => setShowStartPopup(true)}
+                  className="px-8 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                >
+                  면접 시작
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {/* 면접 시작 팝업 */}
+        {renderStartPopup()}
+        
+        {/* 질문 모달 */}
+        {renderQuestionModal()}
+      </div>
+    );
+  }
+
+  // Paused State
+  if (interviewState === 'paused') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+        <Header 
+          title={`${state.settings?.company || '쿠팡'} 면접`}
+          subtitle={`${state.settings?.position || '개발자'} ${comparisonMode ? '- 춘식이와의 실시간 경쟁' : ''}`}
+        />
+        <div className="max-w-4xl mx-auto px-6 py-8">
+          <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
+            <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-10 h-10 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-4">면접 일시정지</h1>
+            <p className="text-lg text-gray-600 mb-8">
+              면접이 일시정지되었습니다. 준비가 되면 계속 진행하세요.
+            </p>
+            <button
+              onClick={resumeInterview}
+              className="px-8 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+            >
+              면접 재개
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Completed State
+  if (interviewState === 'completed') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+        <Header 
+          title={`${state.settings?.company || '쿠팡'} 면접`}
+          subtitle={`${state.settings?.position || '개발자'} ${comparisonMode ? '- 춘식이와의 실시간 경쟁' : ''}`}
+        />
+        <div className="max-w-4xl mx-auto px-6 py-8">
+          <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-4">면접 완료!</h1>
+            <p className="text-lg text-gray-600 mb-8">
+              수고하셨습니다. 곧 결과 페이지로 이동합니다.
+            </p>
+            <div className="flex items-center justify-center">
+              <LoadingSpinner />
+              <span className="ml-3 text-gray-600">결과 분석 중...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Comparison Mode State - 화상회의 스타일
+
+
   // Loading state for normal mode
   if (isLoading) {
     return (
@@ -2517,6 +2723,8 @@ const InterviewActive: React.FC = () => {
         title={`${state.settings?.company || '쿠팡'} 면접`}
         subtitle={`${state.settings?.position || '개발자'} ${comparisonMode ? '- 춘식이와의 실시간 경쟁' : ''}`}
       />
+      
+
       
       <div className="max-w-4xl mx-auto px-6 py-8">
         {/* Progress Bar */}
@@ -2758,16 +2966,16 @@ const InterviewActive: React.FC = () => {
               <div className="flex justify-end">
                 {(() => {
                   const hasAnswer = !!currentAnswer.trim();
-                  const isValidPhase = (currentPhase === 'user_turn' || currentPhase === 'interviewer_question');
+                  const isUserTurn = (currentPhase === 'user_turn' || currentPhase === 'interviewer_question');
                   const canAnswerCondition = comparisonMode ? canAnswer : true;
-                  const isButtonDisabled = !hasAnswer || isLoading || (comparisonMode && (!canAnswerCondition || !isValidPhase));
+                  const isButtonDisabled = !hasAnswer || isLoading || !isUserTurn || (comparisonMode && !canAnswerCondition);
                   
                   // 🐛 디버깅: 버튼 상태 로깅
-                  console.log('🔘 버튼 상태 체크 (두 번째 버튼):', {
+                  console.log('🔘 버튼 상태 체크:', {
                     hasAnswer,
                     isLoading,
                     currentPhase,
-                    isValidPhase,
+                    isUserTurn,
                     comparisonMode,
                     canAnswer,
                     canAnswerCondition,

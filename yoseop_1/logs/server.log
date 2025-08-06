@@ -17,3 +17,74 @@
 2025-07-30 11:51:19,103 - interview_system - INFO - None:0 - 🎭 [STANDALONE AI] 단독 AI 답변 생성 (세션 무관): naver - 백엔드개발
 2025-08-04 08:48:50,375 - interview_system - INFO - None:0 - 🎯 [Interview] TEST: test_session_id - test details
 2025-08-04 08:56:25,047 - interview_system - ERROR - None:0 - ❌ [Interview Error] test context 오류: test error (세션: test_session)
+2025-08-05 18:46:18,764 - interview_system - INFO - None:0 - AI 경쟁 면접 시작: comp_17ed1a3eadb1
+2025-08-05 18:46:18,765 - interview_system - INFO - None:0 - 🔄 면접 진행 - 세션: comp_17ed1a3eadb1, 단계: 0
+2025-08-05 18:46:18,769 - interview_system - INFO - None:0 - 📋 Orchestrator 지시: task=generate_question, next_agent=interviewer
+2025-08-05 18:46:18,773 - interview_system - INFO - None:0 - ❓ QuestionGenerator에서 질문 생성: comp_17ed1a3eadb1
+2025-08-05 18:46:18,774 - interview_system - INFO - None:0 - ❓ 질문 생성 완료: comp_17ed1a3eadb1
+2025-08-05 18:46:21,961 - interview_system - INFO - None:0 - 🤖 AI 지원자 답변 생성: comp_17ed1a3eadb1
+2025-08-05 18:46:21,963 - interview_system - INFO - None:0 - 🤖 AI 답변 완료, 사용자 답변 대기: comp_17ed1a3eadb1
+2025-08-05 18:46:21,972 - interview_system - INFO - None:0 - 👤 사용자 답변 제출: comp_17ed1a3eadb1
+2025-08-05 18:46:21,975 - interview_system - INFO - None:0 - 🔄 면접 진행 - 세션: comp_17ed1a3eadb1, 단계: 0
+2025-08-05 18:46:21,979 - interview_system - INFO - None:0 - 📋 Orchestrator 지시: task=generate_question, next_agent=interviewer
+2025-08-05 18:46:21,987 - interview_system - INFO - None:0 - ❓ QuestionGenerator에서 질문 생성: comp_17ed1a3eadb1
+2025-08-05 18:46:21,990 - interview_system - INFO - None:0 - ❓ 질문 생성 완료: comp_17ed1a3eadb1
+2025-08-05 18:46:21,992 - interview_system - INFO - None:0 - 👤 사용자 답변 요청: comp_17ed1a3eadb1
+2025-08-05 18:46:21,992 - interview_system - INFO - None:0 - 👤 사용자 답변 대기: comp_17ed1a3eadb1
+2025-08-05 18:58:45,627 - interview_system - INFO - None:0 - AI 경쟁 면접 시작: comp_2530b849864d
+2025-08-05 18:58:45,632 - interview_system - INFO - None:0 - 🔄 면접 진행 - 세션: comp_2530b849864d, 단계: 0
+2025-08-05 18:58:45,634 - interview_system - INFO - None:0 - 📋 Orchestrator 지시: task=generate_question, next_agent=interviewer
+2025-08-05 18:58:45,638 - interview_system - INFO - None:0 - ❓ QuestionGenerator에서 질문 생성: comp_2530b849864d
+2025-08-05 18:58:45,640 - interview_system - INFO - None:0 - ❓ 질문 생성 완료: comp_2530b849864d
+2025-08-05 18:58:45,642 - interview_system - INFO - None:0 - 👤 사용자 답변 요청: comp_2530b849864d
+2025-08-05 18:58:45,643 - interview_system - INFO - None:0 - 👤 사용자 답변 대기: comp_2530b849864d
+2025-08-05 19:04:03,795 - interview_system - INFO - None:0 - AI 경쟁 면접 시작: comp_ac0a9d5f5fab
+2025-08-05 19:04:03,797 - interview_system - INFO - None:0 - 🔄 면접 진행 - 세션: comp_ac0a9d5f5fab, 단계: 0
+2025-08-05 19:04:03,801 - interview_system - INFO - None:0 - 📋 Orchestrator 지시: task=generate_question, next_agent=interviewer
+2025-08-05 19:04:03,808 - interview_system - INFO - None:0 - ❓ QuestionGenerator에서 질문 생성: comp_ac0a9d5f5fab
+2025-08-05 19:04:03,810 - interview_system - INFO - None:0 - ❓ 질문 생성 완료: comp_ac0a9d5f5fab
+2025-08-05 19:04:09,200 - interview_system - INFO - None:0 - 🤖 AI 지원자 답변 생성: comp_ac0a9d5f5fab
+2025-08-05 19:04:09,200 - interview_system - INFO - None:0 - 🤖 AI 답변 완료, 사용자 답변 대기: comp_ac0a9d5f5fab
+2025-08-05 19:04:09,216 - interview_system - INFO - None:0 - 👤 사용자 답변 제출: comp_ac0a9d5f5fab
+2025-08-05 19:04:09,218 - interview_system - INFO - None:0 - 🔄 면접 진행 - 세션: comp_ac0a9d5f5fab, 단계: 0
+2025-08-05 19:04:09,222 - interview_system - INFO - None:0 - 📋 Orchestrator 지시: task=generate_question, next_agent=interviewer
+2025-08-05 19:04:11,687 - interview_system - INFO - None:0 - ❓ QuestionGenerator에서 질문 생성: comp_ac0a9d5f5fab
+2025-08-05 19:04:11,697 - interview_system - INFO - None:0 - ❓ 질문 생성 완료: comp_ac0a9d5f5fab
+2025-08-05 19:04:11,705 - interview_system - INFO - None:0 - 👤 사용자 답변 요청: comp_ac0a9d5f5fab
+2025-08-05 19:04:11,707 - interview_system - INFO - None:0 - 👤 사용자 답변 대기: comp_ac0a9d5f5fab
+2025-08-05 19:05:00,208 - interview_system - INFO - None:0 - AI 경쟁 면접 시작: comp_cc39f32295b2
+2025-08-05 19:05:00,209 - interview_system - INFO - None:0 - 🔄 면접 진행 - 세션: comp_cc39f32295b2, 단계: 0
+2025-08-05 19:05:00,212 - interview_system - INFO - None:0 - 📋 Orchestrator 지시: task=generate_question, next_agent=interviewer
+2025-08-05 19:05:00,222 - interview_system - INFO - None:0 - ❓ QuestionGenerator에서 질문 생성: comp_cc39f32295b2
+2025-08-05 19:05:00,225 - interview_system - INFO - None:0 - ❓ 질문 생성 완료: comp_cc39f32295b2
+2025-08-05 19:05:03,887 - interview_system - INFO - None:0 - 🤖 AI 지원자 답변 생성: comp_cc39f32295b2
+2025-08-05 19:05:03,887 - interview_system - INFO - None:0 - 🤖 AI 답변 완료, 사용자 답변 대기: comp_cc39f32295b2
+2025-08-05 19:05:03,904 - interview_system - INFO - None:0 - 👤 사용자 답변 제출: comp_cc39f32295b2
+2025-08-05 19:05:03,907 - interview_system - INFO - None:0 - 🔄 면접 진행 - 세션: comp_cc39f32295b2, 단계: 0
+2025-08-05 19:05:03,912 - interview_system - INFO - None:0 - 📋 Orchestrator 지시: task=generate_question, next_agent=interviewer
+2025-08-05 19:05:03,918 - interview_system - INFO - None:0 - ❓ QuestionGenerator에서 질문 생성: comp_cc39f32295b2
+2025-08-05 19:05:03,920 - interview_system - INFO - None:0 - ❓ 질문 생성 완료: comp_cc39f32295b2
+2025-08-05 19:05:06,859 - interview_system - INFO - None:0 - 🤖 AI 지원자 답변 생성: comp_cc39f32295b2
+2025-08-05 19:05:06,861 - interview_system - INFO - None:0 - 🤖 AI 답변 완료, 사용자 답변 대기: comp_cc39f32295b2
+2025-08-05 19:05:06,875 - interview_system - INFO - None:0 - 👤 사용자 답변 제출: comp_cc39f32295b2
+2025-08-05 19:05:06,877 - interview_system - INFO - None:0 - 🔄 면접 진행 - 세션: comp_cc39f32295b2, 단계: 0
+2025-08-05 19:05:06,880 - interview_system - INFO - None:0 - 📋 Orchestrator 지시: task=generate_question, next_agent=interviewer
+2025-08-05 19:05:09,220 - interview_system - INFO - None:0 - ❓ QuestionGenerator에서 질문 생성: comp_cc39f32295b2
+2025-08-05 19:05:09,226 - interview_system - INFO - None:0 - ❓ 질문 생성 완료: comp_cc39f32295b2
+2025-08-05 19:05:12,195 - interview_system - INFO - None:0 - 🤖 AI 지원자 답변 생성: comp_cc39f32295b2
+2025-08-05 19:05:12,196 - interview_system - INFO - None:0 - 🤖 AI 답변 완료, 사용자 답변 대기: comp_cc39f32295b2
+2025-08-05 19:05:12,212 - interview_system - INFO - None:0 - 👤 사용자 답변 제출: comp_cc39f32295b2
+2025-08-05 19:05:12,215 - interview_system - INFO - None:0 - 🔄 면접 진행 - 세션: comp_cc39f32295b2, 단계: 0
+2025-08-05 19:05:12,218 - interview_system - INFO - None:0 - 📋 Orchestrator 지시: task=generate_question, next_agent=interviewer
+2025-08-05 19:05:14,339 - interview_system - INFO - None:0 - ❓ QuestionGenerator에서 질문 생성: comp_cc39f32295b2
+2025-08-05 19:05:14,342 - interview_system - INFO - None:0 - ❓ 질문 생성 완료: comp_cc39f32295b2
+2025-08-05 19:05:18,938 - interview_system - INFO - None:0 - 🤖 AI 지원자 답변 생성: comp_cc39f32295b2
+2025-08-05 19:05:18,939 - interview_system - INFO - None:0 - 🤖 AI 답변 완료, 사용자 답변 대기: comp_cc39f32295b2
+2025-08-06 02:58:58,771 - interview_system - INFO - None:0 - AI 경쟁 면접 시작: comp_cb65b9ada7cf
+2025-08-06 02:58:58,775 - interview_system - INFO - None:0 - 🔄 면접 진행: task=generate_question, next_agent=interviewer, answer_seq=1
+2025-08-06 02:58:58,776 - interview_system - INFO - None:0 - 👤 첫 번째 답변 단계: comp_cb65b9ada7cf
+2025-08-06 09:03:59,040 - interview_system - INFO - None:0 - AI 경쟁 면접 시작: comp_d8460164f019
+2025-08-06 09:03:59,043 - interview_system - INFO - None:0 - 🔄 면접 진행: task=generate_question, next_agent=interviewer, answer_seq=0
+2025-08-06 09:03:59,044 - interview_system - INFO - None:0 - ❓ 질문 생성 단계: comp_d8460164f019
+2025-08-06 09:03:59,045 - interview_system - INFO - None:0 - 📤 면접관에게 질문 생성 요청: comp_d8460164f019
+2025-08-06 09:03:59,053 - interview_system - INFO - None:0 - ✅ 질문 생성 완료: 자기소개를 부탁드립니다....

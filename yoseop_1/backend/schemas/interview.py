@@ -27,6 +27,13 @@ class AnswerSubmission(BaseModel):
     answer: str
     time_spent: int
 
+class AICompetitionAnswerSubmission(BaseModel):
+    """AI 경쟁 면접 답변 제출 모델 - question_id가 선택적"""
+    session_id: str
+    answer: str
+    time_spent: int
+    question_id: Optional[str] = None  # AI 경쟁 면접에서는 선택적
+
 class InterviewResult(BaseModel):
     """면접 결과 모델"""
     session_id: str

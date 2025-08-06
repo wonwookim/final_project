@@ -75,22 +75,22 @@ const MainPage: React.FC = () => {
             상세한 피드백으로 면접 실력을 한 단계 업그레이드하세요.
           </p>
           
-          <div className="flex justify-center">
-            <button
-              onClick={handleStartInterview}
-              disabled={isLoading}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-full text-lg font-bold hover:shadow-lg hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <div className="flex items-center gap-2">
-                  <LoadingSpinner size="sm" color="white" />
-                  준비 중...
+                          <div className="flex justify-center">
+                  <button
+                    onClick={handleStartInterview}
+                    disabled={isLoading}
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-full text-lg font-bold hover:shadow-lg hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isLoading ? (
+                      <div className="flex items-center gap-2">
+                        <LoadingSpinner size="sm" color="white" />
+                        준비 중...
+                      </div>
+                    ) : (
+                      "면접 시작하기"
+                    )}
+                  </button>
                 </div>
-              ) : (
-                "면접 시작하기"
-              )}
-            </button>
-          </div>
         </div>
 
         {/* Stats Section */}
