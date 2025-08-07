@@ -221,6 +221,8 @@ class QuestionGenerator:
         try:
             # Orchestrator의 state에서 직접 정보 추출
             turn_count = state.get('turn_count', 0)
+            current_interviewer = state.get('current_interviewer')
+            turn_state = state.get('interviewer_turn_state', {})
             
             # 턴 0: 인트로 메시지 생성
             if turn_count == 0:
@@ -231,48 +233,111 @@ class QuestionGenerator:
                 }
                 return self.generate_intro_message(company_id, user_resume)
             
-            # 간단한 턴 기반으로 질문 유형 결정 (기존 로직 간소화)
-            if turn_count == 1:
-                question_flow_type = 'fixed'
-                interviewer_role = 'HR'
+            # 턴 1: 자기소개 (fixed)
+            elif turn_count == 1:
+                question_index = 0
+                question = self.generate_fixed_question(question_index, state.get('company_id'), 
+                                                      {"name": state.get('user_name', '지원자')})
+                return question
+            
+            # 턴 2: 지원동기 (fixed)
+            elif turn_count == 2:
+                question_index = 1
+                question = self.generate_fixed_question(question_index, state.get('company_id'), 
+                                                      {"name": state.get('user_name', '지원자')})
+                return question
+            
+            # 턴 3부터: 면접관별 질문 (메인 질문 + 꼬리 질문)
             else:
-                question_flow_type = 'by_role'
-                # 간단하게 턴마다 역할을 번갈아가며 선택
-                roles = ['HR', 'TECH', 'COLLABORATION']
-                interviewer_role = roles[(turn_count - 2) % len(roles)]
-
-            # 세션 정보 구성
-            session_info = {
-                'company_id': state.get('company_id'),
-                'user_name': state.get('user_name'),
-                'position': state.get('position'),
-                'turn_count': turn_count + 1, # 1-based로 변환
-                'qa_history': state.get('qa_history', []),
-                'question_flow_type': question_flow_type,
-                'interviewer_role': interviewer_role,
-            }
-            
-            # 기본 user_resume 구성
-            user_resume = {
-                'name': session_info['user_name'],
-                'position': session_info['position']
-            }
-            
-            # 질문 생성 방식에 따라 적절한 질문 생성 함수 호출
-            if question_flow_type == 'fixed':
-                # 턴 1: 자기소개 (question_index = 0), 턴 2: 지원동기 (question_index = 1)
-                question_index = turn_count - 1
-                question = self.generate_fixed_question(question_index, session_info['company_id'], user_resume)
-            else: # by_role 또는 다른 모든 경우
-                question = self.generate_question_by_role(
-                    interviewer_role=interviewer_role,
-                    company_id=session_info['company_id'],
-                    user_resume=user_resume,
-                    previous_qa_pairs=session_info['qa_history']
-                )
-            
-            print(f"[SUCCESS] {question_flow_type} 질문 생성 ({interviewer_role})")
-            return question
+                # 🆕 상태 기반 면접관 결정 로직
+                if not current_interviewer:
+                    # 첫 번째 면접관은 HR부터 시작
+                    current_interviewer = 'HR'
+                
+                # 🆕 결정한 면접관을 state에 설정
+                state['current_interviewer'] = current_interviewer
+                
+                # 🆕 면접관 상태 초기화 (없으면 생성)
+                if current_interviewer not in turn_state:
+                    turn_state[current_interviewer] = {
+                        'main_question_asked': False,
+                        'follow_up_count': 0
+                    }
+                
+                current_turn_state = turn_state.get(current_interviewer, {})
+                
+                # 기본 user_resume 구성
+                user_resume = {
+                    'name': state.get('user_name', '지원자'),
+                    'position': state.get('position', '개발자')
+                }
+                
+                # 메인 질문 안했으면 메인 질문 생성
+                if not current_turn_state.get('main_question_asked', False):
+                    question = self.generate_question_by_role(
+                        interviewer_role=current_interviewer,
+                        company_id=state.get('company_id'),
+                        user_resume=user_resume,
+                        previous_qa_pairs=state.get('qa_history', [])
+                    )
+                    return question
+                
+                # 꼬리 질문 생성 (최대 2개)
+                elif current_turn_state.get('follow_up_count', 0) < 2:
+                    # 🆕 qa_history에서 최신 데이터 추출
+                    qa_history = state.get('qa_history', [])
+                    if len(qa_history) >= 2:
+                        # 가장 최근 질문과 답변들 추출
+                        latest_qa_pairs = qa_history[-2:]  # 마지막 2개 (사용자 + AI 답변)
+                        previous_question = latest_qa_pairs[0]['question'] if latest_qa_pairs else ''
+                        
+                        # 사용자와 AI 답변 분리
+                        user_answer = ""
+                        ai_answer = ""
+                        for qa in latest_qa_pairs:
+                            if qa['answerer'] == 'user':
+                                user_answer = qa['answer']
+                            elif qa['answerer'] == 'ai':
+                                ai_answer = qa['answer']
+                    else:
+                        previous_question = ""
+                        user_answer = ""
+                        ai_answer = ""
+                    
+                    company_info = self.companies_data.get(state.get('company_id'), {})
+                    
+                    question = self.generate_follow_up_question(
+                        previous_question=previous_question,
+                        user_answer=user_answer,
+                        chun_sik_answer=ai_answer,
+                        company_info=company_info,
+                        interviewer_role=current_interviewer,
+                        user_resume=user_resume
+                    )
+                    return question
+                
+                # 턴 전환 필요 (꼬리 질문 2개 완료)
+                else:
+                    # 다음 면접관 결정
+                    roles = ['HR', 'TECH', 'COLLABORATION']
+                    current_index = roles.index(current_interviewer)
+                    next_index = (current_index + 1) % len(roles)
+                    next_interviewer = roles[next_index]
+                    
+                    # 🆕 턴 전환 시 새로운 면접관의 상태 초기화
+                    turn_state[next_interviewer] = {
+                        'main_question_asked': False,
+                        'follow_up_count': 0
+                    }
+                    
+                    # 🆕 state의 current_interviewer도 업데이트
+                    state['current_interviewer'] = next_interviewer
+                    
+                    return {
+                        'turn_switch': True,
+                        'next_interviewer': next_interviewer,
+                        'message': f'{current_interviewer} 면접관 턴 완료, {next_interviewer} 면접관으로 전환'
+                    }
             
         except Exception as e:
             print(f"[ERROR] state 기반 질문 생성 실패: {e}")
@@ -283,14 +348,7 @@ class QuestionGenerator:
                 'interviewer_type': 'HR'
             }
 
-    def generate_question_with_orchestrator(self, orchestrator) -> Dict:
-        """
-        Orchestrator 객체를 받아서 직접 질문 생성 및 상태 업데이트를 처리하는 메서드
-        [DEPRECATED] 이제 generate_question_with_orchestrator_state를 사용하세요.
-        """
-        print("[WARNING] `generate_question_with_orchestrator` is deprecated. Use `generate_question_with_orchestrator_state` instead.")
-        return self.generate_question_with_orchestrator_state(orchestrator.get_current_state())
-
+   
     def generate_follow_up_question(self, previous_question: str, user_answer: str, 
                                    chun_sik_answer: str, company_info: Dict, 
                                    interviewer_role: str, user_resume: Dict = None) -> Dict:

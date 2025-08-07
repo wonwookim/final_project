@@ -74,18 +74,40 @@ class Orchestrator:
         elif task == "question_generated":
             self.session_state['current_question'] = content
             
+            # 🆕 질문 타입 추출 로직 제거 - QuestionGenerator에서 결정한 면접관 사용
+            # current_interviewer는 QuestionGenerator에서 이미 설정됨
+            # 여기서는 질문 내용만 저장하고 면접관 추측하지 않음
+            
         elif task == "answer_generated":
+            # 🆕 답변 정보를 qa_history에만 저장
             self.session_state['qa_history'].append({
                 "question": self.session_state['current_question'],
                 "answerer": from_agent,
                 "answer": content
             })
             
-            # 두 답변이 모두 완료되면 턴 증가
+            # 두 답변이 모두 완료되면 턴 증가 및 꼬리 질문 상태 업데이트
             current_answers = len([qa for qa in self.session_state['qa_history'] 
                                  if qa['question'] == self.session_state['current_question']])
             
             if current_answers >= 2:
+                # 🆕 꼬리 질문 카운트 증가 (수정된 로직)
+                current_interviewer = self.session_state.get('current_interviewer')
+                if current_interviewer and current_interviewer in ['HR', 'TECH', 'COLLABORATION']:
+                    turn_state = self.session_state.get('interviewer_turn_state', {})
+                    if current_interviewer in turn_state:
+                        # 현재 질문이 메인 질문인지 꼬리 질문인지 판단
+                        current_turn = self.session_state.get('turn_count', 0)
+                        
+                        # 턴 1, 2는 고정 질문이므로 카운트하지 않음
+                        if current_turn > 2:
+                            # 메인 질문 완료 표시
+                            if not turn_state[current_interviewer]['main_question_asked']:
+                                turn_state[current_interviewer]['main_question_asked'] = True
+                            else:
+                                # 꼬리 질문 카운트 증가
+                                turn_state[current_interviewer]['follow_up_count'] += 1
+                
                 self.session_state['turn_count'] += 1
                 self.session_state['current_question'] = None
 
@@ -192,6 +214,15 @@ class Orchestrator:
                 self.question_generator.generate_question_with_orchestrator_state,
                 self.session_state
             )
+            
+            # 🆕 턴 전환 처리
+            if question_data.get('turn_switch'):
+                # 🆕 턴 전환 시 바로 다음 질문을 요청 (재귀 호출)
+                print(f"[DEBUG] 턴 전환 감지: {question_data.get('message', '')}")
+                # 상태 업데이트 후 다시 질문 요청
+                return await self._request_question_from_interviewer()
+            
+            # 일반 질문 반환
             return question_data.get('question', '다음 질문이 무엇인가요?')
             
         except Exception as e:
@@ -277,7 +308,7 @@ class Orchestrator:
     
     async def _process_complete_flow(self) -> Dict[str, Any]:
         """완전한 플로우를 처리하여 최종 결과 반환"""
-        print(f"[Orchestrator] 🔄 _process_complete_flow 시작: {self.session_id}")
+        print(f"[Orchestrator] �� _process_complete_flow 시작: {self.session_id}")
         
         while True:
             print(f"[Orchestrator] 🔄 while 루프 시작 - turn_count: {self.session_state.get('turn_count', 0)}")
@@ -324,10 +355,20 @@ class Orchestrator:
         """면접관 작업 처리"""
         print(f"[Orchestrator] -> [Interviewer] (질문 생성 요청)")
         
+        # 🆕 현재 상태 디버깅 (개선)
+        current_interviewer = self.session_state.get('current_interviewer')
+        turn_state = self.session_state.get('interviewer_turn_state', {})
+        current_turn = self.session_state.get('turn_count', 0)
+        
+        print(f"[DEBUG] 턴 {current_turn}: 현재 면접관 = {current_interviewer}")
+        for role, state in turn_state.items():
+            main_done = "✓" if state['main_question_asked'] else "✗"
+            follow_count = state['follow_up_count']
+            print(f"[DEBUG]   {role}: 메인 {main_done}, 꼬리 {follow_count}개")
+        
         question_content = await self._request_question_from_interviewer()
         
         # 현재 턴에 따라 task 결정
-        current_turn = self.session_state.get('turn_count', 0)
         task = "intro_generated" if current_turn == 0 else "question_generated"
         
         question_message = self.create_agent_message(

@@ -52,6 +52,14 @@ class InterviewService:
             "qa_history": [],
             "is_completed": False,
             "start_time": time.perf_counter(),
+            # 🆕 꼬리 질문 관리를 위한 필드들 추가
+            "interviewer_turn_state": {
+                'HR': {'main_question_asked': False, 'follow_up_count': 0},
+                'TECH': {'main_question_asked': False, 'follow_up_count': 0},
+                'COLLABORATION': {'main_question_asked': False, 'follow_up_count': 0}
+            },
+            "current_interviewer": None,
+            # 🆕 중복 제거: qa_history에서 최신 데이터 추출
             **initial_settings
         }
         self.session_states[session_id] = session_state
@@ -131,7 +139,7 @@ class InterviewService:
             
             # 세션 상태 생성
             initial_settings = {
-                'total_question_limit': 5,
+                'total_question_limit': 7,  # 디버깅용 - 실제 운영시에는 15로 변경
                 'company_id': company_id,
                 'position': settings['position'],
                 'user_name': settings['candidate_name'],
