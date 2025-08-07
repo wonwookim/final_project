@@ -114,6 +114,7 @@ class Orchestrator:
     def _decide_next_message(self) -> Dict[str, Any]:
         """다음 메시지 결정 - 실제 플로우 제어 로직"""
         current_turn = self.session_state.get('turn_count', 0)
+        start_time = self.session_state.get('start_time')
         
         # 턴 0: 인트로 처리
         if current_turn == 0:
@@ -122,7 +123,9 @@ class Orchestrator:
                 task="generate_intro",
                 from_agent="orchestrator",
                 content_text="인트로 메시지를 생성해주세요.",
-                turn_count=current_turn
+                turn_count=current_turn,
+                content_type="INTRO",
+                start_time=start_time
             )
             message["metadata"]["next_agent"] = "interviewer"
             return message
@@ -135,7 +138,9 @@ class Orchestrator:
                 task="end_interview",
                 from_agent="orchestrator",
                 content_text="수고하셨습니다.",
-                turn_count=current_turn
+                turn_count=current_turn,
+                content_type="OUTTRO",
+                start_time=start_time
             )
             message["metadata"]["next_agent"] = "orchestrator"
             return message
@@ -147,7 +152,8 @@ class Orchestrator:
                 task="generate_question",
                 from_agent="orchestrator",
                 content_text="다음 질문을 생성해주세요.",
-                turn_count=current_turn
+                turn_count=current_turn,
+                start_time=start_time
             )
             message["metadata"]["next_agent"] = "interviewer"
             return message
@@ -164,7 +170,8 @@ class Orchestrator:
                 task="generate_answer",
                 from_agent="orchestrator",
                 content_text=self.session_state['current_question'],
-                turn_count=current_turn
+                turn_count=current_turn,
+                start_time=start_time
             )
             message["metadata"]["next_agent"] = selected_agent
             return message
@@ -179,7 +186,8 @@ class Orchestrator:
                 task="generate_answer",
                 from_agent="orchestrator",
                 content_text=self.session_state['current_question'],
-                turn_count=current_turn
+                turn_count=current_turn,
+                start_time=start_time
             )
             message["metadata"]["next_agent"] = selected_agent
             return message
@@ -191,7 +199,8 @@ class Orchestrator:
                 task="generate_question",
                 from_agent="orchestrator",
                 content_text="다음 질문을 생성해주세요.",
-                turn_count=current_turn
+                turn_count=current_turn,
+                start_time=start_time
             )
             message["metadata"]["next_agent"] = "interviewer"
             return message
@@ -266,8 +275,14 @@ class Orchestrator:
 
     @staticmethod
     def create_agent_message(session_id: str, task: str, from_agent: str, content_text: str, 
-                             turn_count: int, duration: float = 0, content_type: str = "text") -> Dict[str, Any]:
+                             turn_count: int, duration: float = 0, content_type: str = "text", 
+                             start_time: float = None) -> Dict[str, Any]:
         """외부(Agent)에서 Orchestrator로 보낼 메시지를 생성하는 정적 메서드"""
+        # 🆕 total_time 계산
+        total_time = None
+        if start_time:
+            total_time = time.time() - start_time
+        
         return {
             "metadata": {
                 "interview_id": session_id,
@@ -282,7 +297,8 @@ class Orchestrator:
                 "content": content_text
             },
             "metrics": {
-                "duration": duration
+                "duration": duration,
+                "total_time": total_time
             }
         }
 
@@ -297,7 +313,8 @@ class Orchestrator:
             from_agent="user",
             content_text=user_answer,
             turn_count=self.session_state.get('turn_count', 0),
-            duration=time_spent
+            duration=time_spent,
+            start_time=self.session_state.get('start_time')
         )
         
         # 2. 사용자 답변으로 상태 업데이트 (handle_message에서 JSON 출력됨)
@@ -368,6 +385,9 @@ class Orchestrator:
         
         question_content = await self._request_question_from_interviewer()
         
+        # 🆕 content_type 결정
+        content_type = "INTRO" if current_turn == 0 else current_interviewer or "HR"
+        
         # 현재 턴에 따라 task 결정
         task = "intro_generated" if current_turn == 0 else "question_generated"
         
@@ -376,7 +396,9 @@ class Orchestrator:
             task=task,
             from_agent="interviewer",
             content_text=question_content,
-            turn_count=current_turn
+            turn_count=current_turn,
+            content_type=content_type,
+            start_time=self.session_state.get('start_time')
         )
         
         # handle_message에서 JSON 출력됨
@@ -388,12 +410,18 @@ class Orchestrator:
         
         ai_answer = await self._request_answer_from_ai_candidate(question)
         
+        # 🆕 content_type 결정 (현재 면접관 기반)
+        current_interviewer = self.session_state.get('current_interviewer', 'HR')
+        content_type = current_interviewer if current_interviewer in ['HR', 'TECH', 'COLLABORATION'] else 'HR'
+        
         ai_message = self.create_agent_message(
             session_id=self.session_id,
             task="answer_generated",
             from_agent="ai",
             content_text=ai_answer,
-            turn_count=self.session_state.get('turn_count', 0)
+            turn_count=self.session_state.get('turn_count', 0),
+            content_type=content_type,
+            start_time=self.session_state.get('start_time')
         )
         
         # handle_message에서 JSON 출력됨
@@ -401,12 +429,18 @@ class Orchestrator:
     
     def create_user_waiting_message(self) -> Dict[str, Any]:
         """사용자 입력 대기 메시지 생성"""
+        # 🆕 content_type 결정 (현재 면접관 기반)
+        current_interviewer = self.session_state.get('current_interviewer', 'HR')
+        content_type = current_interviewer if current_interviewer in ['HR', 'TECH', 'COLLABORATION'] else 'HR'
+        
         response = self.create_agent_message(
             session_id=self.session_id,
             task="wait_for_user_input",
             from_agent="orchestrator",
             content_text=self.session_state.get('current_question'),
-            turn_count=self.session_state.get('turn_count', 0)
+            turn_count=self.session_state.get('turn_count', 0),
+            content_type=content_type,
+            start_time=self.session_state.get('start_time')
         )
         # next_agent를 'user'로 수정하여 프론트엔드가 올바르게 인식하도록 함
         response['metadata']['next_agent'] = 'user'
