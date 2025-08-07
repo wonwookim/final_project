@@ -201,17 +201,43 @@ export const interviewApi = {
     };
   },
 
-  // 답변 제출
+  // 답변 제출 (Orchestrator 기반)
   async submitAnswer(answerData: AnswerSubmission): Promise<{
-    score: number;
-    message: string;
-    detailed_evaluation: string;
+    status: string;
+    content?: {
+      content: string;
+    };
+    flow_state?: string;
+    next_action?: string;
+    message?: string;
+    question?: string;
+    ai_answer?: string;
+    next_question?: string;
+    interview_progress?: {
+      turn_count: number;
+      total_questions: number;
+      answer_seq: number;
+      current_interviewer: string;
+    };
   }> {
     const response = await apiClient.post('/interview/answer', answerData);
     return response.data as {
-      score: number;
-      message: string;
-      detailed_evaluation: string;
+      status: string;
+      content?: {
+        content: string;
+      };
+      flow_state?: string;
+      next_action?: string;
+      message?: string;
+      question?: string;
+      ai_answer?: string;
+      next_question?: string;
+      interview_progress?: {
+        turn_count: number;
+        total_questions: number;
+        answer_seq: number;
+        current_interviewer: string;
+      };
     };
   },
 
@@ -227,21 +253,25 @@ export const interviewApi = {
     return response.data as InterviewResponse[];
   },
 
-  // AI 경쟁 면접 시작
+  // AI 경쟁 면접 시작 (Orchestrator 기반)
   async startAICompetition(settings: InterviewSettings): Promise<{
-    session_id: string;
-    comparison_session_id: string;
-    user_session_id: string;
-    ai_session_id: string;
-    question?: Question;
-    current_phase: string;
-    current_respondent: string;
-    question_index: number;
-    total_questions: number;
-    ai_name: string;
-    user_name?: string;
-    starts_with_user: boolean;
-    message: string;
+    session_id?: string;
+    interview_id?: string;
+    status?: string;
+    content?: {
+      content: string;
+    };
+    flow_state?: string;
+    next_action?: string;
+    message?: string;
+    question?: string;
+    ai_answer?: string;
+    interview_progress?: {
+      turn_count: number;
+      total_questions: number;
+      answer_seq: number;
+      current_interviewer: string;
+    };
   }> {
     // 🎯 무조건 InterviewerService 사용하도록 하드코딩
     console.log('🐛 DEBUG: API로 전송하는 원본 설정값:', settings);
@@ -255,19 +285,61 @@ export const interviewApi = {
     
     const response = await apiClient.post('/interview/ai/start', finalSettings);
     return response.data as {
-      session_id: string;
-      comparison_session_id: string;
-      user_session_id: string;
-      ai_session_id: string;
-      question?: Question;
-      current_phase: string;
-      current_respondent: string;
-      question_index: number;
+      session_id?: string;
+      interview_id?: string;
+      status?: string;
+      content?: {
+        content: string;
+      };
+      flow_state?: string;
+      next_action?: string;
+      message?: string;
+      question?: string;
+      ai_answer?: string;
+      interview_progress?: {
+        turn_count: number;
+        total_questions: number;
+        answer_seq: number;
+        current_interviewer: string;
+      };
+    };
+  },
+
+  // 사용자 답변 제출
+  async submitUserAnswer(sessionId: string, answer: string, timeSpent?: number): Promise<{
+    status: string;
+    flow_state: string;
+    next_action: string;
+    message: string;
+    question?: string;
+    ai_answer?: string;
+    first_answerer?: string;
+    interview_progress?: {
+      turn_count: number;
       total_questions: number;
-      ai_name: string;
-      user_name?: string;
-      starts_with_user: boolean;
+      answer_seq: number;
+      current_interviewer: string;
+    };
+  }> {
+    const response = await apiClient.post('/interview/answer', {
+      session_id: sessionId,
+      answer: answer,
+      time_spent: timeSpent || 0
+    });
+    return response.data as {
+      status: string;
+      flow_state: string;
+      next_action: string;
       message: string;
+      question?: string;
+      ai_answer?: string;
+      first_answerer?: string;
+      interview_progress?: {
+        turn_count: number;
+        total_questions: number;
+        answer_seq: number;
+        current_interviewer: string;
+      };
     };
   },
 
@@ -810,6 +882,32 @@ export const resumeApi = {
   async deleteResume(resumeId: number): Promise<{ message: string }> {
     const response = await apiClient.delete(`/resume/${resumeId}`);
     return response.data as { message: string };
+  },
+};
+
+// 🆕 Session API 함수들 - InterviewService 상태에서 sessionId 관리
+export const sessionApi = {
+  // 현재 활성 세션들 조회
+  async getActiveSessions(): Promise<{ active_sessions: string[]; count: number }> {
+    const response = await apiClient.get('/interview/session/active');
+    return response.data as { active_sessions: string[]; count: number };
+  },
+
+  // 특정 세션의 상태 조회
+  async getSessionState(sessionId: string): Promise<{ session_id: string; state: any; is_active: boolean }> {
+    const response = await apiClient.get(`/interview/session/${sessionId}/state`);
+    return response.data as { session_id: string; state: any; is_active: boolean };
+  },
+
+  // 가장 최신 활성 세션 ID 가져오기
+  async getLatestSessionId(): Promise<string | null> {
+    try {
+      const { active_sessions } = await this.getActiveSessions();
+      return active_sessions.length > 0 ? active_sessions[active_sessions.length - 1] : null;
+    } catch (error) {
+      console.error('최신 세션 ID 조회 실패:', error);
+      return null;
+    }
   },
 };
 
