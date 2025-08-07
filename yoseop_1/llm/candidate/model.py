@@ -31,7 +31,8 @@ from ..shared.models import QuestionType, QuestionAnswer, AnswerRequest, AnswerR
 from backend.models.session import InterviewSession  # 호환성을 위한 별도 모듈
 from ..shared.utils import safe_json_load, get_fixed_questions
 
-# 직군 매핑 (position_name -> position_id)
+# 직군명을 DB position_id로 매핑하는 사전
+# 다양한 표기법(한글/영문/약어)을 표준 ID로 변환
 POSITION_MAPPING = {
     "프론트엔드 개발자": 1,
     "프론트": 1,
@@ -53,7 +54,6 @@ POSITION_MAPPING = {
     "data science": 5,
     "data scientist": 5,
     "ds": 5,
-    # 🆕 모바일 개발자 매핑 추가
     "모바일": 6,
     "모바일개발자": 6,
     "모바일개발자android": 6,
@@ -63,7 +63,6 @@ POSITION_MAPPING = {
     "mobile": 6,
     "앱개발자": 6,
     "앱": 6,
-    # 🆕 기타 일반적인 직군들 추가
     "풀스택": 7,
     "fullstack": 7,
     "풀스택개발자": 7,
@@ -75,29 +74,39 @@ POSITION_MAPPING = {
     "품질관리": 9
 }
 
-# 새로운 CandidatePersona 모델 (LLM 생성용)
+# AI 지원자 페르소나 데이터 모델
+# GPT-4o가 실제 이력서를 기반으로 생성하는 가상 인물의 상세 정보
 class CandidatePersona(BaseModel):
-    """LLM이 생성하는 인간미 넘치는 페르소나 모델"""
-    # --- LLM 생성 정보 ---
+    """
+    AI 지원자의 완전한 페르소나 정보를 담는 모델
+    
+    실제 이력서 데이터를 바탕으로 GPT-4o가 생성하는 가상 인물의:
+    - 개인적 배경과 성격
+    - 기술 역량과 프로젝트 경험  
+    - 강점/약점과 성장 스토리
+    - 면접 스타일과 동기
+    """
+    # === 핵심 페르소나 정보 ===
     name: str
-    summary: str  # 예: "5년차 Java 백엔드 개발자로, 대용량 트래픽 처리와 MSA 설계에 강점이 있습니다."
+    summary: str  # 한 줄 요약 (예: "5년차 백엔드 개발자, MSA 설계 전문")
     background: Dict[str, Any]
     technical_skills: List[str]
-    projects: List[Dict[str, Any]]  # 각 프로젝트에 'achievements'와 'challenges' 포함
+    projects: List[Dict[str, Any]]  # 프로젝트 경험 (성과와 도전과제 포함)
     experiences: List[Dict[str, Any]]
     strengths: List[str]
-    weaknesses: List[str]  # 개선하고 싶은 점
-    motivation: str  # 개발자/기술에 대한 개인적 동기나 스토리
-    inferred_personal_experiences: List[Dict[str, str]]  # 이력서 기반으로 추론된 개인적 교훈
+    weaknesses: List[str]  # 개선하고 싶은 점 (면접에서 솔직하게 언급할 부분)
+    motivation: str  # 개발에 대한 개인적 동기와 스토리
+    inferred_personal_experiences: List[Dict[str, str]]  # 이력서에서 추론한 개인적 깨달음
     career_goal: str
     personality_traits: List[str]
     interview_style: str
     
-    # --- 메타데이터 ---
-    generated_by: str = "gpt-4o-mini"
-    resume_id: int  # 원본 이력서 ID
+    # === 메타 정보 ===
+    generated_by: str = "gpt-4o"  # 페르소나 생성에 사용된 모델
+    resume_id: int  # 기반이 된 이력서의 DB ID
 
-# 모델별 AI 지원자 이름 매핑 (호환성을 위해 유지)
+# LLM 모델별 AI 지원자 이름 매핑
+# 사용하는 모델에 따라 다른 캐릭터명 반환
 AI_CANDIDATE_NAMES = {
     LLMProvider.OPENAI_GPT4: "춘식이",
     LLMProvider.OPENAI_GPT35: "춘식이", 
@@ -200,17 +209,30 @@ class AICandidateModel:
             
         self.companies_data = self._load_companies_data()
         
-        # AI 지원자 세션 관리
+        # === 데이터 및 세션 초기화 ===
         self.ai_sessions: Dict[str, 'AICandidateSession'] = {}
         self.fixed_questions = self._load_fixed_questions()
         
-        # 새로운 LLM 기반 시스템에서는 페르소나를 동적으로 생성하므로 빈 딕셔너리로 초기화
+        # 페르소나는 실시간 동적 생성 (GPT-4o 사용)
         self.candidate_personas: Dict[str, CandidatePersona] = {}
         self.personas_data = {"personas": {}}
     
     def create_persona_for_interview(self, company_name: str, position_name: str) -> Optional[CandidatePersona]:
         """
-        주어진 회사와 직군에 맞는 AI 지원자 페르소나를 LLM으로 실시간 생성
+        회사와 직군에 맞는 AI 지원자 페르소나 생성
+        
+        실행 단계:
+        1. DB에서 해당 직군의 실제 이력서 데이터 수집
+        2. 회사 정보와 이력서를 결합한 프롬프트 생성
+        3. GPT-4o로 인간미 넘치는 가상 인물 생성
+        4. 또는 fallback으로 기본 페르소나 생성
+        
+        Args:
+            company_name: 대상 회사명 (예: '네이버', 'kakao')
+            position_name: 직군명 (예: '백엔드 개발자')
+            
+        Returns:
+            생성된 CandidatePersona 객체 또는 None
         """
         try:
             print(f"DEBUG [PERSONA DEBUG] 페르소나 생성 시작: company='{company_name}', position='{position_name}'")
@@ -309,26 +331,26 @@ class AICandidateModel:
         return {"name": company_name, "core_competencies": [], "tech_focus": [], "talent_profile": ""}
     
     def _generate_persona_with_extended_tokens(self, prompt: str, system_prompt: str) -> LLMResponse:
-        """페르소나 생성용 확장된 토큰으로 LLM 호출"""
+        """페르소나 생성용 확장된 토큰으로 LLM 호출 - GPT-4o 사용으로 최고 품질 보장"""
         if not self.openai_client:
-            return LLMResponse(content="", provider=LLMProvider.OPENAI_GPT4O_MINI, model_name="gpt-4o-mini", error="OpenAI API 키가 설정되지 않았습니다.")
+            return LLMResponse(content="", provider=LLMProvider.OPENAI_GPT4O, model_name="gpt-4o", error="OpenAI API 키가 설정되지 않았습니다.")
         try:
             import time
             start_time = time.time()
             messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}]
             response = self.openai_client.chat.completions.create(
-                model="gpt-4o-mini", messages=messages, max_tokens=1500, temperature=0.7, timeout=60.0
+                model="gpt-4o", messages=messages, max_tokens=1500, temperature=0.7, timeout=60.0
             )
             response_time = time.time() - start_time
             return LLMResponse(
                 content=response.choices[0].message.content.strip(),
-                provider=LLMProvider.OPENAI_GPT4O_MINI,
-                model_name="gpt-4o-mini",
+                provider=LLMProvider.OPENAI_GPT4O,
+                model_name="gpt-4o",
                 token_count=response.usage.total_tokens if response.usage else None,
                 response_time=response_time
             )
         except Exception as e:
-            return LLMResponse(content="", provider=LLMProvider.OPENAI_GPT4O_MINI, model_name="gpt-4o-mini", error=f"페르소나 생성 LLM 호출 실패: {e}")
+            return LLMResponse(content="", provider=LLMProvider.OPENAI_GPT4O, model_name="gpt-4o", error=f"페르소나 생성 LLM 호출 실패: {e}")
     
     def _parse_llm_response_to_persona(self, llm_response: str, resume_id: int) -> Optional[CandidatePersona]:
         """LLM JSON 응답을 CandidatePersona 객체로 파싱"""
@@ -413,7 +435,23 @@ class AICandidateModel:
         return get_fixed_questions()
 
     def generate_answer(self, request: AnswerRequest, persona: CandidatePersona = None) -> AnswerResponse:
-        """질문에 대한 AI 지원자 답변 생성"""
+        """
+        AI 지원자의 면접 답변 생성 (메인 기능)
+        
+        전체 답변 생성 프로세스:
+        1. 페르소나 준비: 기존 페르소나 사용 또는 실시간 생성
+        2. 프롬프트 구성: 기본 + 품질 + 시스템 프롬프트 조합
+        3. LLM 호출: 품질 레벨에 따른 모델 선택
+        4. 후처리: 길이/어조/일관성 조정
+        5. 메타데이터: 신뢰도/응답시간/토큰수 등 추가
+        
+        Args:
+            request: 답변 요청 정보 (질문, 회사, 품질레벨 포함)
+            persona: 기존 페르소나 (없으면 새로 생성)
+            
+        Returns:
+            답변 내용과 메타데이터를 포함한 AnswerResponse
+        """
         start_time = datetime.now()
         
         if not persona:
@@ -437,11 +475,12 @@ class AICandidateModel:
 
         quality_prompt = self.quality_controller.generate_quality_prompt(prompt, request.quality_level, request.question_type.value)
 
-        # system_prompt 생성
+        # === LLM 호출을 위한 프롬프트 최종 조합 ===
 
         system_prompt = self.prompt_builder.build_system_prompt(persona, company_data.get('name', request.company_id), company_data, request.question_type, request.llm_provider)
         llm_response = self._generate_llm_answer(quality_prompt, system_prompt, config)
         
+        # === 답변 후처리 및 메타데이터 생성 ===
         response_time = (datetime.now() - start_time).total_seconds()
         confidence_score = self._calculate_confidence_score(llm_response, request.quality_level)
         processed_answer = self.quality_controller.process_complete_answer(llm_response.content, request.quality_level, request.question_type.value)

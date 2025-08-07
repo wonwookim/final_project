@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
-답변 품질 제어 시스템
-사용자 설정에 따라 AI 지원자의 답변 품질을 조절
+AI 지원자 답변 품질 제어 시스템
+
+주요 기능:
+- 3단계 품질 레벨 관리 (EXCELLENT/AVERAGE/INADEQUATE)
+- H.U.M.A.N 프레임워크 기반 고도화된 답변 품질 제어
+- 품질별 다른 모델 선택 (GPT-4o/GPT-4o-mini)
+- 답변 길이, 어조, 상세도 등 종합적 품질 관리
 """
 
 from typing import Dict, List, Any, Optional
@@ -10,44 +15,74 @@ from enum import Enum
 import json
 
 class QualityLevel(Enum):
-    """답변 품질 레벨 - 프론트엔드 3단계에 맞춤"""
+    """
+    AI 지원자 답변 품질 레벨 정의
+    
+    프론트엔드 난이도 선택(3단계)에 대응:
+    - 고급: 면접관에게 강한 인상을 남길 수 있는 탁월한 답변
+    - 중급: 성실하고 체계적인 평균 수준의 답변  
+    - 초급: 준비 부족하지만 성장 의지가 느껴지는 답변
+    """
     EXCELLENT = 3    # 고급 - 탁월한 수준 (85-100점)
     AVERAGE = 2      # 중급 - 평균 수준 (55-84점)
-    INADEQUATE = 1   # 초급 - 부적절한 수준 (5-54점)    # 부적절한 수준 (5-14점)
+    INADEQUATE = 1   # 초급 - 부적절한 수준 (5-54점)
 
 @dataclass
 class QualityConfig:
-    """품질 레벨별 설정"""
+    """
+    품질 레벨별 상세 설정 데이터 클래스
+    
+    각 품질 레벨에 따른 답변 생성 규칙:
+    - 사용 모델, 답변 길이, 어조, 상세도 등
+    - H.U.M.A.N 프레임워크 적용 정도
+    - 추가 지침 사항들
+    """
     level: QualityLevel
     description: str
     answer_length_min: int
     answer_length_max: int
-    detail_level: str  # 'high', 'medium', 'low'
-    specificity: str   # 'very_specific', 'specific', 'general', 'vague'
-    professional_tone: bool
-    include_examples: bool
-    include_metrics: bool
-    include_challenges: bool
-    temperature: float
-    additional_instructions: List[str]
-    model_name: str
+    detail_level: str      # 상세도: 'maximum_depth', 'moderate_depth', 'surface_level'
+    specificity: str       # 구체성: 'highly_specific', 'general_with_examples', 'vague_general'
+    professional_tone: bool    # 전문적 어조 사용 여부
+    include_examples: bool      # 구체적 예시 포함 여부
+    include_metrics: bool       # 수치/성과 데이터 포함 여부
+    include_challenges: bool    # 어려움/실패 경험 포함 여부
+    temperature: float          # LLM 창의성 조절 파라미터 (0.0-1.0)
+    additional_instructions: List[str]  # H.U.M.A.N 프레임워크 기반 추가 지침
+    model_name: str             # 사용할 LLM 모델명
 
 class AnswerQualityController:
-    """답변 품질 제어 컨트롤러"""
+    """
+    AI 지원자 답변 품질 메인 컨트롤러
+    
+    주요 역할:
+    1. 품질 레벨별 설정 관리 (EXCELLENT/AVERAGE/INADEQUATE)
+    2. H.U.M.A.N 프레임워크 기반 프롬프트 생성
+    3. 질문 유형별 특화 가이드라인 제공
+    4. 답변 후처리 (길이 조정, 어조 톤닝)
+    5. 자기소개 반복 방지 등 특수 규칙 적용
+    """
     
     def __init__(self):
         self.quality_configs = self._initialize_quality_configs()
         
     def _initialize_quality_configs(self) -> Dict[QualityLevel, QualityConfig]:
-        """품질 레벨별 설정 초기화 - prompt.py 기반 완전 고도화"""
+        """
+        품질 레벨별 상세 설정 초기화
+        
+        각 레벨에 따른 차별화된 답변 생성 규칙 정의:
+        - EXCELLENT: GPT-4o + H.U.M.A.N 프레임워크 완전 활용
+        - AVERAGE: GPT-4o-mini + 기본 H.U.M.A.N 요소 활용
+        - INADEQUATE: GPT-4o-mini + 기본 구조만 유지
+        """
         return {
             QualityLevel.EXCELLENT: QualityConfig(
                 level=QualityLevel.EXCELLENT,
                 description="🌟 EXCELLENT - H.U.M.A.N 프레임워크 완전 활용, 면접관에게 강한 인상을 남기는 탁월한 답변",
                 
-                # prompt.py 기반 정확한 길이 (초 → 자 변환: 1초당 6-7자 기준)
-                answer_length_min=300,  # 50초 * 6자 = 300자
-                answer_length_max=455,  # 65초 * 7자 = 455자
+                # 답변 길이 계산법: 1초당 6-7자 기준 (50-65초 분량)
+                answer_length_min=300,  # 50초 분량 (6자/초)
+                answer_length_max=455,  # 65초 분량 (7자/초)
                 
                 detail_level="maximum_depth",
                 specificity="highly_specific_with_metrics",
@@ -97,26 +132,26 @@ class AnswerQualityController:
                     "📚 기본적인 전문성을 드러내되 과도하지 않게 균형을 맞추세요",
                     "🔄 질문에 직접적으로 답변한 후 간단한 부연 설명을 추가하세요"
                 ],
-                model_name="gpt-4o-mini"  # 효율적인 모델 사용
+                model_name="gpt-4o-mini"  # 비용 효율적 모델 사용
             ),
             
             QualityLevel.INADEQUATE: QualityConfig(
                 level=QualityLevel.INADEQUATE,
                 description="🌱 INADEQUATE - 기본 구조만 유지, 준비 부족하지만 성장 의지가 느껴지는 초급 답변",
                 
-                # 초급 레벨 길이 (20-35초 기준)
-                answer_length_min=120,  # 20초 * 6자 = 120자
-                answer_length_max=245,  # 35초 * 7자 = 245자
+                # 답변 길이: 20-35초 분량 (기본적인 내용만)
+                answer_length_min=120,  # 20초 분량 (6자/초)
+                answer_length_max=245,  # 35초 분량 (7자/초)
                 
                 detail_level="surface_level",
                 specificity="vague_general",
-                professional_tone=False,  # 자연스럽고 솔직한 톤
-                include_examples=False,   # 구체적 예시 부족
-                include_metrics=False,    # 수치 데이터 없음
-                include_challenges=False, # 어려움 언급 회피
-                temperature=0.9,  # 높은 변동성으로 어색함 표현
+                professional_tone=False,  # 자연스럽고 솔직한 톤 사용
+                include_examples=False,   # 구체적 예시 대신 일반론적 내용
+                include_metrics=False,    # 수치 데이터 없이 정성적 설명
+                include_challenges=False, # 어려움보다는 긍정적 측면 강조
+                temperature=0.9,          # 높은 변동성으로 어색함/불확실성 표현
                 
-                # 초보자 수준 지침
+                # 초보자 수준 답변 스타일 지침
                 additional_instructions=[
                     "😅 약간의 긴장감과 준비 부족한 느낌을 자연스럽게 표현하세요",
                     "🗣️ '~것 같습니다', '~하고 싶습니다' 등 불확실한 표현을 적절히 사용하세요",
@@ -125,7 +160,7 @@ class AnswerQualityController:
                     "🌱 '더 배우고 싶다', '노력하겠다' 등 성장 의지는 분명히 표현하세요",
                     "🤔 질문에 대해 완전히 확신하지 못하는 듯한 뉘앙스를 포함하세요"
                 ],
-                model_name="gpt-4o-mini"  # 기본 모델 사용
+                model_name="gpt-4o-mini"  # 기본 모델 (비용 효율성)
             )
         }
     
@@ -134,7 +169,20 @@ class AnswerQualityController:
         return self.quality_configs.get(level, self.quality_configs[QualityLevel.AVERAGE])
     
     def generate_quality_prompt(self, base_prompt: str, level: QualityLevel, question_type: str = "") -> str:
-        """품질 레벨에 맞는 프롬프트 생성 - 고도화된 가이드라인 적용"""
+        """
+        품질 레벨에 맞는 프롬프트 생성
+        
+        기본 프롬프트에 품질 레벨별 상세 가이드라인을 추가하여
+        AI 지원자가 적절한 수준의 답변을 생성할 수 있도록 지원
+        
+        Args:
+            base_prompt: 기본 질문 프롬프트
+            level: 품질 레벨 (EXCELLENT/AVERAGE/INADEQUATE)
+            question_type: 질문 유형 (자기소개, 기술, 지원동기 등)
+            
+        Returns:
+            품질 가이드라인이 추가된 완성된 프롬프트
+        """
         config = self.get_quality_config(level)
         
         # 레벨별 기본 품질 지침
@@ -185,7 +233,19 @@ class AnswerQualityController:
         return f"{base_prompt}\n{quality_instructions}"
     
     def _get_question_type_guide(self, question_type: str, level: QualityLevel) -> str:
-        """질문 유형별 품질 가이드 - prompt.py 기반 고도화된 가이드라인"""
+        """
+        질문 유형별 상세 답변 가이드 제공
+        
+        H.U.M.A.N 프레임워크를 활용하여 각 질문 유형과 품질 레벨에 맞는
+        구체적이고 실무적인 답변 전략을 제공
+        
+        Args:
+            question_type: 질문 유형 (자기소개, 기술, 지원동기, 인성, 협업)
+            level: 품질 레벨 (답변 수준을 결정)
+            
+        Returns:
+            해당 질문 유형과 레벨에 맞는 구체적 가이드라인
+        """
         
         guides = {
             "자기소개": {
