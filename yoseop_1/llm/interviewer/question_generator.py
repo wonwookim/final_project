@@ -104,12 +104,14 @@ class QuestionGenerator:
         """고정 질문 생성 (자기소개, 지원동기)"""
         if question_index == 0:
             # 첫 번째 질문: 자기소개
+            company_info = self.companies_data.get(company_id, {})
+            company_name = company_info.get('name', '저희 회사')
             candidate_name = user_resume.get('name', '지원자') if user_resume else '지원자'
-            base_question = '자기소개를 부탁드립니다.'
+            base_question = f'{company_name}에 지원하신 이유를 말씀해 주세요.'
             question_with_name = self._add_candidate_name_to_question(base_question, candidate_name)
-            
+            real_question = f'{company_name}에 지원해주셔서 감사합니다. 면접 시작하겠습니다.' + question_with_name
             return {
-                'question': question_with_name,
+                'question': real_question,
                 'intent': '지원자의 기본 정보와 성격, 역량을 파악',
                 'interviewer_type': 'INTRO'
             }
