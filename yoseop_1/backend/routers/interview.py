@@ -458,18 +458,26 @@ async def speech_to_text(file: UploadFile = File(...)):
             temp_file.write(content)
         
         interview_logger.info(f"🎙️ STT 처리 시작: {file.filename} ({len(content)} bytes)")
+        interview_logger.info(f"📄 파일 정보: content_type={file.content_type}, filename={file.filename}")
         
         # OpenAI Whisper API 호출
         headers = {
             "Authorization": f"Bearer {OPENAI_API_KEY}"
         }
         
-        form_data = aiohttp.FormData()
+        # 파일을 한 번에 읽어서 메모리에 저장
         with open(temp_file_path, 'rb') as audio_file:
-            form_data.add_field('file', audio_file, filename=file.filename, content_type=file.content_type)
-            form_data.add_field('model', 'whisper-1')
-            form_data.add_field('response_format', 'json')
-            form_data.add_field('language', 'ko')  # 한국어 인식
+            audio_data = audio_file.read()
+            
+        interview_logger.info(f"📊 오디오 데이터 크기: {len(audio_data)} bytes")
+        
+        form_data = aiohttp.FormData()
+        form_data.add_field('file', audio_data, filename=file.filename, content_type=file.content_type or 'audio/webm')
+        form_data.add_field('model', 'whisper-1')
+        form_data.add_field('response_format', 'json')
+        # 언어를 자동 감지로 변경 (더 정확할 수 있음)
+        # form_data.add_field('language', 'ko')  # 한국어 강제 설정 제거
+        form_data.add_field('temperature', '0')  # 일관성 있는 결과를 위해 temperature 0 설정
         
         async with aiohttp.ClientSession() as session:
             async with session.post(
@@ -487,8 +495,10 @@ async def speech_to_text(file: UploadFile = File(...)):
                 
                 result = await response.json()
                 transcribed_text = result.get('text', '').strip()
-        
-        interview_logger.info(f"✅ STT 처리 완료: '{transcribed_text[:50]}...'")
+                
+                # 전체 Whisper API 응답 로깅
+                interview_logger.info(f"🤖 Whisper API 전체 응답: {result}")
+                interview_logger.info(f"📝 추출된 텍스트: '{transcribed_text}'")
         
         return STTResponse(
             text=transcribed_text,
