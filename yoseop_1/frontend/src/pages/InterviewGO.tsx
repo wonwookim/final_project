@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInterview } from '../contexts/InterviewContext';
 import { sessionApi, interviewApi } from '../services/api';
+import LoadingSpinner from '../components/common/LoadingSpinner';
+import SpeechIndicator from '../components/voice/SpeechIndicator';
 
 const InterviewGO: React.FC = () => {
   const navigate = useNavigate();
@@ -93,8 +95,19 @@ const InterviewGO: React.FC = () => {
   // 🆕 currentPhase 상태 추가
   const [currentPhase, setCurrentPhase] = useState<'user_turn' | 'ai_processing' | 'interview_completed' | 'waiting' | 'unknown'>('waiting');
   
+  // 🎤 음성 관련 상태
+  const [isRecording, setIsRecording] = useState(false);
+  const [canRecord, setCanRecord] = useState(false);
+  const [sttResult, setSttResult] = useState('');
+  const [isTTSPlaying, setIsTTSPlaying] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [hasAudioPermission, setHasAudioPermission] = useState<boolean | null>(null);
+  
   const answerRef = useRef<HTMLTextAreaElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // 🆕 타이머 관리
@@ -173,12 +186,18 @@ const InterviewGO: React.FC = () => {
         setIsTimerActive(true);
         setTimeLeft(120);
         setCanSubmit(true);
+        setCanRecord(true);  // 🎤 녹음 활성화
         console.log('✅ 사용자 턴으로 설정됨 (턴 정보:', turnInfo, ')');
     } else if (nextAgent === 'ai' || nextAgent === 'interviewer') {
         setCurrentPhase('ai_processing');
         setCurrentTurn('ai');
         setIsTimerActive(false);
         setCanSubmit(false);
+        setCanRecord(false); // 🎤 녹음 비활성화
+        // 진행 중인 녹음이 있으면 자동 중지
+        if (isRecording) {
+            stopRecording();
+        }
         console.log('✅ AI/면접관 처리 중으로 설정됨');
     } else {
         // 기본적으로 사용자 턴으로 설정 (대기 상태 방지)
@@ -188,6 +207,7 @@ const InterviewGO: React.FC = () => {
         setIsTimerActive(true);
         setTimeLeft(120);
         setCanSubmit(true);
+        setCanRecord(true);  // 🎤 녹음 활성화
     }
 
     // 현재 질문 업데이트 (content.content 사용)
@@ -195,7 +215,15 @@ const InterviewGO: React.FC = () => {
     if (question) {
         setCurrentQuestion(question);
         console.log('📝 질문 업데이트:', question);
+        
+        // 🆕 질문이 업데이트되면 TTS 자동 재생
+        if (question && question.trim()) {
+            playQuestionTTS(question);
+        }
     }
+    
+    // 🎤 녹음 권한 및 상태 업데이트
+    updateVoicePermissions();
   };
 
   // 🆕 턴 상태 업데이트 함수 (JSON 응답 기반) - 기존 함수 유지
@@ -270,6 +298,7 @@ const InterviewGO: React.FC = () => {
               setIsTimerActive(true);
               setTimeLeft(120);
               setCanSubmit(true);
+              setCanRecord(true);  // 🎤 녹음 활성화
               setCurrentQuestion(parsedState.interviewStartResponse.content?.content || "질문을 불러오는 중...");
               console.log('✅ 초기 사용자 턴 설정 완료 (localStorage)');
               return;
@@ -288,6 +317,7 @@ const InterviewGO: React.FC = () => {
               setIsTimerActive(true);
               setTimeLeft(120);
               setCanSubmit(true);
+              setCanRecord(true);  // 🎤 녹음 활성화
               setCurrentQuestion("면접을 시작합니다. 첫 번째 질문을 기다려주세요.");
               console.log('✅ 초기 사용자 턴 설정 완료 (기본값)');
               return;
@@ -311,6 +341,7 @@ const InterviewGO: React.FC = () => {
               setIsTimerActive(true);
               setTimeLeft(120);
               setCanSubmit(true);
+              setCanRecord(true);  // 🎤 녹음 활성화
               setCurrentQuestion(sessionState.state?.current_question || "질문을 불러오는 중...");
               console.log('✅ 초기 사용자 턴 설정 완료 (세션 상태)');
               return;
@@ -380,6 +411,11 @@ const InterviewGO: React.FC = () => {
       setIsLoading(true);
       setIsTimerActive(false); // 타이머 정지
       setCanSubmit(false); // 제출 버튼 비활성화
+      setCanRecord(false); // 🎤 녹음 비활성화
+      // 진행 중인 녹음이 있으면 자동 중지
+      if (isRecording) {
+          stopRecording();
+      }
       
       console.log('🚀 답변 제출 시작:', {
         sessionId: sessionId,
@@ -420,6 +456,244 @@ const InterviewGO: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  // 🎤 음성 권한 확인 및 업데이트
+  const updateVoicePermissions = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setHasAudioPermission(true);
+      // 사용 후 스트림 정리
+      stream.getTracks().forEach(track => track.stop());
+    } catch (error) {
+      console.error('🎤 마이크 권한 없음:', error);
+      setHasAudioPermission(false);
+    }
+  };
+
+  // 🎤 녹음 시작
+  const startRecording = async () => {
+    // 이중 체크: 사용자 턴인지 확인
+    if (currentTurn !== 'user' || currentPhase !== 'user_turn' || !canRecord) {
+      alert('지금은 녹음할 수 없습니다. 사용자 차례를 기다려주세요.');
+      return;
+    }
+
+    if (isRecording) {
+      console.log('이미 녹음 중입니다.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          sampleRate: 44100,  // 더 높은 품질
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true  // 자동 볼륨 조절 활성화
+        }
+      });
+
+      // 브라우저 호환성을 위한 MIME 타입 선택
+      let mimeType = 'audio/webm;codecs=opus';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'audio/webm';
+      }
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'audio/mp4';
+      }
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = ''; // 브라우저 기본값 사용
+      }
+      
+      console.log('🎤 사용할 MIME 타입:', mimeType);
+      
+      const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        console.log('🎤 녹음 완료, STT 처리 시작:', audioBlob.size, 'bytes');
+        
+        // STT 처리
+        await processSTT(audioBlob);
+        
+        // 스트림 정리
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+      
+      // 녹음 시간 카운터
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+
+      console.log('🎤 녹음 시작');
+
+    } catch (error) {
+      console.error('🎤 녹음 시작 실패:', error);
+      alert('마이크 접근 실패. 브라우저에서 마이크 권한을 허용해주세요.');
+    }
+  };
+
+  // 🎤 녹음 중지
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      
+      console.log('🎤 녹음 중지');
+    }
+  };
+
+  // 🗣️ STT 처리 (OpenAI Whisper API)
+  const processSTT = async (audioBlob: Blob) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', audioBlob, 'recording.webm');
+      
+      console.log('🗣️ STT 요청 전송 중...');
+      
+      const response = await fetch('http://localhost:8000/interview/stt', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('🔥 STT API 에러 응답:', response.status, errorData);
+        throw new Error(`STT API 오류: ${response.status} - ${errorData.detail || response.statusText}`);
+      }
+      
+      const result = await response.json();
+      const transcribedText = result.text || '';
+      
+      console.log('✅ STT 처리 성공:', transcribedText);
+      setSttResult(transcribedText);
+      
+      // 인식된 텍스트를 답변란에 자동 입력
+      if (transcribedText.trim()) {
+        setCurrentAnswer(prev => {
+          const newAnswer = prev + (prev ? ' ' : '') + transcribedText;
+          return newAnswer;
+        });
+      }
+      
+    } catch (error) {
+      console.error('❌ STT 처리 실패:', error);
+      alert(`음성 인식 실패: ${error}`);
+    }
+  };
+
+  // 🔊 TTS 기능 (질문 읽어주기)
+  const playQuestionTTS = async (text: string, voiceId: string = 'default') => {
+    if (!text.trim() || isTTSPlaying) return;
+    
+    try {
+      setIsTTSPlaying(true);
+      console.log('🔊 TTS 재생 시작:', text.substring(0, 50));
+      
+      const response = await fetch('http://localhost:8000/interview/tts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          text: text,
+          voice_id: voiceId
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`TTS API 오류: ${response.status}`);
+      }
+      
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      
+      audio.onended = () => {
+        setIsTTSPlaying(false);
+        URL.revokeObjectURL(audioUrl);
+        console.log('✅ TTS 재생 완료');
+      };
+      
+      audio.onerror = () => {
+        setIsTTSPlaying(false);
+        URL.revokeObjectURL(audioUrl);
+        console.error('❌ TTS 재생 오류');
+      };
+      
+      await audio.play();
+      
+    } catch (error) {
+      console.error('❌ TTS 실패:', error);
+      setIsTTSPlaying(false);
+    }
+  };
+
+  // 🔇 TTS 중지
+  const stopTTS = () => {
+    setIsTTSPlaying(false);
+    // 현재 재생 중인 TTS를 중지하는 로직은 여기에 추가 가능
+  };
+
+  // 🎤 음성 답변 제출 (녹음 후 자동 제출)
+  const submitVoiceAnswer = async () => {
+    if (isRecording) {
+      // 녹음 중지 후 STT 처리가 완료되면 자동으로 submitAnswer 호출
+      stopRecording();
+      // STT 처리 완료 후 제출은 processSTT에서 처리
+    } else if (currentAnswer.trim()) {
+      // 이미 텍스트가 있으면 바로 제출
+      submitAnswer();
+    } else {
+      alert('답변을 녹음하시거나 입력해주세요.');
+    }
+  };
+
+  // 🎤 useEffect: 사용자 턴 변경 시 녹음 상태 업데이트
+  useEffect(() => {
+    if (currentTurn === 'user' && currentPhase === 'user_turn') {
+      setCanRecord(true);
+      console.log('✅ 사용자 턴 시작 - 녹음 가능');
+    } else {
+      setCanRecord(false);
+      // 진행 중인 녹음이 있으면 자동 중지
+      if (isRecording) {
+        console.log('❌ 사용자 턴 종료 - 녹음 자동 중지');
+        stopRecording();
+      }
+    }
+  }, [currentTurn, currentPhase]);
+
+  // 🎤 컴포넌트 언마운트 시 정리
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+      if (mediaRecorderRef.current && isRecording) {
+        stopRecording();
+      }
+    };
+  }, []);
 
   return (
     <div className="h-screen bg-black text-white flex flex-col overflow-hidden">
@@ -527,6 +801,55 @@ const InterviewGO: React.FC = () => {
                 }`}
                 placeholder={currentPhase === 'user_turn' ? "답변을 입력해주세요..." : "대기 중..."}
               />
+              
+              {/* 🎤 음성 제어 버튼들 */}
+              <div className="flex items-center justify-between mt-3 gap-3">
+                {/* 음성 인식 결과 표시 */}
+                {sttResult && (
+                  <div className="text-xs text-blue-400 bg-blue-900/30 px-2 py-1 rounded">
+                    🇢 인식: {sttResult.substring(0, 30)}{sttResult.length > 30 ? '...' : ''}
+                  </div>
+                )}
+                
+                {/* 녹음 버튼 */}
+                <button
+                  onClick={isRecording ? stopRecording : startRecording}
+                  disabled={!canRecord || isLoading}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+                    !canRecord ? 'bg-gray-600 text-gray-400 cursor-not-allowed' :
+                    isRecording ? 'bg-red-500 text-white animate-pulse' :
+                    'bg-blue-500 text-white hover:bg-blue-600'
+                  }`}
+                  title={!canRecord ? '사용자 차례가 아닙니다' : isRecording ? '녹음 중지' : '녹음 시작'}
+                >
+                  <span className="text-lg">
+                    {!canRecord ? '🔒' : isRecording ? '🔴' : '🎤'}
+                  </span>
+                  <span className="text-sm">
+                    {!canRecord ? '대기중' : isRecording ? `녹음중 (${recordingTime}s)` : '녹음하기'}
+                  </span>
+                </button>
+                
+                {/* TTS 버튼 */}
+                <button
+                  onClick={() => currentQuestion ? playQuestionTTS(currentQuestion) : null}
+                  disabled={!currentQuestion || isTTSPlaying}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium transition-all ${
+                    !currentQuestion ? 'bg-gray-600 text-gray-400 cursor-not-allowed' :
+                    isTTSPlaying ? 'bg-orange-500 text-white animate-pulse' :
+                    'bg-green-500 text-white hover:bg-green-600'
+                  }`}
+                  title="질문 다시 듣기"
+                >
+                  <span className="text-lg">
+                    {isTTSPlaying ? '🔇' : '🔊'}
+                  </span>
+                  <span className="text-xs">
+                    {isTTSPlaying ? '재생중' : '다시듣기'}
+                  </span>
+                </button>
+              </div>
+              
               <div className="flex items-center justify-between mt-2">
                 <div className="text-gray-400 text-xs">{currentAnswer.length}자</div>
                 {/* 🆕 타이머 표시 */}
@@ -559,6 +882,22 @@ const InterviewGO: React.FC = () => {
               {currentPhase === 'user_turn' && isTimerActive && (
                 <div className={`text-2xl font-bold ${getTimerColor()} mb-2`}>
                   {formatTime(timeLeft)}
+                </div>
+              )}
+              
+              {/* 🎤 음성 상태 표시 */}
+              {isRecording && (
+                <SpeechIndicator 
+                  isListening={true}
+                  isSpeaking={false}
+                  className="justify-center mb-2"
+                />
+              )}
+              
+              {/* 🎤 마이크 권한 상태 */}
+              {hasAudioPermission === false && (
+                <div className="text-red-400 text-xs mb-2">
+                  🚫 마이크 권한이 필요합니다
                 </div>
               )}
             </div>
