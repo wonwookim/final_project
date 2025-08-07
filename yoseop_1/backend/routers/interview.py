@@ -5,14 +5,14 @@ import logging
 from typing import List
 from backend.services.supabase_client import supabase_client
 from backend.schemas.user import UserResponse
-from schemas.interview import InterviewHistoryResponse, InterviewSettings, AnswerSubmission, CompetitionTurnSubmission, InterviewResponse, TTSRequest, STTResponse
+from schemas.interview import InterviewHistoryResponse, InterviewSettings, AnswerSubmission, AICompetitionAnswerSubmission, CompetitionTurnSubmission, InterviewResponse, TTSRequest, STTResponse
 from services.interview_service import InterviewService
 from services.interview_service_temp import InterviewServiceTemp
 from backend.services.auth_service import AuthService
 from backend.services.voice_service import elevenlabs_tts_stream
 from fastapi.responses import HTMLResponse
 import io
-
+import time
 
 
 
@@ -113,6 +113,20 @@ async def get_tts_test_page():
 #         interview_logger.error(f"질문 가져오기 오류: {str(e)}")
 #         raise HTTPException(status_code=500, detail=str(e))
 
+@interview_router.get("/question")
+async def get_next_question_ai_competition(
+    session_id: str,
+    service: InterviewService = Depends(get_interview_service)
+):
+    """AI 경쟁 면접에서 다음 질문/답변 턴 진행"""
+    try:
+        result = await service.advance_interview_turn(session_id)
+        return result
+        
+    except Exception as e:
+        interview_logger.error(f"면접 턴 진행 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # @interview_router.post("/answer")
 # async def submit_answer(
 #     answer_data: AnswerSubmission,
@@ -133,6 +147,24 @@ async def get_tts_test_page():
 #         interview_logger.error(f"답변 제출 오류: {str(e)}")
 #         raise HTTPException(status_code=500, detail=str(e))
 
+# @interview_router.post("/answer")
+# async def submit_user_answer(
+#     answer_data: AnswerSubmission,
+#     service: InterviewService = Depends(get_interview_service)
+# ):
+#     """사용자 답변 제출 - Orchestrator 기반"""
+#     try:
+#         result = await service.submit_user_answer(
+#             session_id=answer_data.session_id,
+#             user_answer=answer_data.answer,
+#             time_spent=answer_data.time_spent
+#         )
+#         return result
+        
+#     except Exception as e:
+#         interview_logger.error(f"사용자 답변 제출 오류: {str(e)}")
+#         raise HTTPException(status_code=500, detail=str(e))
+
 # AI 경쟁 모드 엔드포인트
 
 @interview_router.post("/ai/start")
@@ -141,6 +173,7 @@ async def start_ai_competition(
     service: InterviewService = Depends(get_interview_service)
 ):
     """AI 지원자와의 경쟁 면접 시작"""
+    start_time = time.perf_counter()  # <--- 추가: 시간 측정 시작
     try:
         # 🐛 디버깅: FastAPI에서 받은 설정값 로깅
         interview_logger.info(f"🐛 FastAPI DEBUG: 받은 settings = {settings.dict()}")
@@ -188,11 +221,86 @@ async def start_ai_competition(
         # 🐛 디버깅: 서비스에 전달할 settings_dict 로깅
         interview_logger.info(f"🐛 FastAPI DEBUG: 서비스에 전달할 settings_dict = {settings_dict}")
         
-        result = await service.start_ai_competition(settings_dict)
+        result = await service.start_ai_competition(settings_dict, start_time=start_time)
+        
+        # <--- 추가: 전체 소요 시간 로깅
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        interview_logger.info(f"✅ AI 경쟁 면접 시작 성공. 총 처리 시간: {elapsed_time:.4f}초")
+        
         return result
         
     except Exception as e:
-        interview_logger.error(f"AI 경쟁 면접 시작 오류: {str(e)}")
+        # <--- 추가: 에러 발생 시에도 소요 시간 로깅
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        interview_logger.error(f"AI 경쟁 면접 시작 오류: {str(e)}. 처리 시간: {elapsed_time:.4f}초")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@interview_router.post("/answer")
+async def submit_user_answer(
+    submission: AICompetitionAnswerSubmission,
+    service: InterviewService = Depends(get_interview_service)
+):
+    """사용자 답변 제출 - AI 경쟁 면접용"""
+    try:
+        interview_logger.info(f"👤 사용자 답변 제출 요청: {submission.session_id}")
+        
+        result = await service.submit_user_answer(
+            session_id=submission.session_id,
+            user_answer=submission.answer,
+            time_spent=submission.time_spent
+        )
+        
+        interview_logger.info(f"✅ 사용자 답변 제출 완료: {submission.session_id}")
+        return result
+        
+    except Exception as e:
+        interview_logger.error(f"사용자 답변 제출 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@interview_router.get("/session/active")
+async def get_active_sessions(
+    service: InterviewService = Depends(get_interview_service)
+):
+    """현재 활성 세션들 조회"""
+    try:
+        active_sessions = service.get_active_sessions()
+        return {
+            "active_sessions": active_sessions,
+            "count": len(active_sessions)
+        }
+    except Exception as e:
+        interview_logger.error(f"활성 세션 조회 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@interview_router.get("/session/{session_id}/state")
+async def get_session_state(
+    session_id: str,
+    service: InterviewService = Depends(get_interview_service)
+):
+    """특정 세션의 상태 조회"""
+    try:
+        state = service.get_session_state(session_id)
+        if not state:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+        
+        return {
+            "session_id": session_id,
+            "state": state,
+            "is_active": True
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        interview_logger.error(f"세션 상태 조회 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+        
+        interview_logger.info(f"✅ 사용자 답변 제출 완료: {submission.session_id}")
+        return result
+        
+    except Exception as e:
+        interview_logger.error(f"사용자 답변 제출 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @interview_router.get("/ai-answer/{session_id}/{question_id}")

@@ -183,11 +183,43 @@ const InterviewSetup: React.FC = () => {
 
       let response;
       if (selectedMode === 'ai_competition') {
-        // AI 경쟁 면접 시작
-        response = await interviewApi.startAICompetition(settings);
+        // AI 경쟁 면접 시작 - 백그라운드로 처리
+        console.log('🚀 AI 경쟁 면접 시작 (백그라운드 처리)');
         
         // 설정 저장
         dispatch({ type: 'SET_SETTINGS', payload: settings });
+        
+        // 즉시 InterviewGO로 이동하기 위해 임시 응답 생성
+        response = {
+          session_id: `temp_${Date.now()}`, // 임시 세션 ID
+          status: 'waiting_for_user',
+          content: { content: "면접을 시작합니다. 첫 번째 질문을 기다려주세요." }
+        };
+        
+        // 백그라운드에서 실제 API 호출
+        interviewApi.startAICompetition(settings).then(realResponse => {
+          console.log('✅ 백그라운드 면접 시작 완료:', realResponse);
+          // 실제 응답으로 localStorage 업데이트
+          const updatedState = {
+            sessionId: realResponse.session_id,
+            settings: settings,
+            interviewStatus: 'setup',
+            timestamp: Date.now(),
+            jobPosting: selectedCompanyData,
+            resume: state.resume,
+            interviewMode: selectedMode,
+            aiSettings: selectedMode === 'ai_competition' ? {
+              mode: 'ai_competition',
+              persona: 'professional'
+            } : null,
+            interviewStartResponse: realResponse
+          };
+          localStorage.setItem('interview_state', JSON.stringify(updatedState));
+          console.log('💾 실제 응답으로 localStorage 업데이트 완료');
+        }).catch(error => {
+          console.error('❌ 백그라운드 면접 시작 실패:', error);
+        });
+        
       } else if (selectedMode === 'text_competition') {
         // 🆕 텍스트 기반 AI 경쟁 면접 시작
         console.log('🔍 텍스트 경쟁 모드 - Context 상태 확인:');
@@ -231,11 +263,42 @@ const InterviewSetup: React.FC = () => {
       }
       
       // Context 업데이트
-      dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
-      dispatch({ type: 'SET_INTERVIEW_STATUS', payload: 'setup' });
+      if (response.session_id) {
+        dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
+        dispatch({ type: 'SET_INTERVIEW_STATUS', payload: 'setup' });
 
-      // 새로운 면접 페이지로 이동
-      navigate('/interview/active-temp');
+        // localStorage에 면접 상태 저장 (InterviewActive가 기대하는 구조로)
+        const interviewState = {
+          sessionId: response.session_id,
+          settings: settings,
+          interviewStatus: 'setup',
+          timestamp: Date.now(),
+          // InterviewActive가 추가로 기대하는 필드들
+          jobPosting: selectedCompanyData,
+          resume: state.resume,
+          interviewMode: selectedMode,
+          aiSettings: selectedMode === 'ai_competition' ? {
+            mode: 'ai_competition',
+            persona: 'professional'
+          } : null,
+          // 🆕 면접 시작 응답 저장 (턴 정보 포함)
+          interviewStartResponse: response
+        };
+        localStorage.setItem('interview_state', JSON.stringify(interviewState));
+        console.log('💾 면접 상태 localStorage에 저장:', interviewState);
+
+        // 모드에 따라 다른 면접 페이지로 이동
+        if (selectedMode === 'text_competition') {
+          navigate('/interview/active-temp');  // 텍스트 경쟁 모드
+        } else if (selectedMode === 'ai_competition') {
+          navigate('/interview/ai/start');  // AI 경쟁 모드 전용 경로
+        } else {
+          navigate('/interview/active');  // 기타 모드
+        }
+      } else {
+        console.error('❌ 응답에서 session_id를 찾을 수 없음:', response);
+        throw new Error('세션 ID를 받지 못했습니다.');
+      }
       
     } catch (error) {
       console.error('면접 시작 실패:', error);
