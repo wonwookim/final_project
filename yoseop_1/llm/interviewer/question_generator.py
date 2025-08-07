@@ -104,14 +104,11 @@ class QuestionGenerator:
         """고정 질문 생성 (자기소개, 지원동기)"""
         if question_index == 0:
             # 첫 번째 질문: 자기소개
-            company_info = self.companies_data.get(company_id, {})
-            company_name = company_info.get('name', '저희 회사')
             candidate_name = user_resume.get('name', '지원자') if user_resume else '지원자'
-            base_question = f'{company_name}에 지원하신 이유를 말씀해 주세요.'
+            base_question = '간단하게 자기소개 부탁드립니다.'
             question_with_name = self._add_candidate_name_to_question(base_question, candidate_name)
-            real_question = f'{company_name}에 지원해주셔서 감사합니다. 면접 시작하겠습니다.' + question_with_name
             return {
-                'question': real_question,
+                'question': question_with_name,
                 'intent': '지원자의 기본 정보와 성격, 역량을 파악',
                 'interviewer_type': 'INTRO'
             }
@@ -133,6 +130,29 @@ class QuestionGenerator:
         
         else:
             raise ValueError(f"고정 질문은 0, 1번만 지원됩니다. 입력: {question_index}")
+    
+    def generate_intro_message(self, company_id: str, user_resume: Dict = None) -> Dict:
+        """인트로 메시지 생성 (턴 0용)"""
+        company_info = self.companies_data.get(company_id, {})
+        company_name = company_info.get('name', '저희 회사')
+        user_name = user_resume.get('name', '지원자') if user_resume else '지원자'
+        
+        intro_message = f"""
+{company_name}에 지원해주셔서 감사합니다.
+
+면접관 소개:
+- HR 면접관: 인사 및 지원 동기 파악
+- 기술 면접관: 기술 역량 및 프로젝트 경험 검증  
+- 협업 면접관: 팀워크 및 소프트 스킬 평가
+
+{user_name}님, 면접을 시작하겠습니다.
+"""
+        
+        return {
+            'question': intro_message,
+            'intent': '면접 시작 인사 및 면접관 소개',
+            'interviewer_type': 'INTRO'
+        }
     
     def generate_question_by_role(self, interviewer_role: str, company_id: str, 
                                  user_resume: Dict, user_answer: str = None, 
@@ -202,11 +222,17 @@ class QuestionGenerator:
             # Orchestrator의 state에서 직접 정보 추출
             turn_count = state.get('turn_count', 0)
             
-            # 간단한 턴 기반으로 질문 유형 결정 (기존 로직 간소화)
+            # 턴 0: 인트로 메시지 생성
             if turn_count == 0:
-                question_flow_type = 'fixed'
-                interviewer_role = 'HR'
-            elif turn_count == 1:
+                company_id = state.get('company_id')
+                user_resume = {
+                    'name': state.get('user_name', '지원자'),
+                    'position': state.get('position', '개발자')
+                }
+                return self.generate_intro_message(company_id, user_resume)
+            
+            # 간단한 턴 기반으로 질문 유형 결정 (기존 로직 간소화)
+            if turn_count == 1:
                 question_flow_type = 'fixed'
                 interviewer_role = 'HR'
             else:
@@ -234,7 +260,9 @@ class QuestionGenerator:
             
             # 질문 생성 방식에 따라 적절한 질문 생성 함수 호출
             if question_flow_type == 'fixed':
-                question = self.generate_fixed_question(turn_count, session_info['company_id'], user_resume)
+                # 턴 1: 자기소개 (question_index = 0), 턴 2: 지원동기 (question_index = 1)
+                question_index = turn_count - 1
+                question = self.generate_fixed_question(question_index, session_info['company_id'], user_resume)
             else: # by_role 또는 다른 모든 경우
                 question = self.generate_question_by_role(
                     interviewer_role=interviewer_role,

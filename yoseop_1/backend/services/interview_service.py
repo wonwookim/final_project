@@ -131,7 +131,7 @@ class InterviewService:
             
             # 세션 상태 생성
             initial_settings = {
-                'total_question_limit': 15,
+                'total_question_limit': 5,
                 'company_id': company_id,
                 'position': settings['position'],
                 'user_name': settings['candidate_name'],
