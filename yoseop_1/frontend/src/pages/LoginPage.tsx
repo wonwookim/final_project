@@ -4,6 +4,7 @@ import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { handleApiError } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
+import { supabase } from '../lib/supabase';
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -87,8 +88,35 @@ const LoginPage: React.FC = () => {
     }
   };
 
-  const handleSocialLogin = (provider: string) => {
-    alert(`${provider} 로그인 기능은 준비 중입니다.`);
+  const handleSocialLogin = async (provider: 'google' | 'kakao') => {
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      const oauthOptions: any = {
+        redirectTo: `${window.location.origin}/auth/callback`
+      };
+
+      // 카카오의 경우 이메일과 이름만 요청
+      if (provider === 'kakao') {
+        oauthOptions.scopes = 'account_email name';
+      }
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: provider,
+        options: oauthOptions
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      // OAuth URL로 자동 리다이렉트됨 (data.url은 사용하지 않음)
+    } catch (error: any) {
+      console.error(`${provider} OAuth 오류:`, error);
+      setError(`${provider} 로그인 중 오류가 발생했습니다: ${error.message}`);
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -181,7 +209,7 @@ const LoginPage: React.FC = () => {
 
               <div className="mt-6 space-y-3">
                 <button
-                  onClick={() => handleSocialLogin('Google')}
+                  onClick={() => handleSocialLogin('google')}
                   className="w-full flex items-center justify-center gap-3 py-3 px-4 border border-slate-300 rounded-xl hover:bg-slate-50 transition-colors"
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -194,7 +222,7 @@ const LoginPage: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => handleSocialLogin('Kakao')}
+                  onClick={() => handleSocialLogin('kakao')}
                   className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-yellow-400 text-black rounded-xl hover:bg-yellow-500 transition-colors"
                 >
                   <span className="text-lg">💬</span>
