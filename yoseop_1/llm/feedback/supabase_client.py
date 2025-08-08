@@ -11,7 +11,7 @@ class SupabaseManager:
     def __init__(self):
         # 환경변수에서 Supabase 설정 읽기
         self.url = os.getenv('SUPABASE_URL')
-        self.key = os.getenv('SUPABASE_KEY')
+        self.key = os.getenv('SUPABASE_ANON_KEY')
         
         if not self.url or not self.key:
             raise ValueError("SUPABASE_URL과 SUPABASE_KEY 환경변수를 설정해주세요.")
