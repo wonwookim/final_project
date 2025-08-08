@@ -139,7 +139,7 @@ class InterviewService:
             
             # 세션 상태 생성
             initial_settings = {
-                'total_question_limit': 15,  # 디버깅용 - 실제 운영시에는 15로 변경
+                'total_question_limit': 3,  # 디버깅용 - 실제 운영시에는 15로 변경
                 'company_id': company_id,
                 'position': settings['position'],
                 'user_name': settings['candidate_name'],
