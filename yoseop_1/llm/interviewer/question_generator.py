@@ -348,14 +348,14 @@ class QuestionGenerator:
     def _generate_from_db_template_with_topic(self, user_resume: Dict, company_info: Dict, 
                                             interviewer_role: str, topic: str) -> Dict:
         """주제 특화 DB 템플릿 기반 질문 생성"""
-        question_type_id = self.interviewer_role_to_db_id.get(interviewer_role)
-        if not question_type_id:
+        question_type = self.interviewer_role_to_db_id.get(interviewer_role)
+        if not question_type:
             raise ValueError(f"지원되지 않는 면접관 역할: {interviewer_role}")
         
         # 해당 면접관 유형의 질문들 필터링
         role_questions = [
             q for q in self.fixed_questions 
-            if q.get('question_type_id') == question_type_id
+            if q.get('question_type') == question_type
         ]
         
         if not role_questions:
