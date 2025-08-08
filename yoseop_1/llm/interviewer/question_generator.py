@@ -306,15 +306,36 @@ class QuestionGenerator:
                     
                     company_info = self.companies_data.get(state.get('company_id'), {})
                     
-                    question = self.generate_follow_up_question(
-                        previous_question=previous_question,
-                        user_answer=user_answer,
-                        chun_sik_answer=ai_answer,
-                        company_info=company_info,
-                        interviewer_role=current_interviewer,
-                        user_resume=user_resume
-                    )
-                    return question
+                    # 🆕 개별 꼬리질문 생성으로 변경
+                    if user_answer and ai_answer:
+                        print(f"[DEBUG] 개별 꼬리질문 생성 호출 - {current_interviewer}")
+                        individual_questions = self.generate_follow_up_questions_for_both(
+                            previous_question=previous_question,
+                            user_answer=user_answer,
+                            ai_answer=ai_answer,
+                            company_info=company_info,
+                            interviewer_role=current_interviewer,
+                            user_resume=user_resume
+                        )
+                        return individual_questions
+                    else:
+                        # 폴백: 기존 단일 질문 방식
+                        question = self.generate_follow_up_question(
+                            previous_question=previous_question,
+                            user_answer=user_answer,
+                            chun_sik_answer=ai_answer,
+                            company_info=company_info,
+                            interviewer_role=current_interviewer,
+                            user_resume=user_resume
+                        )
+                        return {
+                            'user_question': question,
+                            'ai_question': question,
+                            'interviewer_type': current_interviewer,
+                            'question_type': 'follow_up',
+                            'is_individual_questions': False,
+                            'fallback_reason': 'missing_answers'
+                        }
                 
                 # 턴 전환 필요 (꼬리 질문 2개 완료)
                 else:
@@ -574,6 +595,141 @@ class QuestionGenerator:
             'question_source': 'fallback_follow_up'
         }
     
+    def generate_follow_up_questions_for_both(self, previous_question: str, user_answer: str,
+                                             ai_answer: str, company_info: Dict,
+                                             interviewer_role: str, user_resume: Dict = None) -> Dict:
+        """사용자와 AI 각각의 답변에 기반한 개별 꼬리질문 2개 생성"""
+        
+        try:
+            print(f"[DEBUG] 개별 꼬리질문 생성 시작 - 면접관: {interviewer_role}")
+            
+            # 사용자용 꼬리질문 생성
+            user_follow_up = self.generate_follow_up_question(
+                previous_question=previous_question,
+                user_answer=user_answer,
+                chun_sik_answer=ai_answer,  # AI 답변도 전달 (비교 참고용)
+                company_info=company_info,
+                interviewer_role=interviewer_role,
+                user_resume=user_resume
+            )
+            
+            # AI용 꼬리질문 생성 (AI 답변에 더 집중)
+            ai_follow_up = self._generate_ai_focused_follow_up(
+                previous_question=previous_question,
+                user_answer=user_answer,
+                ai_answer=ai_answer,
+                company_info=company_info,
+                interviewer_role=interviewer_role,
+                user_resume=user_resume
+            )
+            
+            result = {
+                'user_question': user_follow_up,
+                'ai_question': ai_follow_up,
+                'interviewer_type': interviewer_role,
+                'question_type': 'follow_up',
+                'is_individual_questions': True
+            }
+            
+            print(f"[DEBUG] 개별 꼬리질문 생성 완료")
+            print(f"[DEBUG] 사용자 질문: {user_follow_up.get('question', 'N/A')[:50]}...")
+            print(f"[DEBUG] AI 질문: {ai_follow_up.get('question', 'N/A')[:50]}...")
+            
+            return result
+            
+        except Exception as e:
+            print(f"[ERROR] 개별 꼬리질문 생성 실패: {e}")
+            # 폴백: 공통 꼬리질문 사용
+            common_follow_up = self.generate_follow_up_question(
+                previous_question, user_answer, ai_answer, 
+                company_info, interviewer_role, user_resume
+            )
+            
+            return {
+                'user_question': common_follow_up,
+                'ai_question': common_follow_up,
+                'interviewer_type': interviewer_role,
+                'question_type': 'follow_up',
+                'is_individual_questions': False,
+                'fallback_reason': 'individual_generation_failed'
+            }
+    
+    def _generate_ai_focused_follow_up(self, previous_question: str, user_answer: str,
+                                     ai_answer: str, company_info: Dict,
+                                     interviewer_role: str, user_resume: Dict = None) -> Dict:
+        """AI 답변에 더 집중한 꼬리질문 생성"""
+        
+        # AI에게 더 적합한 프롬프트 구성
+        position = user_resume.get('position', '개발자') if user_resume else '개발자'
+        
+        # AI 중심 프롬프트 빌드 (user_answer와 ai_answer 순서 바꿈)
+        ai_focused_prompt = self.prompt_builder.build_follow_up_question_prompt(
+            previous_question, ai_answer, user_answer, company_info, interviewer_role, position
+        )
+        
+        # AI 전용 시스템 프롬프트 (더 기술적/이론적 관점 강조)
+        ai_system_prompt = f"""
+당신은 {interviewer_role} 면접관입니다. AI 지원자의 답변에 기반하여 심층적인 꼬리 질문을 생성하세요.
+
+AI 지원자 특성을 고려한 질문 생성 가이드라인:
+- 기술적 세부사항이나 이론적 배경을 더 깊이 탐구
+- 구현 방법론이나 아키텍처적 관점에서 접근
+- 비교 분석이나 대안적 접근 방식에 대한 질문
+- 확장성이나 최적화 관점에서의 심화 질문
+
+응답 형식:
+{{
+    "question": "질문 내용",
+    "intent": "질문 의도",
+    "focus": "기술적 심화"
+}}
+        """
+        
+        try:
+            response = self.openai_client.chat.completions.create(
+                model=GPT_MODEL,
+                messages=[
+                    {"role": "system", "content": ai_system_prompt},
+                    {"role": "user", "content": ai_focused_prompt}
+                ],
+                max_tokens=MAX_TOKENS,
+                temperature=0.7
+            )
+            
+            result_text = response.choices[0].message.content.strip()
+            
+            if not result_text:
+                raise ValueError("LLM이 빈 응답을 반환했습니다")
+            
+            # JSON 파싱
+            if '```json' in result_text:
+                json_start = result_text.find('```json') + 7
+                json_end = result_text.find('```', json_start)
+                result_text = result_text[json_start:json_end].strip()
+            elif '{' in result_text and '}' in result_text:
+                json_start = result_text.find('{')
+                json_end = result_text.rfind('}') + 1
+                result_text = result_text[json_start:json_end]
+            
+            result = json.loads(result_text)
+            
+            if not result.get('question'):
+                raise ValueError("question 필드가 비어있습니다")
+            
+            # AI용 질문이므로 "AI 지원자님" 호명 추가
+            result['question'] = f"AI 지원자님, {result['question']}"
+            result['interviewer_type'] = interviewer_role
+            result['question_flow_type'] = 'ai_follow_up'
+            result['question_source'] = 'ai_focused_llm'
+            
+            return result
+            
+        except Exception as e:
+            print(f"[ERROR] AI 중심 꼬리질문 생성 실패: {e}")
+            # 폴백: AI용 기본 꼬리질문
+            return self._get_fallback_follow_up_question(interviewer_role, previous_question, 
+                                                       {"name": "AI 지원자"})
+
     def _add_candidate_name_to_question(self, question: str, candidate_name: str) -> str:
         """질문에 지원자 이름 호명 추가"""
         if not candidate_name or candidate_name == '지원자':
