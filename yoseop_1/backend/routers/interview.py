@@ -13,6 +13,10 @@ from backend.services.voice_service import elevenlabs_tts_stream
 from fastapi.responses import HTMLResponse
 import io
 import time
+import os
+import tempfile
+import aiohttp
+from dotenv import load_dotenv
 
 
 
@@ -419,7 +423,96 @@ async def text_to_speech_elevenlabs(req: TTSRequest):
 # 🟢 POST /interview/stt
 @interview_router.post("/stt", response_model=STTResponse)
 async def speech_to_text(file: UploadFile = File(...)):
-    pass
+    """음성 파일을 OpenAI Whisper로 텍스트 변환 후 파일 삭제"""
+    # 파일 유효성 검사
+    if not file or not file.filename:
+        raise HTTPException(status_code=400, detail="음성 파일이 필요합니다.")
+    
+    # 지원하는 오디오 형식 확인
+    allowed_extensions = ['.wav', '.mp3', '.m4a', '.webm', '.ogg', '.flac']
+    file_extension = os.path.splitext(file.filename)[1].lower()
+    if file_extension not in allowed_extensions:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"지원하지 않는 파일 형식입니다. 지원 형식: {', '.join(allowed_extensions)}"
+        )
+    
+    # OpenAI API 키 확인
+    load_dotenv()
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=500, detail="OpenAI API 키가 설정되지 않았습니다.")
+    
+    temp_file_path = None
+    try:
+        # 임시 파일로 음성 데이터 저장
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
+            temp_file_path = temp_file.name
+            content = await file.read()
+            temp_file.write(content)
+        
+        interview_logger.info(f"🎙️ STT 처리 시작: {file.filename} ({len(content)} bytes)")
+        interview_logger.info(f"📄 파일 정보: content_type={file.content_type}, filename={file.filename}")
+        
+        # OpenAI Whisper API 호출
+        headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}"
+        }
+        
+        # 파일을 한 번에 읽어서 메모리에 저장
+        with open(temp_file_path, 'rb') as audio_file:
+            audio_data = audio_file.read()
+            
+        interview_logger.info(f"📊 오디오 데이터 크기: {len(audio_data)} bytes")
+        
+        form_data = aiohttp.FormData()
+        form_data.add_field('file', audio_data, filename=file.filename, content_type=file.content_type or 'audio/webm')
+        form_data.add_field('model', 'whisper-1')
+        form_data.add_field('response_format', 'json')
+        # 언어를 자동 감지로 변경 (더 정확할 수 있음)
+        # form_data.add_field('language', 'ko')  # 한국어 강제 설정 제거
+        form_data.add_field('temperature', '0')  # 일관성 있는 결과를 위해 temperature 0 설정
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.openai.com/v1/audio/transcriptions",
+                headers=headers,
+                data=form_data
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    interview_logger.error(f"❌ Whisper API 오류: {response.status} - {error_text}")
+                    raise HTTPException(
+                        status_code=response.status,
+                        detail=f"STT API 오류: {error_text}"
+                    )
+                
+                result = await response.json()
+                transcribed_text = result.get('text', '').strip()
+                
+                # 전체 Whisper API 응답 로깅
+                interview_logger.info(f"🤖 Whisper API 전체 응답: {result}")
+                interview_logger.info(f"📝 추출된 텍스트: '{transcribed_text}'")
+        
+        return STTResponse(
+            text=transcribed_text,
+            confidence=1.0,  # Whisper는 confidence score를 제공하지 않으므로 기본값
+            success=True
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        interview_logger.error(f"❌ STT 처리 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"STT 처리 중 오류가 발생했습니다: {str(e)}")
+    finally:
+        # 임시 파일 삭제
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.unlink(temp_file_path)
+                interview_logger.info(f"🗑️ 임시 음성 파일 삭제 완료: {temp_file_path}")
+            except Exception as cleanup_error:
+                interview_logger.warning(f"⚠️ 임시 파일 삭제 실패: {cleanup_error}")
 
 
 # ============================================================================
