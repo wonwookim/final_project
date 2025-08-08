@@ -151,3 +151,4 @@ __pycache__/
 .claude/settings.local.json
 .claude/settings.json
 
+**/automl
