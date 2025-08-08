@@ -6,6 +6,10 @@ import os
 from supabase import create_client, Client
 from typing import Optional
 import logging
+from dotenv import load_dotenv
+
+# .env 파일 로드
+load_dotenv()
 
 # 로거 설정
 logger = logging.getLogger(__name__)

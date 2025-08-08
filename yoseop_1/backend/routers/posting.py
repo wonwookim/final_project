@@ -28,7 +28,7 @@ async def get_posting_list():
                 "content": posting.get("content", f"{posting.get('company', {}).get('name', '')} {posting.get('position', {}).get('position_name', '')} 채용공고")
             }
             formatted_postings.append(formatted_posting)
-
+            
         return formatted_postings
 
     except Exception as e:

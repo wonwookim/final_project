@@ -151,4 +151,18 @@ __pycache__/
 .claude/settings.local.json
 .claude/settings.json
 
-**/automl
+**/automl/
+*/.claude
+
+*.png
+*.jpg
+*.jpeg
+*.pkl
+*.joblib
+*/automl/
+**/package-lock.json
+**/node_modules/
+.DS_Store
+.vscode/
+EOF
+
