@@ -48,7 +48,7 @@ class Orchestrator:
     def handle_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """메시지를 받아서 상태를 업데이트하고 다음 액션을 결정"""
         from_agent = message.get("metadata", {}).get("from_agent", "unknown")
-        print(f"[{from_agent}] -> [Orchestrator]")
+        print(f"[TRACE] {from_agent} -> Orchestrator")
         print(json.dumps(message, indent=2, ensure_ascii=False))
 
         task = message.get("metadata", {}).get("task")
@@ -60,7 +60,7 @@ class Orchestrator:
         # 다음 메시지 결정
         next_message = self._decide_next_message()
         next_agent = next_message.get("metadata", {}).get("next_agent", "unknown")
-        print(f"[Orchestrator] -> [{next_agent}]")
+        print(f"[TRACE] Orchestrator -> {next_agent}")
         print(json.dumps(next_message, indent=2, ensure_ascii=False))
         return next_message
 
@@ -564,7 +564,7 @@ class Orchestrator:
 
     async def process_user_answer(self, user_answer: str, time_spent: float = None) -> Dict[str, Any]:
         """사용자 답변을 처리하고 전체 플로우를 완료하여 최종 결과 반환"""
-        print(f"[Orchestrator] 🔄 사용자 답변 처리 시작: {self.session_id}")
+        print(f"[TRACE] Orchestrator.process_user_answer start: session={self.session_id}")
         
         # 🆕 개별 질문 상태 체크
         current_questions = self.session_state.get('current_questions')
@@ -591,62 +591,62 @@ class Orchestrator:
     
     async def _process_complete_flow(self) -> Dict[str, Any]:
         """완전한 플로우를 처리하여 최종 결과 반환"""
-        print(f"[Orchestrator] �� _process_complete_flow 시작: {self.session_id}")
+        print(f"[TRACE] Orchestrator._process_complete_flow start: session={self.session_id}")
         
         while True:
-            print(f"[Orchestrator] 🔄 while 루프 시작 - turn_count: {self.session_state.get('turn_count', 0)}")
+            print(f"[TRACE] turn={self.session_state.get('turn_count', 0)}")
             
             # 다음 메시지 결정
             next_message = self._decide_next_message()
             next_agent = next_message.get("metadata", {}).get("next_agent")
             task = next_message.get("metadata", {}).get("task")
             
-            print(f"[Orchestrator] 🔄 다음 액션 결정: {next_agent} - {task}")
+            print(f"[TRACE] decide_next -> next_agent={next_agent}, task={task}")
             
             # 완료 조건 체크
             if task == "end_interview":
-                print(f"[Orchestrator] ✅ 면접 완료")
+                print(f"[TRACE] interview complete")
                 result = {
                     "status": "completed",
                     "message": "수고하셨습니다.",
                     "qa_history": self.session_state.get('qa_history', []),
                     "session_id": self.session_id
                 }
-                print(f"[Orchestrator] -> [Client]")
+                print(f"[TRACE] Orchestrator -> Client (complete)")
                 print(json.dumps(result, indent=2, ensure_ascii=False))
                 return result
             
             # 사용자 입력 대기 상태인 경우
             if next_agent == "user":
-                print(f"[Orchestrator] 👤 사용자 입력 대기")
+                print(f"[TRACE] wait for user input")
                 result = self.create_user_waiting_message()
-                print(f"[Orchestrator] -> [Client]")
+                print(f"[TRACE] Orchestrator -> Client (wait)")
                 print(json.dumps(result, indent=2, ensure_ascii=False))
                 return result
             
             # 에이전트 작업 수행 (handle_message에서 JSON 출력됨)
             if next_agent == "interviewer":
-                print(f"[Orchestrator] 🎤 면접관 작업 시작")
+                print(f"[TRACE] interviewer task start")
                 await self._process_interviewer_task()
             elif next_agent == "interviewer_individual":
-                print(f"[Orchestrator] 🎤🎤 면접관 개별 꼬리질문 작업 시작")
+                print(f"[TRACE] interviewer individual follow-up task start")
                 await self._process_individual_interviewer_task()
             elif next_agent == "ai":
-                print(f"[Orchestrator] 🤖 AI 지원자 작업 시작")
+                print(f"[TRACE] ai task start")
                 await self._process_ai_task(next_message.get("content", {}).get("content"))
             
-            print(f"[Orchestrator] 🔄 while 루프 끝")
+            print(f"[TRACE] loop end")
     
     async def _process_interviewer_task(self):
         """면접관 작업 처리"""
-        print(f"[Orchestrator] -> [Interviewer] (질문 생성 요청)")
+        print(f"[TRACE] Orchestrator -> Interviewer (generate_question)")
         
         # 🆕 현재 상태 디버깅 (개선)
         current_interviewer = self.session_state.get('current_interviewer')
         turn_state = self.session_state.get('interviewer_turn_state', {})
         current_turn = self.session_state.get('turn_count', 0)
         
-        print(f"[DEBUG] 턴 {current_turn}: 현재 면접관 = {current_interviewer}")
+        print(f"[TRACE] interviewer_state turn={current_turn}, current_interviewer={current_interviewer}")
         for role, state in turn_state.items():
             main_done = "✓" if state['main_question_asked'] else "✗"
             follow_count = state['follow_up_count']
@@ -656,7 +656,7 @@ class Orchestrator:
         
         # 🆕 반환값 타입에 따른 처리
         if isinstance(question_result, dict) and 'user_question' in question_result and 'ai_question' in question_result:
-            print(f"[DEBUG] 개별 질문 데이터 처리 시작")
+            print(f"[TRACE] individual questions generated (dict)")
             
             # 개별 질문 메시지 생성
             questions_message = self.create_agent_message(
@@ -669,11 +669,11 @@ class Orchestrator:
                 start_time=self.session_state.get('start_time')
             )
             
-            # handle_message에서 JSON 출력됨
+            # TRACE 출력: interviewer -> orchestrator (individual_questions_generated)
             self.handle_message(questions_message)
             
         else:
-            # 일반 질문 처리 (기존 로직)
+            # 일반 질문 처리
             question_content = question_result if isinstance(question_result, str) else str(question_result)
             
             # 🆕 content_type 결정
@@ -692,19 +692,19 @@ class Orchestrator:
                 start_time=self.session_state.get('start_time')
             )
             
-            # handle_message에서 JSON 출력됨
+            # TRACE 출력: interviewer -> orchestrator (question_generated)
             self.handle_message(question_message)
     
     async def _process_individual_interviewer_task(self):
         """개별 꼬리질문 생성 작업 처리"""
-        print(f"[Orchestrator] -> [Interviewer] (개별 꼬리질문 생성 요청)")
+        print(f"[TRACE] Orchestrator -> Interviewer (generate_individual_follow_up)")
         
         # 현재 상태 디버깅
         current_interviewer = self.session_state.get('current_interviewer')
         turn_state = self.session_state.get('interviewer_turn_state', {})
         current_turn = self.session_state.get('turn_count', 0)
         
-        print(f"[DEBUG] 개별 꼬리질문 생성 - 턴 {current_turn}, 면접관: {current_interviewer}")
+        print(f"[TRACE] individual follow-up start turn={current_turn}, interviewer={current_interviewer}")
         
         try:
             # 개별 꼬리질문 생성 요청
@@ -721,17 +721,17 @@ class Orchestrator:
                 start_time=self.session_state.get('start_time')
             )
             
-            # handle_message에서 JSON 출력됨
+            # TRACE 출력: interviewer -> orchestrator (individual_questions_generated)
             self.handle_message(questions_message)
             
         except Exception as e:
-            print(f"[ERROR] 개별 꼬리질문 생성 실패: {e}")
+            print(f"[TRACE][ERROR] individual follow-up generation failed: {e}")
             # 폴백: 일반 질문으로 대체
             await self._process_interviewer_task()
     
     async def _process_ai_task(self, question: str):
         """AI 지원자 작업 처리"""
-        print(f"[Orchestrator] -> [AI Candidate] (질문: {question[:50]}...)")
+        print(f"[TRACE] Orchestrator -> AI (question) : {question[:50]}...")
         
         # 예전 로직으로 복원: 원본 질문 그대로 사용
         ai_answer = await self._request_answer_from_ai_candidate(question)
