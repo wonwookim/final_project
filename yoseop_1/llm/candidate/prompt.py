@@ -44,90 +44,391 @@ class CandidatePromptBuilder:
         else:
             return self.build_default_prompt(request, persona, company_data, interview_context)
 
+    def _parse_tech_skills(self, tech_string: str) -> List[str]:
+        """기술 스택 문자열을 배열로 파싱"""
+        if not tech_string:
+            return []
+        
+        # 쉼표, 세미콜론, 슬래시 등으로 분리
+        import re
+        skills = re.split(r'[,;/\n]', tech_string)
+        
+        # 공백 제거 및 빈 문자열 필터링
+        parsed_skills = []
+        for skill in skills:
+            cleaned = skill.strip()
+            if cleaned and len(cleaned) > 1:  # 너무 짧은 것은 제외
+                parsed_skills.append(cleaned)
+        
+        return parsed_skills[:10]  # 최대 10개까지만
+    
+    def _extract_projects_from_career(self, career_text: str, activities_text: str = "") -> List[Dict[str, Any]]:
+        """경력과 활동 텍스트에서 프로젝트 구조 추출"""
+        projects = []
+        
+        if not career_text and not activities_text:
+            return projects
+        
+        # 경력에서 프로젝트 추출
+        if career_text:
+            # 문장 단위로 분리하여 프로젝트 식별
+            sentences = career_text.replace('–', '-').split('-')
+            
+            for sentence in sentences:
+                sentence = sentence.strip()
+                if len(sentence) > 20:  # 의미있는 길이
+                    project = {
+                        "name": self._extract_project_name(sentence),
+                        "description": sentence[:150],  # 설명은 150자로 제한
+                        "role": self._infer_role_from_text(sentence),
+                        "tech_stack": self._extract_tech_from_text(sentence),
+                        "achievements": self._extract_achievements(sentence),
+                        "challenges": self._infer_challenges(sentence)
+                    }
+                    projects.append(project)
+        
+        # 활동에서도 프로젝트 추출
+        if activities_text:
+            activity_projects = self._extract_projects_from_activities(activities_text)
+            projects.extend(activity_projects)
+        
+        return projects[:3]  # 최대 3개 프로젝트만
+    
+    def _extract_project_name(self, text: str) -> str:
+        """텍스트에서 프로젝트명 추출"""
+        # 주요 키워드로 프로젝트명 추론
+        keywords = ['앱', '시스템', '서비스', '플랫폼', '프로젝트', '개발', '솔루션']
+        
+        words = text.split()
+        for i, word in enumerate(words):
+            if any(keyword in word for keyword in keywords):
+                # 해당 키워드 앞의 2-3개 단어를 프로젝트명으로
+                start_idx = max(0, i-2)
+                end_idx = min(len(words), i+2)
+                project_name = ' '.join(words[start_idx:end_idx])
+                return project_name[:30]  # 30자 제한
+        
+        # 키워드가 없으면 앞의 일부를 사용
+        return text.split('.')[0][:25] if text else "주요 프로젝트"
+    
+    def _infer_role_from_text(self, text: str) -> str:
+        """텍스트에서 역할 추론"""
+        role_keywords = {
+            '인턴': '인턴',
+            '리더': '프로젝트 리더', 
+            '개발': '개발자',
+            '기획': '기획자',
+            '운영': '운영 담당자',
+            '설계': '설계 담당자'
+        }
+        
+        for keyword, role in role_keywords.items():
+            if keyword in text:
+                return role
+        
+        return "팀원"
+    
+    def _extract_tech_from_text(self, text: str) -> List[str]:
+        """텍스트에서 기술 스택 추출"""
+        # 일반적인 기술 키워드들
+        tech_keywords = [
+            'Python', 'Java', 'JavaScript', 'React', 'Vue', 'Angular', 'Node.js',
+            'Spring', 'Django', 'Flask', 'MySQL', 'PostgreSQL', 'MongoDB',
+            'Docker', 'Kubernetes', 'AWS', 'GCP', 'Azure', 'Git', 'Jenkins',
+            'Flutter', 'Android', 'iOS', 'Swift', 'Kotlin', 'Linux', 'Windows'
+        ]
+        
+        found_techs = []
+        text_upper = text.upper()
+        
+        for tech in tech_keywords:
+            if tech.upper() in text_upper:
+                found_techs.append(tech)
+        
+        return found_techs[:5]  # 최대 5개
+    
+    def _extract_achievements(self, text: str) -> List[str]:
+        """텍스트에서 성과 추출"""
+        achievement_patterns = [
+            r'(\d+%\s*(?:증가|향상|개선))', 
+            r'(\d+명?\s*(?:사용자|고객))',
+            r'(수상|선정|달성|완료|성공)'
+        ]
+        
+        achievements = []
+        import re
+        
+        for pattern in achievement_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            achievements.extend(matches)
+        
+        # 기본 성과 템플릿
+        if not achievements:
+            if '운영' in text:
+                achievements.append("시스템 안정적 운영")
+            if '개발' in text:
+                achievements.append("기능 개발 완료")
+            if '협업' in text or '팀' in text:
+                achievements.append("팀 협업을 통한 프로젝트 성공")
+        
+        return achievements[:3]
+    
+    def _infer_challenges(self, text: str) -> List[str]:
+        """텍스트에서 도전과제 추론"""
+        challenges = []
+        
+        if '복잡' in text or '어려움' in text:
+            challenges.append("복잡한 요구사항 해결")
+        if '협업' in text or '소통' in text:
+            challenges.append("다양한 이해관계자간 협업")
+        if '성능' in text or '최적화' in text:
+            challenges.append("성능 최적화 및 안정성 확보")
+        if '사용자' in text:
+            challenges.append("사용자 요구사항 변화에 대응")
+        
+        # 기본 도전과제
+        if not challenges:
+            challenges = ["기술적 복잡도 해결", "프로젝트 일정 관리"]
+        
+        return challenges[:3]
+    
+    def _extract_projects_from_activities(self, activities_text: str) -> List[Dict[str, Any]]:
+        """활동 텍스트에서 프로젝트 추출"""
+        projects = []
+        
+        # 활동을 문장 단위로 분리
+        sentences = activities_text.replace('–', '-').split('-')
+        
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if len(sentence) > 15:
+                project = {
+                    "name": self._extract_activity_project_name(sentence),
+                    "description": sentence[:120],
+                    "role": "참여자",
+                    "tech_stack": self._extract_tech_from_text(sentence),
+                    "achievements": ["활동 완료", "실전 경험 습득"],
+                    "challenges": ["새로운 기술 학습", "팀 협업"]
+                }
+                projects.append(project)
+        
+        return projects
+    
+    def _extract_activity_project_name(self, text: str) -> str:
+        """활동 텍스트에서 프로젝트명 추출"""
+        activity_keywords = ['동아리', '프로젝트', '서비스', '시스템', '앱', '웹사이트']
+        
+        for keyword in activity_keywords:
+            if keyword in text:
+                # 키워드 주변 단어들로 이름 생성
+                words = text.split()
+                for i, word in enumerate(words):
+                    if keyword in word:
+                        start = max(0, i-1)
+                        end = min(len(words), i+2)
+                        return ' '.join(words[start:end])[:25]
+        
+        return text[:20] if text else "활동 프로젝트"
+    
+    def _extract_experiences_from_activities(self, activities_text: str, awards_text: str = "") -> List[Dict[str, Any]]:
+        """활동과 수상에서 경험 구조 추출"""
+        experiences = []
+        
+        if activities_text:
+            # 활동을 여러 경험으로 분리
+            activity_parts = activities_text.split(',')
+            for part in activity_parts:
+                part = part.strip()
+                if len(part) > 10:
+                    exp = {
+                        "category": self._categorize_experience(part),
+                        "experience": part[:100],
+                        "lesson": self._infer_lesson_from_activity(part)
+                    }
+                    experiences.append(exp)
+        
+        if awards_text:
+            # 수상 경험 추가
+            award_parts = awards_text.split(',')
+            for award in award_parts:
+                award = award.strip()
+                if len(award) > 5:
+                    exp = {
+                        "category": "수상 및 성과",
+                        "experience": award[:80],
+                        "lesson": "지속적인 노력과 도전의 중요성을 깨달음"
+                    }
+                    experiences.append(exp)
+        
+        return experiences[:4]  # 최대 4개
+    
+    def _categorize_experience(self, text: str) -> str:
+        """경험 텍스트를 카테고리로 분류"""
+        categories = {
+            '동아리': '학술 동아리 활동',
+            '인턴': '실무 경험',
+            '프로젝트': '프로젝트 수행',
+            '교육': '교육 및 학습',
+            '대회': '경진대회 참가',
+            '봉사': '봉사 활동',
+            '리더': '리더십 경험'
+        }
+        
+        for keyword, category in categories.items():
+            if keyword in text:
+                return category
+        
+        return "기타 경험"
+    
+    def _infer_lesson_from_activity(self, activity_text: str) -> str:
+        """활동에서 배운 점 추론"""
+        lesson_templates = {
+            '동아리': "팀워크와 지속적인 학습의 중요성을 배움",
+            '인턴': "실무 환경에서의 책임감과 전문성 향상",
+            '프로젝트': "문제 해결 능력과 창의적 사고 개발",
+            '교육': "새로운 지식 습득과 자기계발의 즐거움",
+            '대회': "도전 정신과 경쟁력 강화",
+            '협업': "소통과 협력의 가치를 체험"
+        }
+        
+        for keyword, lesson in lesson_templates.items():
+            if keyword in activity_text:
+                return lesson
+        
+        return "새로운 경험을 통한 시야 확장과 성장"
+
+    def _format_projects_for_prompt(self, projects: List[Dict[str, Any]]) -> str:
+        """프로젝트 리스트를 프롬프트용 텍스트로 포맷팅"""
+        if not projects:
+            return "구체적인 프로젝트 경험 정보 없음"
+        
+        formatted = []
+        for i, project in enumerate(projects, 1):
+            tech_stack_str = ', '.join(project.get('tech_stack', []))
+            achievements_str = ' / '.join(project.get('achievements', []))
+            challenges_str = ' / '.join(project.get('challenges', []))
+            
+            project_text = f"""
+{i}. **{project.get('name', '프로젝트')}**
+   - 설명: {project.get('description', '')[:100]}...
+   - 역할: {project.get('role', '팀원')}
+   - 기술: {tech_stack_str}
+   - 성과: {achievements_str}
+   - 도전: {challenges_str}"""
+            
+            formatted.append(project_text)
+        
+        return '\n'.join(formatted)
+    
+    def _format_experiences_for_prompt(self, experiences: List[Dict[str, Any]]) -> str:
+        """경험 리스트를 프롬프트용 텍스트로 포맷팅"""
+        if not experiences:
+            return "구체적인 활동/경험 정보 없음"
+        
+        formatted = []
+        for i, exp in enumerate(experiences, 1):
+            exp_text = f"""
+{i}. **[{exp.get('category', '기타')}]** {exp.get('experience', '')[:80]}...
+   → 배운 점: {exp.get('lesson', '')}"""
+            
+            formatted.append(exp_text)
+        
+        return '\n'.join(formatted)
+
     def build_persona_generation_prompt(self, resume_data: Dict[str, Any], company_name: str, position_name: str, company_info: Dict[str, Any], model_name: str = "gpt-4o-mini") -> str:
         """데이터베이스 이력서를 기반으로 LLM 페르소나 생성 프롬프트 구성"""
         
-        # 이력서 데이터 정리
+        # 이력서 원본 데이터 정리
         career = resume_data.get('career', '')
         academic = resume_data.get('academic_record', '')
-        tech_skills = resume_data.get('tech', '')
+        tech_skills_raw = resume_data.get('tech', '')
         activities = resume_data.get('activities', '')
         certificates = resume_data.get('certificate', '')
         awards = resume_data.get('awards', '')
         resume_id = resume_data.get('ai_resume_id', 0)
+        
+        # 🔥 NEW: 데이터 전처리를 통한 구조화
+        parsed_tech_skills = self._parse_tech_skills(tech_skills_raw)
+        structured_projects = self._extract_projects_from_career(career, activities)
+        meaningful_experiences = self._extract_experiences_from_activities(activities, awards)
         
         # 회사 정보 정리
         company_profile = company_info.get('talent_profile', '')
         core_competencies = ', '.join(company_info.get('core_competencies', []))
         tech_focus = ', '.join(company_info.get('tech_focus', []))
         
+        # 🔥 NEW: 구조화된 데이터를 프롬프트용으로 포맷팅
+        formatted_projects = self._format_projects_for_prompt(structured_projects)
+        formatted_experiences = self._format_experiences_for_prompt(meaningful_experiences)
+        formatted_tech_skills = ', '.join(parsed_tech_skills) if parsed_tech_skills else tech_skills_raw
+        
         prompt = f"""
-다음 이력서 데이터를 분석하여 {company_name} {position_name} 직군에 지원하는 인간미 넘치는 AI 지원자 페르소나를 생성하세요.
+다음 이력서 데이터를 분석하여 {company_name} {position_name} 직군에 지원하는 **인간미 넘치고 현실적인** AI 지원자 페르소나를 생성하세요.
 
-=== 이력서 데이터 ===
+=== 📊 실제 이력서 분석 결과 ===
+**원본 데이터:**
 - 경력: {career}
 - 학력: {academic}
-- 기술 스탁: {tech_skills}
+- 기술 스택: {tech_skills_raw}
 - 활동: {activities}
-- 자격증: {certificates}
+- 자격증: {certificates}  
 - 수상: {awards}
 
-=== {company_name} 회사 정보 ===
+**🔍 구조화된 분석:**
+**기술 역량 ({len(parsed_tech_skills)}개):** {formatted_tech_skills}
+
+**프로젝트 경험 ({len(structured_projects)}개):**
+{formatted_projects}
+
+**의미있는 경험들 ({len(meaningful_experiences)}개):**
+{formatted_experiences}
+
+=== 🏢 {company_name} 회사 정보 ===
 - 인재상: {company_profile}
 - 핵심 역량: {core_competencies}
 - 기술 중점: {tech_focus}
 
-위 정보를 바탕으로 다음 JSON 형태로 **정확히** 응답하세요:
+=== 🎯 페르소나 생성 지침 ===
+**중요:** 위의 **실제 구조화된 데이터**를 기반으로 생생하고 현실적인 페르소나를 만드세요.
+- 예시 텍스트 대신 실제 경력/프로젝트 내용 활용
+- 구체적인 기술 스택과 경험 반영
+- 인간적이고 매력적인 스토리 구성
+
+아래 JSON 형태로 **정확히** 응답하되, **위의 구조화된 실제 데이터**를 활용하여 생생하고 현실적으로 채워넣으세요:
 
 {{
   "name": "춘식이",
-  "summary": "{position_name} 경력과 전문성을 한 줄로 요약",
+  "summary": "위 분석 결과를 바탕으로 {position_name}의 핵심 역량과 특징을 한 줄로 표현",
   "background": {{
-    "career_years": "경력 년수",
+    "career_years": "경력 텍스트에서 추정한 실제 경력 년수",
     "current_position": "{position_name}",
     "education": "{academic}",
-    "major": "전공 분야"
+    "major": "학력에서 추정한 전공 분야"
   }},
   "strengths": [
-    "주요 강점 1",
-    "주요 강점 2", 
-    "주요 강점 3"
+    "구조화된 기술 역량과 프로젝트에서 도출한 실제 강점 3개"
   ],
-  "technical_skills": [
-    "기술스킬1", "기술스킬2", "기술스킬3", "기술스킬4"
-  ],
+  "technical_skills": {parsed_tech_skills},
   "projects": [
-    {{
-      "name": "프로젝트명",
-      "description": "프로젝트 설명",
-      "role": "담당 역할",
-      "tech_stack": ["사용기술1", "사용기술2"],
-      "achievements": ["성과1", "성과2"],
-      "challenges": ["어려웠던점1", "어려웠던점2"]
-    }}
+    위의 구조화된 프로젝트 경험들을 JSON 배열로 변환
   ],
   "experiences": [
-    {{
-      "category": "경험 카테고리",
-      "experience": "구체적 경험 내용",
-      "lesson": "얻은 교훈이나 깨달음"
-    }}
+    위의 의미있는 경험들을 JSON 배열로 변환  
   ],
   "weaknesses": [
-    "약점1",
-    "약점2"
+    "실제 경험에서 유추 가능한 개선점이나 도전 과제 2개"
   ],
-  "motivation": "지원 동기",
+  "motivation": "회사 정보와 개인 경험을 연결한 구체적인 지원 동기",
   "inferred_personal_experiences": [
     {{
-      "category": "경험 카테고리",
-      "experience": "개인적 경험 내용",
-      "lesson": "얻은 교훈"
+      "category": "성장 경험",
+      "experience": "위 경험들에서 더 개인적이고 감정적인 측면을 추론한 구체적 내용",
+      "lesson": "그 경험을 통해 얻은 교훈이나 깨달음"
     }}
   ],
-  "career_goal": "커리어 목표",
-  "personality_traits": ["성격 특성1", "성격 특성2"],
-  "interview_style": "면접 스타일",
+  "career_goal": "현재 경험과 회사 비전을 연결한 구체적 목표",
+  "personality_traits": ["실제 경험과 활동에서 유추 가능한 성격 특성"],
+  "interview_style": "위 모든 정보를 종합한 면접 스타일",
   "generated_by": "{model_name}"
 }}
 
