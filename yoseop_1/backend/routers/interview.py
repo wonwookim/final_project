@@ -173,7 +173,7 @@ async def start_ai_competition(
     service: InterviewService = Depends(get_interview_service)
 ):
     """AI 지원자와의 경쟁 면접 시작"""
-    start_time = time.perf_counter()  # <--- 추가: 시간 측정 시작
+    start_time = time.perf_counter()  # 시간 측정 시작
     try:
         # 🐛 디버깅: FastAPI에서 받은 설정값 로깅
         interview_logger.info(f"🐛 FastAPI DEBUG: 받은 settings = {settings.dict()}")
@@ -196,7 +196,7 @@ async def start_ai_competition(
                     "posting_id": settings.posting_id,
                     "company_id": posting_info.get('company_id'),
                     "position_id": posting_info.get('position_id'),
-                    "difficulty": settings.difficulty,  # 🎯 난이도 값 추가
+                    "difficulty": settings.difficulty,  # 난이도 값 추가 (첫 번째 파일에서)
                     "use_interviewer_service": settings.use_interviewer_service
                 }
             else:
@@ -205,7 +205,7 @@ async def start_ai_competition(
                     "company": settings.company,
                     "position": settings.position,
                     "candidate_name": settings.candidate_name,
-                    "difficulty": settings.difficulty,  # 🎯 난이도 값 추가
+                    "difficulty": settings.difficulty,  # 난이도 값 추가 (첫 번째 파일에서)
                     "use_interviewer_service": settings.use_interviewer_service
                 }
         else:
@@ -214,7 +214,7 @@ async def start_ai_competition(
                 "company": settings.company,
                 "position": settings.position,
                 "candidate_name": settings.candidate_name,
-                "difficulty": settings.difficulty,  # 🎯 난이도 값 추가
+                "difficulty": settings.difficulty,  # 난이도 값 추가 (첫 번째 파일에서)
                 "use_interviewer_service": settings.use_interviewer_service
             }
         
@@ -223,7 +223,7 @@ async def start_ai_competition(
         
         result = await service.start_ai_competition(settings_dict, start_time=start_time)
         
-        # <--- 추가: 전체 소요 시간 로깅
+        # 전체 소요 시간 로깅 (첫 번째 파일에서)
         end_time = time.perf_counter()
         elapsed_time = end_time - start_time
         interview_logger.info(f"✅ AI 경쟁 면접 시작 성공. 총 처리 시간: {elapsed_time:.4f}초")
@@ -231,7 +231,7 @@ async def start_ai_competition(
         return result
         
     except Exception as e:
-        # <--- 추가: 에러 발생 시에도 소요 시간 로깅
+        # 에러 발생 시에도 소요 시간 로깅 (첫 번째 파일에서)
         end_time = time.perf_counter()
         elapsed_time = end_time - start_time
         interview_logger.error(f"AI 경쟁 면접 시작 오류: {str(e)}. 처리 시간: {elapsed_time:.4f}초")
@@ -294,13 +294,6 @@ async def get_session_state(
         raise
     except Exception as e:
         interview_logger.error(f"세션 상태 조회 오류: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-        
-        interview_logger.info(f"✅ 사용자 답변 제출 완료: {submission.session_id}")
-        return result
-        
-    except Exception as e:
-        interview_logger.error(f"사용자 답변 제출 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @interview_router.get("/ai-answer/{session_id}/{question_id}")
@@ -374,6 +367,7 @@ async def get_turn_based_question(
 @interview_router.get("/history", response_model=List[InterviewResponse])
 async def get_interview_history(current_user: UserResponse = Depends(auth_service.get_current_user)):
     """현재 인증된 사용자의 면접 기록을 Supabase에서 조회합니다."""
+    # 첫 번째 파일의 더 상세한 쿼리 사용 (company, position join 포함)
     res = supabase_client.client.from_("interview").select(
         "*, company(name), position(position_name)"
     ).eq("user_id", current_user.user_id).execute()
@@ -441,7 +435,7 @@ async def start_text_competition(
     try:
         interview_logger.info(f"🎯 텍스트 경쟁 면접 시작 요청: {settings.company} - {settings.position}")
         
-        # 🔍 디버깅: 받은 설정 데이터 확인
+        # 🔍 디버깅: 받은 설정 데이터 확인 (첫 번째 파일에서)
         interview_logger.info(f"📋 받은 설정 데이터: company={settings.company}, position={settings.position}, candidate_name={settings.candidate_name}")
         interview_logger.info(f"📄 이력서 데이터 확인: {settings.resume is not None}")
         if settings.resume:
@@ -452,8 +446,8 @@ async def start_text_competition(
             "position": settings.position,
             "candidate_name": settings.candidate_name,
             "documents": settings.documents or [],
-            "resume": settings.resume,  # 🆕 이력서 데이터 추가
-            "difficulty": settings.difficulty  # 🆕 난이도 추가
+            "resume": settings.resume,  # 🆕 이력서 데이터 추가 (첫 번째 파일에서)
+            "difficulty": settings.difficulty  # 🆕 난이도 추가 (첫 번째 파일에서)
         }
         
         result = await temp_service.start_text_interview(settings_dict)
@@ -577,3 +571,62 @@ async def get_text_interview_stats(
     except Exception as e:
         interview_logger.error(f"❌ 텍스트 면접 통계 조회 실패: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# ========================================
+# 🎯 Feedback 관련 엔드포인트 추가 (두 번째 파일에서)
+# ========================================
+
+# Feedback 모델 임포트
+try:
+    from llm.feedback.api_models import QuestionRequest, QuestionResponse, PlansRequest, PlansResponse
+    from llm.feedback.api_service import InterviewEvaluationService
+    
+    # 전역 평가 서비스 인스턴스 (싱글톤)
+    evaluation_service = InterviewEvaluationService()
+    
+    @interview_router.post("/feedback/evaluate", response_model=QuestionResponse)
+    async def evaluate_interview(request: QuestionRequest):
+        """면접 질문-답변 일괄 평가"""
+        try:
+            interview_logger.info(f"면접 평가 요청: user_id={request.user_id}, questions={len(request.qa_pairs)}")
+            
+            result = evaluation_service.evaluate_multiple_questions(
+                user_id=request.user_id,
+                qa_pairs=request.qa_pairs,
+                ai_resume_id=request.ai_resume_id,
+                user_resume_id=request.user_resume_id,
+                posting_id=request.posting_id,
+                company_id=request.company_id,
+                position_id=request.position_id
+            )
+            
+            return QuestionResponse(**result)
+            
+        except Exception as e:
+            interview_logger.error(f"면접 평가 오류: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"면접 평가 중 오류 발생: {str(e)}")
+
+    @interview_router.post("/feedback/plans", response_model=PlansResponse)
+    async def generate_interview_plans(request: PlansRequest):
+        """면접 준비 계획 생성"""
+        try:
+            interview_logger.info(f"면접 계획 생성 요청: interview_id={request.interview_id}")
+            
+            result = evaluation_service.generate_interview_plans(request.interview_id)
+            
+            return PlansResponse(**result)
+            
+        except Exception as e:
+            interview_logger.error(f"면접 계획 생성 오류: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"면접 계획 생성 중 오류 발생: {str(e)}")
+
+except ImportError as e:
+    interview_logger.warning(f"Feedback 모듈 로드 실패: {e}")
+    
+    @interview_router.post("/feedback/evaluate")
+    async def evaluate_interview_fallback():
+        raise HTTPException(status_code=503, detail="면접 평가 서비스를 사용할 수 없습니다.")
+    
+    @interview_router.post("/feedback/plans")
+    async def generate_interview_plans_fallback():
+        raise HTTPException(status_code=503, detail="면접 계획 서비스를 사용할 수 없습니다.")
