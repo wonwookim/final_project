@@ -22,6 +22,7 @@ import JobPostingSelection from './pages/interview/JobPostingSelection';
 import ResumeSelection from './pages/interview/ResumeSelection';
 import AISetup from './pages/interview/AISetup';
 import EnvironmentCheck from './pages/interview/EnvironmentCheck';
+import OAuthCallbackPage from './pages/OAuthCallbackPage';
 
 function App() {
   return (
@@ -44,6 +45,9 @@ function App() {
                 </ProtectedRoute>
               } />
               <Route path="/signup" element={<SignUpPage />} />
+              
+              {/* OAuth 통합 콜백 라우트 */}
+              <Route path="/auth/callback" element={<OAuthCallbackPage />} />
               
               {/* New Interview Flow - 4 Steps */}
               <Route path="/interview/job-posting" element={
