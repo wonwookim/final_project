@@ -2,6 +2,7 @@ import time
 import json
 import random
 import asyncio
+import re
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 
@@ -135,18 +136,34 @@ class Orchestrator:
                 
         elif task == "answer_generated":
             # 기존 답변 처리 (메인 질문 또는 공통 꼬리질문)
+            # AI가 실제로 받은 질문이 사용자 질문과 다를 수 있으므로 보정
+            if from_agent == 'ai' and '_ai_actual_question' in self.session_state:
+                question_text = self.session_state.pop('_ai_actual_question')
+            else:
+                question_text = self.session_state['current_question']
+
             self.session_state['qa_history'].append({
-                "question": self.session_state['current_question'],
+                "question": question_text,
                 "answerer": from_agent,
                 "answer": content
             })
 
             # 두 답변이 모두 완료되면 턴 증가 및 꼬리 질문 상태 업데이트
-            current_answers = len([qa for qa in self.session_state['qa_history']
-                                  if qa['question'] == self.session_state['current_question']])
-
-            if current_answers >= 2:
-                self._handle_turn_completion_for_common_question()
+            # 현재 질문(사용자용)과 AI용 변환 텍스트 둘 다에 대해 답변이 존재하는지 확인
+            try:
+                user_question = self.session_state['current_question']
+                ai_question_variant = self._format_question_for_ai(user_question)
+                answers_for_pair = [qa for qa in self.session_state['qa_history']
+                                    if qa['question'] in (user_question, ai_question_variant)]
+                answerers = {qa['answerer'] for qa in answers_for_pair}
+                if {'user', 'ai'}.issubset(answerers):
+                    self._handle_turn_completion_for_common_question()
+            except Exception:
+                # 폴백: 기존 방식으로 현재 질문 텍스트 기준 카운트
+                current_answers = len([qa for qa in self.session_state['qa_history']
+                                      if qa['question'] == self.session_state['current_question']])
+                if current_answers >= 2:
+                    self._handle_turn_completion_for_common_question()
 
     def _handle_turn_completion_for_common_question(self):
         """공통 질문 완료 시 처리"""
@@ -202,7 +219,7 @@ class Orchestrator:
             message["metadata"]["next_agent"] = "interviewer"
             return message
         
-        # 완료 조건 체크
+        # 완료 조건 체크 (턴 0: 인트로 제외)
         if current_turn >= self.session_state.get('total_question_limit', 15):
             self.session_state['is_completed'] = True
             message = self.create_agent_message(
@@ -250,18 +267,27 @@ class Orchestrator:
                 message["metadata"]["next_agent"] = "interviewer"
                 return message
         
-        # 현재 메인 질문에 대한 답변 수 확인
-        current_answers = len([qa for qa in self.session_state['qa_history'] 
-                             if qa['question'] == self.session_state['current_question']])
+        # 현재 메인 질문에 대한 답변 수 확인 (AI용 변형 포함)
+        user_question = self.session_state['current_question']
+        ai_question_variant = self._format_question_for_ai(user_question) if user_question else None
+        current_answers = len([qa for qa in self.session_state['qa_history']
+                             if qa['question'] == user_question or (ai_question_variant and qa['question'] == ai_question_variant)])
         
         # 첫 번째 답변: 랜덤 선택
         if current_answers == 0:
             selected_agent = 'user' if self._random_select() == -1 else 'ai'
+            # 에이전트별로 전달할 질문 텍스트 결정
+            if selected_agent == 'ai':
+                question_text = self._format_question_for_ai(self.session_state['current_question'])
+                # QA 기록을 위해 임시 저장
+                self.session_state['_ai_actual_question'] = question_text
+            else:
+                question_text = self.session_state['current_question']
             message = self.create_agent_message(
                 session_id=self.session_id,
                 task="generate_answer",
                 from_agent="orchestrator",
-                content_text=self.session_state['current_question'],
+                content_text=question_text,
                 turn_count=current_turn,
                 start_time=start_time
             )
@@ -273,11 +299,17 @@ class Orchestrator:
             # 첫 번째 답변자 확인
             first_answerer = self.session_state['qa_history'][-1]['answerer']
             selected_agent = 'ai' if first_answerer == 'user' else 'user'
+            # 에이전트별로 전달할 질문 텍스트 결정
+            if selected_agent == 'ai':
+                question_text = self._format_question_for_ai(self.session_state['current_question'])
+                self.session_state['_ai_actual_question'] = question_text
+            else:
+                question_text = self.session_state['current_question']
             message = self.create_agent_message(
                 session_id=self.session_id,
                 task="generate_answer",
                 from_agent="orchestrator",
-                content_text=self.session_state['current_question'],
+                content_text=question_text,
                 turn_count=current_turn,
                 start_time=start_time
             )
@@ -733,8 +765,9 @@ class Orchestrator:
         """AI 지원자 작업 처리"""
         print(f"[TRACE] Orchestrator -> AI (question) : {question[:50]}...")
         
-        # 예전 로직으로 복원: 원본 질문 그대로 사용
-        ai_answer = await self._request_answer_from_ai_candidate(question)
+        # AI에게 전달할 질문에서 사용자 이름 호칭을 AI용으로 최소 치환
+        ai_question = self._format_question_for_ai(question)
+        ai_answer = await self._request_answer_from_ai_candidate(ai_question)
         
         # 🆕 개별 질문 상태 체크
         current_questions = self.session_state.get('current_questions')
@@ -747,6 +780,9 @@ class Orchestrator:
         # 개별 질문 여부에 따라 task 결정
         task = "individual_answer_generated" if is_individual_question else "answer_generated"
         
+        # AI가 실제로 받은 질문을 상태에 임시 저장 (qa 기록용)
+        self.session_state['_ai_actual_question'] = ai_question
+
         ai_message = self.create_agent_message(
             session_id=self.session_id,
             task=task,
@@ -801,5 +837,43 @@ class Orchestrator:
         }
         
         return response
+
+    def _format_question_for_ai(self, question: str) -> str:
+        """AI에게 보낼 때 사용자 이름 호칭을 'AI 지원자님'으로 최소 치환"""
+        try:
+            if not isinstance(question, str):
+                return question
+
+            user_name_raw = self.session_state.get('user_name', '지원자') or '지원자'
+            # 공백 제거 및 '님' 제거한 두 가지 버전 준비
+            user_name_compact = re.sub(r"\s+", "", user_name_raw)
+            name_wo_suffix = user_name_compact[:-1] if user_name_compact.endswith('님') else user_name_compact
+
+            # 패턴들: 맨 앞에 등장하는 이름 호칭 + 선택적 공백/콤마를 AI용으로 치환
+            patterns = [
+                rf"^\s*{re.escape(name_wo_suffix)}\s*님\s*[,， ]*",
+                rf"^\s*{re.escape(user_name_compact)}\s*[,， ]*",
+                rf"{re.escape(name_wo_suffix)}\s*님\s*[,， ]*",
+                rf"{re.escape(user_name_compact)}\s*[,， ]*",
+            ]
+
+            for pat in patterns:
+                if re.search(pat, question):
+                    question = re.sub(pat, "AI 지원자님, ", question, count=1)
+                    break
+
+            # 일반적인 '지원자님' 호칭 치환 (한 번만)
+            if re.search(r"지원자님\s*[,， ]*", question):
+                question = re.sub(r"지원자님\s*[,， ]*", "AI 지원자님, ", question, count=1)
+
+            # 선두에 중복된 'AI ' 토큰 정리: 'AI AI 지원자님' -> 'AI 지원자님'
+            question = re.sub(r"^\s*(AI\s+)+지원자님\s*[,， ]*", "AI 지원자님, ", question)
+
+            # 호칭이 없으면 앞에만 붙임 (중복 방지)
+            if not question.strip().startswith("AI 지원자님"):
+                question = f"AI 지원자님, {question}"
+            return question
+        except Exception:
+            return question
 
     
