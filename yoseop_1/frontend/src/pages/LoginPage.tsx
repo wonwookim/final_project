@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import { handleApiError } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 
