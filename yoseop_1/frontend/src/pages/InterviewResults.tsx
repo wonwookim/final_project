@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -156,30 +156,8 @@ const InterviewResults: React.FC = () => {
     }
   };
 
-  // 세션 ID가 없으면 기본 결과 페이지로 리다이렉트
-  useEffect(() => {
-    if (!sessionId) {
-      // 세션 ID가 없는 경우 (직접 접근) - 가라 데이터 사용
-      setFeedbackData(mockFeedbackData);
-      setUserSummary(mockUserSummary);
-      setAiSummary(mockAiSummary);
-      setLongTermFeedback(mockLongTermFeedback);
-      setIsLoading(false);
-    } else {
-      // 세션 ID가 있는 경우 - 실제 데이터 로드
-      loadInterviewResults(sessionId);
-    }
-  }, [sessionId]);
-
-  // location state에서 탭 설정 확인
-  useEffect(() => {
-    if (location.state?.tab) {
-      setActiveTab(location.state.tab);
-    }
-  }, [location.state]);
-
   // 면접 결과 데이터 로드 함수
-  const loadInterviewResults = async (sessionId: string) => {
+  const loadInterviewResults = useCallback(async (sessionId: string) => {
     setIsLoading(true);
     try {
       // TODO: 실제 API 호출로 대체
@@ -201,7 +179,29 @@ const InterviewResults: React.FC = () => {
       console.error('면접 결과 로드 실패:', error);
       setIsLoading(false);
     }
-  };
+  }, [mockFeedbackData, mockUserSummary, mockAiSummary, mockLongTermFeedback]);
+
+  // 세션 ID가 없으면 기본 결과 페이지로 리다이렉트
+  useEffect(() => {
+    if (!sessionId) {
+      // 세션 ID가 없는 경우 (직접 접근) - 가라 데이터 사용
+      setFeedbackData(mockFeedbackData);
+      setUserSummary(mockUserSummary);
+      setAiSummary(mockAiSummary);
+      setLongTermFeedback(mockLongTermFeedback);
+      setIsLoading(false);
+    } else {
+      // 세션 ID가 있는 경우 - 실제 데이터 로드
+      loadInterviewResults(sessionId);
+    }
+  }, [sessionId, loadInterviewResults, mockAiSummary, mockFeedbackData, mockLongTermFeedback, mockUserSummary]);
+
+  // location state에서 탭 설정 확인
+  useEffect(() => {
+    if (location.state?.tab) {
+      setActiveTab(location.state.tab);
+    }
+  }, [location.state]);
 
   const getScoreColor = (score: number) => {
     if (score >= 90) return 'text-green-600';

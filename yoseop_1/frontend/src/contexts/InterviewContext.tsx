@@ -528,7 +528,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         payload: [] 
       });
     }
-  }, [authState.isAuthenticated, authState.user?.email, state.historyLoading, dispatch]);
+  }, [authState.isAuthenticated, authState.user?.email, authState.user?.name, state.historyLoading, dispatch]);
 
   // 초기 로드 시 인증 상태 동기화
   useEffect(() => {
@@ -571,7 +571,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       hasInitialized.current = true;
       loadInterviewHistory(true); // force=true로 강제 새로고침
     }
-  }, [authState.isAuthenticated, authState.user?.user_id, loadInterviewHistory]);
+  }, [authState.isAuthenticated, authState.user?.user_id, authState.user, loadInterviewHistory]);
   
   return (
     <InterviewContext.Provider value={{ state, dispatch, loadInterviewHistory, updateAuthState }}>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -12,11 +12,7 @@ const OAuthCallbackPage: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const isProcessing = useRef(false);
 
-  useEffect(() => {
-    handleOAuthCallback();
-  }, []);
-
-  const handleOAuthCallback = async () => {
+  const handleOAuthCallback = useCallback(async () => {
     // 중복 실행 방지 체크
     if (isProcessing.current) {
       console.log('🚫 OAuth 콜백이 이미 처리 중입니다. 중복 실행을 방지합니다.');
@@ -81,7 +77,11 @@ const OAuthCallbackPage: React.FC = () => {
       // 성공/실패와 관계없이 처리 완료 표시 유지 (재실행 방지)
       // isProcessing.current = false; // 의도적으로 리셋하지 않음 (재실행 완전 방지)
     }
-  };
+  }, [navigate, checkAuthStatus]);
+
+  useEffect(() => {
+    handleOAuthCallback();
+  }, [handleOAuthCallback]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 flex items-center justify-center">
