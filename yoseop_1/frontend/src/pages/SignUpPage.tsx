@@ -22,7 +22,7 @@ const validatePassword = (password: string): PasswordValidation => {
     length: password.length >= 8,
     uppercase: /[A-Z]/.test(password),
     lowercase: /[a-z]/.test(password),
-    special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)
+    special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?]/.test(password)
   };
 
   const errors: string[] = [];
