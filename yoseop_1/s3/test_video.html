@@ -121,7 +121,9 @@
                     },
                     body: JSON.stringify({
                         interview_id: INTERVIEW_ID,
-                        file_name: `test-${Date.now()}.webm`
+                        file_name: `test-${Date.now()}.webm`,
+                        file_type: 'video',
+                        file_size: blob.size
                     })
                 });
                 
@@ -143,7 +145,7 @@
                 }
                 
                 // 3. 업로드 완료 처리
-                await fetch(`/video/complete/${media_id}`, {
+                await fetch(`/video/complete/${media_id}?file_size=${blob.size}`, {
                     method: 'PATCH',
                     headers: { 'Authorization': `Bearer ${TOKEN}` }
                 });

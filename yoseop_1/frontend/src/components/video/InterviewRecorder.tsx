@@ -19,7 +19,7 @@ interface PlayResponse {
 // MediaRecorder 타입 확장 (TypeScript 타입 문제 해결용)
 declare global {
   interface MediaRecorder {
-    mimeType: string;
+    readonly mimeType: string;
   }
 }
 
@@ -93,7 +93,7 @@ const InterviewRecorder: React.FC<RecorderProps> = ({ interviewId, onUploadCompl
 
   // 녹화 정지
   const stopRecording = () => {
-    if (mediaRecorderRef.current) {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
     }
