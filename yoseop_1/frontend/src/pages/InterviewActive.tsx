@@ -1306,13 +1306,31 @@ const InterviewActive: React.FC = () => {
   // STT/TTS 관련 함수들
   const handleStartSTT = () => {
     if (sttInstance && !isSTTActive) {
+      console.log('🎤 STT 시작');
       sttInstance.start();
+      setIsSTTActive(true);
     }
   };
 
   const handleStopSTT = () => {
     if (sttInstance && isSTTActive) {
+      console.log('🎤 STT 종료');
       sttInstance.stop();
+      setIsSTTActive(false);
+    }
+  };
+
+  // 🆕 음성 입력으로 답변 작성
+  const handleVoiceInput = () => {
+    if (!sttInstance) {
+      console.error('❌ STT 인스턴스가 없습니다');
+      return;
+    }
+
+    if (isSTTActive) {
+      handleStopSTT();
+    } else {
+      handleStartSTT();
     }
   };
 
@@ -2360,19 +2378,42 @@ const InterviewActive: React.FC = () => {
             {/* 답변 입력 오버레이 (사용자 턴일 때만) */}
             {currentPhase === 'user_turn' && (
               <div className="absolute bottom-0 left-0 right-0 bg-black/80 p-4">
-                <textarea
-                  ref={answerRef}
-                  value={currentAnswer}
-                  readOnly={true}
-                  className="w-full h-20 p-2 bg-gray-800 text-white border border-gray-600 rounded-lg resize-none text-sm cursor-not-allowed"
-                  placeholder="🎤 음성으로 답변해주세요. 마이크 버튼을 눌러 시작하세요."
-                />
+                <div className="flex items-start gap-2">
+                  <textarea
+                    ref={answerRef}
+                    value={currentAnswer}
+                    readOnly={true}
+                    className="flex-1 h-20 p-2 bg-gray-800 text-white border border-gray-600 rounded-lg resize-none text-sm cursor-not-allowed"
+                    placeholder="🎤 음성으로 답변해주세요. 마이크 버튼을 눌러 시작하세요."
+                  />
+                  {/* 🆕 음성 입력 버튼 */}
+                  <button
+                    onClick={handleVoiceInput}
+                    disabled={!sttInstance}
+                    className={`px-4 py-2 rounded-lg text-white font-medium transition-all ${
+                      isSTTActive 
+                        ? 'bg-red-500 hover:bg-red-600' 
+                        : 'bg-blue-500 hover:bg-blue-600'
+                    } ${!sttInstance ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {isSTTActive ? '⏹️ 중지' : '🎤 음성'}
+                  </button>
+                </div>
                 <div className="flex items-center justify-between mt-2">
                   <div className="text-gray-400 text-xs">{currentAnswer.length}자</div>
                   <div className={`text-lg font-bold ${getTimerColor()}`}>
                     {formatTime(timeLeft)}
                   </div>
                 </div>
+                {/* 🆕 음성 인식 상태 표시 */}
+                {isSTTActive && (
+                  <div className="mt-2 text-center">
+                    <div className="inline-flex items-center gap-2 bg-red-500/20 text-red-400 px-3 py-1 rounded-full text-sm">
+                      <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse"></div>
+                      음성 인식 중...
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             
