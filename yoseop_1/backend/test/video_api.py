@@ -144,22 +144,28 @@ async def get_test_upload_url(
         'media_id': result.data[0]['media_id']
     }
 
-@router.get("/play/{interview_id}")
-async def get_play_url(interview_id: int, current_user=Depends(auth_service.get_current_user)):
-    """재생용 Presigned URL 생성"""
+@router.get("/play/{test_id}")
+async def get_play_url(test_id: str, current_user=Depends(auth_service.get_current_user)):
+    """재생용 Presigned URL 생성 (test_id = media_id)"""
     
     try:
-        # DB에서 파일 정보 조회
+        # DB에서 파일 정보 조회 (media_id 기반, RLS 정책 통과를 위해 user_id도 확인)
         supabase = get_supabase_client()
-        result = supabase.table('media_files').select('s3_key, file_name, file_type').eq('user_id', current_user.user_id).eq('interview_id', interview_id).execute()
+        result = supabase.table('media_files').select('s3_key, file_name, file_type, media_id').eq('media_id', test_id).eq('user_id', current_user.user_id).execute()
+        
+        print(f"[DEBUG] 재생 API 호출: test_id={test_id}, user_id={current_user.user_id}")
+        print(f"[DEBUG] DB 쿼리 결과: {result.data}")
         
         if not result.data:
-            raise HTTPException(status_code=404, detail="비디오를 찾을 수 없습니다")
+            print(f"[DEBUG] 파일을 찾을 수 없음: media_id={test_id}")
+            raise HTTPException(status_code=404, detail=f"미디어 파일을 찾을 수 없습니다 (ID: {test_id})")
         
-        # 가장 최근 파일 선택 (여러 파일이 있을 경우)
-        file_info = result.data[0] if result.data else None
-        if not file_info:
-            raise HTTPException(status_code=404, detail="비디오를 찾을 수 없습니다")
+        # 파일 정보 가져오기
+        file_info = result.data[0]
+        print(f"[DEBUG] 파일 정보 찾음: {file_info}")
+        
+        # 권한 확인: 해당 사용자의 파일인지 확인 (선택적)
+        # 테스트 환경에서는 일단 생략하고 나중에 필요시 추가
             
         s3_key = file_info['s3_key']
         
@@ -173,7 +179,8 @@ async def get_play_url(interview_id: int, current_user=Depends(auth_service.get_
         return {
             'play_url': play_url,
             'file_name': file_info['file_name'],
-            'file_type': file_info['file_type']
+            'file_type': file_info['file_type'],
+            'test_id': test_id
         }
         
     except HTTPException:
@@ -182,11 +189,22 @@ async def get_play_url(interview_id: int, current_user=Depends(auth_service.get_
         raise HTTPException(status_code=500, detail=f"재생 URL 생성 오류: {str(e)}")
 
 @router.patch("/complete/{media_id}")
-async def complete_upload(media_id: str, file_size: int = None, duration: int = None):
+async def complete_upload(
+    media_id: str, 
+    file_size: int = None, 
+    duration: int = None,
+    current_user=Depends(auth_service.get_current_user),  # 인증 의존성 추가
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
     """업로드 완료 처리 - 파일 크기와 지속시간 업데이트"""
     
+    print(f"[DEBUG] 완료 API 호출: media_id={media_id}, file_size={file_size}, user_id={current_user.user_id}")
+    
     try:
-        supabase = get_supabase_client()
+        # 사용자 토큰을 사용한 Supabase 클라이언트로 RLS 정책 통과
+        user_token = credentials.credentials
+        supabase = get_user_supabase_client(user_token)
+        print(f"[DEBUG] Using user token for DB access: {user_token[:50]}...")
         update_data = {'updated_at': 'now()'}
         
         if file_size:
@@ -194,11 +212,35 @@ async def complete_upload(media_id: str, file_size: int = None, duration: int = 
         if duration:
             update_data['duration'] = duration
             
-        result = supabase.table('media_files').update(update_data).eq('media_id', media_id).execute()
+        # 먼저 레코드가 존재하는지 확인
+        check_result = supabase.table('media_files').select('*').eq('media_id', media_id).eq('user_id', current_user.user_id).execute()
+        print(f"[DEBUG] 레코드 존재 확인: {len(check_result.data)}개 발견")
         
-        if not result.data:
-            raise HTTPException(status_code=404, detail="미디어 파일을 찾을 수 없습니다")
+        if not check_result.data:
+            print(f"[DEBUG] 미디어 파일 찾을 수 없음: media_id={media_id}, user_id={current_user.user_id}")
+            raise HTTPException(status_code=404, detail=f"미디어 파일을 찾을 수 없습니다 (ID: {media_id})")
+        
+        existing_record = check_result.data[0]
+        print(f"[DEBUG] 기존 레코드: file_size={existing_record.get('file_size')}, duration={existing_record.get('duration')}")
+        
+        # 실제로 업데이트가 필요한 필드만 업데이트
+        needs_update = False
+        if file_size and existing_record.get('file_size') != file_size:
+            update_data['file_size'] = file_size
+            needs_update = True
+        if duration and existing_record.get('duration') != duration:
+            update_data['duration'] = duration  
+            needs_update = True
             
+        if needs_update:
+            print(f"[DEBUG] DB 업데이트 데이터: {update_data}")
+            result = supabase.table('media_files').update(update_data).eq('media_id', media_id).eq('user_id', current_user.user_id).execute()
+            print(f"[DEBUG] DB 업데이트 결과: {result.data}")
+        else:
+            print(f"[DEBUG] 업데이트 필요 없음 - 이미 최신 상태")
+            result = check_result  # 기존 레코드를 결과로 사용
+            
+        print(f"[✅] 완료 API 성공: media_id={media_id}")
         return {'message': '업로드 완료', 'media_id': media_id}
         
     except HTTPException:
