@@ -220,7 +220,7 @@ class Orchestrator:
             return message
         
         # 완료 조건 체크 (턴 0: 인트로 제외)
-        if current_turn >= self.session_state.get('total_question_limit', 15):
+        if current_turn > self.session_state.get('total_question_limit', 15):
             self.session_state['is_completed'] = True
             message = self.create_agent_message(
                 session_id=self.session_id,
