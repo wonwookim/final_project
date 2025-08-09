@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import VideoTestModal from '../components/test/VideoTestModal';
 import { useInterviewStats } from '../hooks/useInterviewHistory';
 
 const MainPage: React.FC = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
+  const [isTestModalOpen, setIsTestModalOpen] = useState(false);
   
   // Context에서 통계 데이터 가져오기
   const { totalInterviews, averageScore, lastInterviewDate, isLoading: statsLoading } = useInterviewStats();
@@ -194,6 +196,21 @@ const MainPage: React.FC = () => {
           </button>
         </div>
       </main>
+
+      {/* S3 비디오 테스트 버튼 (개발자 도구) */}
+      <button
+        onClick={() => setIsTestModalOpen(true)}
+        className="fixed bottom-6 right-6 bg-gradient-to-r from-orange-500 to-red-500 text-white p-4 rounded-full shadow-lg hover:shadow-xl hover:scale-110 transition-all duration-300 z-40"
+        title="S3 비디오 테스트"
+      >
+        🎬
+      </button>
+
+      {/* 테스트 모달 */}
+      <VideoTestModal
+        isOpen={isTestModalOpen}
+        onClose={() => setIsTestModalOpen(false)}
+      />
     </div>
   );
 };

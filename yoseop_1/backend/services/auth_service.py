@@ -226,11 +226,15 @@ class AuthService:
         """현재 인증된 사용자 정보 반환 (Depends로 사용)"""
         try:
             token = credentials.credentials
+            print(f"🔍 Received token: {token[:50]}...") # 토큰 앞부분만 로깅
 
             # Supabase JWT 토큰 검증
+            print("🔍 Calling supabase.auth.get_user...")
             user_response = self.supabase.auth.get_user(token)
+            print(f"🔍 Supabase response: {user_response}")
             
             if user_response.user is None:
+                print("❌ user_response.user is None")
                 raise HTTPException(status_code=401, detail="인증이 필요합니다.")
             
             # User 테이블에서 auth_id로 상세 정보 조회
@@ -250,7 +254,9 @@ class AuthService:
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(status_code=401, detail="사용자 인증에 실패했습니다.")
+            print(f"❌ Auth error: {str(e)}")
+            print(f"❌ Auth error type: {type(e)}")
+            raise HTTPException(status_code=401, detail=f"사용자 인증에 실패했습니다: {str(e)}")
     
     async def send_email_otp(self, email: str) -> Dict[str, Any]:
         """회원가입용 이메일 OTP 코드 발송"""
