@@ -644,6 +644,18 @@ class Orchestrator:
                     "qa_history": self.session_state.get('qa_history', []),
                     "session_id": self.session_id
                 }
+                # 🆕 프론트 추출용 AI 메타데이터 포함 (resume_id 전달)
+                try:
+                    ai_resume_id = self.session_state.get('ai_resume_id') or (
+                        (self.session_state.get('ai_persona') or {}).get('resume_id') if isinstance(self.session_state.get('ai_persona'), dict) else None
+                    )
+                except Exception:
+                    ai_resume_id = None
+                result['turn_info'] = {
+                    'ai_metadata': {
+                        'resume_id': ai_resume_id
+                    }
+                }
                 print(f"[TRACE] Orchestrator -> Client (complete)")
                 print(json.dumps(result, indent=2, ensure_ascii=False))
                 return result
@@ -829,11 +841,20 @@ class Orchestrator:
         response['session_id'] = self.session_id
         
         # 🆕 턴 정보 추가 (개별 질문 정보 포함)
+        try:
+            ai_resume_id = self.session_state.get('ai_resume_id') or (
+                (self.session_state.get('ai_persona') or {}).get('resume_id') if isinstance(self.session_state.get('ai_persona'), dict) else None
+            )
+        except Exception:
+            ai_resume_id = None
         response['turn_info'] = {
             'current_turn': self.session_state.get('turn_count', 0),
             'is_user_turn': True,
             'is_individual_question': is_individual_question,
-            'question_type': 'individual_follow_up' if is_individual_question else 'main_question'
+            'question_type': 'individual_follow_up' if is_individual_question else 'main_question',
+            'ai_metadata': {
+                'resume_id': ai_resume_id
+            }
         }
         
         return response

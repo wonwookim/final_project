@@ -225,15 +225,6 @@ const InterviewGO: React.FC = () => {
         setIsTimerActive(false);
         setCanSubmit(false);
         console.log('✅ 면접 완료로 설정됨');
-        
-        // 🆕 백그라운드 피드백 자동 시작
-        const qaHistory = response?.qa_history;
-        if (qaHistory && qaHistory.length > 0) {
-          console.log('🔄 백그라운드 피드백 처리 시작...');
-          triggerBackgroundFeedback(qaHistory);
-        } else {
-          console.warn('⚠️ qa_history가 없어서 피드백을 처리할 수 없습니다:', response);
-        }
     } else if (nextAgent === 'user' || status === 'waiting_for_user' || turnInfo?.is_user_turn) {
         setCurrentPhase('user_turn');
         setCurrentTurn('user');

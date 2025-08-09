@@ -174,7 +174,8 @@ async def get_next_question_ai_competition(
 @interview_router.post("/ai/start")
 async def start_ai_competition(
     settings: InterviewSettings,
-    service: InterviewService = Depends(get_interview_service)
+    service: InterviewService = Depends(get_interview_service),
+    current_user: UserResponse = Depends(auth_service.get_current_user)
 ):
     """AI 지원자와의 경쟁 면접 시작"""
     start_time = time.perf_counter()  # 시간 측정 시작
@@ -201,7 +202,8 @@ async def start_ai_competition(
                     "company_id": posting_info.get('company_id'),
                     "position_id": posting_info.get('position_id'),
                     "difficulty": settings.difficulty,  # 난이도 값 추가 (첫 번째 파일에서)
-                    "use_interviewer_service": settings.use_interviewer_service
+                    "use_interviewer_service": settings.use_interviewer_service,
+                    "user_id": current_user.user_id
                 }
             else:
                 interview_logger.warning(f"⚠️ 채용공고를 찾을 수 없음: posting_id={settings.posting_id}, fallback to original")
@@ -210,7 +212,8 @@ async def start_ai_competition(
                     "position": settings.position,
                     "candidate_name": settings.candidate_name,
                     "difficulty": settings.difficulty,  # 난이도 값 추가 (첫 번째 파일에서)
-                    "use_interviewer_service": settings.use_interviewer_service
+                    "use_interviewer_service": settings.use_interviewer_service,
+                    "user_id": current_user.user_id
                 }
         else:
             # 기존 방식: company/position 문자열 사용
@@ -219,7 +222,8 @@ async def start_ai_competition(
                 "position": settings.position,
                 "candidate_name": settings.candidate_name,
                 "difficulty": settings.difficulty,  # 난이도 값 추가 (첫 번째 파일에서)
-                "use_interviewer_service": settings.use_interviewer_service
+                "use_interviewer_service": settings.use_interviewer_service,
+                "user_id": current_user.user_id
             }
         
         # 🐛 디버깅: 서비스에 전달할 settings_dict 로깅
@@ -378,7 +382,14 @@ async def get_interview_history(current_user: UserResponse = Depends(auth_servic
     
     if not res.data:
         raise HTTPException(status_code=404, detail="No interview history found")
-    return res.data
+    # ai_resume_id/user_resume_id가 None인 경우에도 스키마 검증을 통과하도록 보정
+    data = res.data
+    for row in data:
+        if 'ai_resume_id' in row and row['ai_resume_id'] is None:
+            row['ai_resume_id'] = None
+        if 'user_resume_id' in row and row['user_resume_id'] is None:
+            row['user_resume_id'] = None
+    return data
 
 
 @interview_router.get("/history/{interview_id}", response_model=List[InterviewHistoryResponse])

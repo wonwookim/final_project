@@ -80,8 +80,8 @@ class InterviewResponse(BaseModel):
     """면접 응답 모델"""
     interview_id: int
     user_id: int
-    ai_resume_id: int
-    user_resume_id: int
+    ai_resume_id: Optional[int] = None
+    user_resume_id: Optional[int] = None
     posting_id: int
     company_id: int
     position_id: int
