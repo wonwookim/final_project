@@ -184,6 +184,19 @@ async def start_ai_competition(
         interview_logger.info(f"🐛 FastAPI DEBUG: 받은 settings = {settings.dict()}")
         interview_logger.info(f"🐛 FastAPI DEBUG: use_interviewer_service = {settings.use_interviewer_service}")
         
+        # 🆕 user_resume_id가 없으면 DB에서 자동으로 조회
+        if not settings.user_resume_id:
+            try:
+                from backend.services.existing_tables_service import existing_tables_service
+                user_resumes = await existing_tables_service.get_user_resumes(current_user.user_id)
+                if user_resumes:
+                    settings.user_resume_id = user_resumes[0].get('user_resume_id')  # 첫 번째 이력서 사용
+                    interview_logger.info(f"✅ 자동 조회된 user_resume_id: {settings.user_resume_id}")
+                else:
+                    interview_logger.warning(f"⚠️ 사용자 이력서를 찾을 수 없음: user_id={current_user.user_id}")
+            except Exception as e:
+                interview_logger.error(f"❌ user_resume_id 자동 조회 실패: {e}")
+        
         # 🆕 posting_id가 있으면 DB에서 실제 채용공고 정보를 가져와서 사용
         if settings.posting_id:
             from backend.services.existing_tables_service import existing_tables_service
@@ -203,7 +216,8 @@ async def start_ai_competition(
                     "position_id": posting_info.get('position_id'),
                     "difficulty": settings.difficulty,  # 난이도 값 추가 (첫 번째 파일에서)
                     "use_interviewer_service": settings.use_interviewer_service,
-                    "user_id": current_user.user_id
+                    "user_id": current_user.user_id,
+                    "user_resume_id": settings.user_resume_id
                 }
             else:
                 interview_logger.warning(f"⚠️ 채용공고를 찾을 수 없음: posting_id={settings.posting_id}, fallback to original")
@@ -213,7 +227,8 @@ async def start_ai_competition(
                     "candidate_name": settings.candidate_name,
                     "difficulty": settings.difficulty,  # 난이도 값 추가 (첫 번째 파일에서)
                     "use_interviewer_service": settings.use_interviewer_service,
-                    "user_id": current_user.user_id
+                    "user_id": current_user.user_id,
+                    "user_resume_id": settings.user_resume_id
                 }
         else:
             # 기존 방식: company/position 문자열 사용
@@ -223,7 +238,8 @@ async def start_ai_competition(
                 "candidate_name": settings.candidate_name,
                 "difficulty": settings.difficulty,  # 난이도 값 추가 (첫 번째 파일에서)
                 "use_interviewer_service": settings.use_interviewer_service,
-                "user_id": current_user.user_id
+                "user_id": current_user.user_id,
+                "user_resume_id": settings.user_resume_id
             }
         
         # 🐛 디버깅: 서비스에 전달할 settings_dict 로깅

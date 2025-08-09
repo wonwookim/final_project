@@ -313,10 +313,11 @@ class InterviewService:
                 if user_eval and user_eval.get('success') and user_eval.get('interview_id'):
                     try:
                         evaluation_service.generate_interview_plans(user_eval['interview_id'])
-                    except Exception:
-                        pass
+                        interview_logger.info(f"✅ 면접 계획 생성 완료: interview_id={user_eval['interview_id']}")
+                    except Exception as e:
+                        interview_logger.error(f"❌ 면접 계획 생성 실패: interview_id={user_eval['interview_id']}, error={str(e)}", exc_info=True)
 
-            # AI 평가
+            # AI 평가 (계획 생성 없음 - AI는 학습/개선 불필요)
             if ai_qas:
                 ai_pairs = build_pairs(ai_qas)
                 ai_eval = evaluation_service.evaluate_multiple_questions(
@@ -328,12 +329,6 @@ class InterviewService:
                     company_id=company_id,
                     position_id=position_id,
                 )
-
-                if ai_eval and ai_eval.get('success') and ai_eval.get('interview_id'):
-                    try:
-                        evaluation_service.generate_interview_plans(ai_eval['interview_id'])
-                    except Exception:
-                        pass
 
         except Exception:
             # 조용히 실패 (로그는 상위에서 처리될 수 있음)
