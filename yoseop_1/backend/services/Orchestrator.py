@@ -113,11 +113,13 @@ class Orchestrator:
                 question_text = self.session_state.get('current_question', '')
             
             # qa_history에 답변 저장
-            self.session_state['qa_history'].append({
+            qa_entry = {
                 "question": question_text,
                 "answerer": from_agent,
                 "answer": content
-            })
+            }
+            self.session_state['qa_history'].append(qa_entry)
+            print(f"[DEBUG] QA 저장: answerer={from_agent}, question='{question_text[:50]}...', answer='{content[:30]}...'")
             
             # 개별 답변 완료 체크 (사용자와 AI 모두 답변했는지)
             if current_questions.get('is_individual', False):
@@ -142,11 +144,13 @@ class Orchestrator:
             else:
                 question_text = self.session_state['current_question']
 
-            self.session_state['qa_history'].append({
+            qa_entry = {
                 "question": question_text,
                 "answerer": from_agent,
                 "answer": content
-            })
+            }
+            self.session_state['qa_history'].append(qa_entry)
+            print(f"[DEBUG] QA 저장 (async): answerer={from_agent}, question='{question_text[:50]}...', answer='{content[:30]}...'")
 
             # 두 답변이 모두 완료되면 턴 증가 및 꼬리 질문 상태 업데이트
             # 현재 질문(사용자용)과 AI용 변환 텍스트 둘 다에 대해 답변이 존재하는지 확인

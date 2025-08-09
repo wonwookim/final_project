@@ -238,13 +238,28 @@ class InterviewServiceTemp:
                 chun_sik_answer=ai_answer_content
             )
             
-            # 4. 히스토리 업데이트
+            # 4. 히스토리 업데이트 - 사용자와 AI 답변을 각각 별도 엔트리로 저장
+            timestamp = datetime.now().isoformat()
+            sequence_base = len(session_data['qa_history'])
+            
+            # 사용자 답변 저장
             session_data['qa_history'].append({
                 'question': question_content,
-                'user_answer': user_answer,
-                'ai_answer': ai_answer_content,
+                'answerer': 'user',
+                'answer': user_answer,
                 'interviewer_type': interviewer_type,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': timestamp,
+                'sequence': sequence_base + 1
+            })
+            
+            # AI 답변 저장
+            session_data['qa_history'].append({
+                'question': question_content,
+                'answerer': 'ai',
+                'answer': ai_answer_content,
+                'interviewer_type': interviewer_type,
+                'timestamp': timestamp,
+                'sequence': sequence_base + 2
             })
             
             # 5. 현재 질문 업데이트
