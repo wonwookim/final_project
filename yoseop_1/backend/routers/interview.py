@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse, HTMLResponse
 from typing import Optional
 import logging
-from typing import List
+from typing import List, Union
 from backend.services.supabase_client import supabase_client
 from backend.schemas.user import UserResponse
 from schemas.interview import InterviewHistoryResponse, InterviewSettings, AnswerSubmission, AICompetitionAnswerSubmission, CompetitionTurnSubmission, InterviewResponse, TTSRequest, STTResponse
@@ -677,23 +677,48 @@ try:
     # 전역 평가 서비스 인스턴스 (싱글톤)
     evaluation_service = InterviewEvaluationService()
     
-    @interview_router.post("/feedback/evaluate", response_model=QuestionResponse)
-    async def evaluate_interview(request: QuestionRequest):
-        """면접 질문-답변 일괄 평가"""
+    @interview_router.post("/feedback/evaluate")
+    async def evaluate_interview(request: Union[QuestionRequest, List[QuestionRequest]]):
+        """면접 질문-답변 평가 (단일 또는 배치)"""
         try:
-            interview_logger.info(f"면접 평가 요청: user_id={request.user_id}, questions={len(request.qa_pairs)}")
-            
-            result = evaluation_service.evaluate_multiple_questions(
-                user_id=request.user_id,
-                qa_pairs=request.qa_pairs,
-                ai_resume_id=request.ai_resume_id,
-                user_resume_id=request.user_resume_id,
-                posting_id=request.posting_id,
-                company_id=request.company_id,
-                position_id=request.position_id
-            )
-            
-            return QuestionResponse(**result)
+            # 단일 요청인지 리스트인지 체크
+            if isinstance(request, list):
+                # 리스트인 경우 - 배치 처리
+                results = []
+                for i, req in enumerate(request):
+                    interview_logger.info(f"배치 평가 {i+1}/{len(request)}: user_id={req.user_id}, questions={len(req.qa_pairs)}")
+                    
+                    result = evaluation_service.evaluate_multiple_questions(
+                        user_id=req.user_id,
+                        qa_pairs=req.qa_pairs,
+                        ai_resume_id=req.ai_resume_id,
+                        user_resume_id=req.user_resume_id,
+                        posting_id=req.posting_id,
+                        company_id=req.company_id,
+                        position_id=req.position_id
+                    )
+                    results.append(result)
+                
+                return {
+                    "success": True,
+                    "message": f"{len(results)}개 평가 완료",
+                    "results": results
+                }
+            else:
+                # 기존 단일 처리 로직 유지
+                interview_logger.info(f"면접 평가 요청: user_id={request.user_id}, questions={len(request.qa_pairs)}")
+                
+                result = evaluation_service.evaluate_multiple_questions(
+                    user_id=request.user_id,
+                    qa_pairs=request.qa_pairs,
+                    ai_resume_id=request.ai_resume_id,
+                    user_resume_id=request.user_resume_id,
+                    posting_id=request.posting_id,
+                    company_id=request.company_id,
+                    position_id=request.position_id
+                )
+                
+                return QuestionResponse(**result)
             
         except Exception as e:
             interview_logger.error(f"면접 평가 오류: {str(e)}")

@@ -499,7 +499,8 @@ class AICandidateModel:
                 "company_id": request.company_id,
                 "question_type": request.question_type.value,
                 "original_prompt_length": len(prompt),
-                "persona_name_internal": persona.name
+                "persona_name_internal": persona.name,
+                "resume_id": persona.resume_id  # AI 이력서 ID 추가
             }
         )
 

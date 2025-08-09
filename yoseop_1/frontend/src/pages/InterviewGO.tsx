@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInterview } from '../contexts/InterviewContext';
-import { sessionApi, interviewApi } from '../services/api';
+import { sessionApi, interviewApi, tokenManager } from '../services/api';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import SpeechIndicator from '../components/voice/SpeechIndicator';
 
@@ -163,9 +163,54 @@ const InterviewGO: React.FC = () => {
     return 'text-red-600';
   };
 
+  // AI 응답에서 resume_id 추출 및 Context 업데이트 함수
+  const extractAndSaveAIResumeId = (response: any) => {
+    try {
+      console.log('🔍 AI resume_id 추출 시도 시작...');
+      
+      // 다양한 경로에서 AI 메타데이터 찾기
+      const sources = [
+        { name: 'ai_answer.metadata', data: response?.ai_answer?.metadata },
+        { name: 'metadata', data: response?.metadata },
+        { name: 'content.metadata', data: response?.content?.metadata },
+        { name: 'turn_info.ai_metadata', data: response?.turn_info?.ai_metadata },
+        { name: 'ai_response.metadata', data: response?.ai_response?.metadata },
+        { name: 'content.ai_answer.metadata', data: response?.content?.ai_answer?.metadata }
+      ];
+
+      console.log('🔍 검색할 메타데이터 경로들:');
+      sources.forEach((source, index) => {
+        console.log(`  ${index + 1}. ${source.name}:`, source.data);
+      });
+
+      for (const source of sources) {
+        if (source.data?.resume_id && typeof source.data.resume_id === 'number') {
+          console.log(`✅ AI resume_id 추출 성공 (${source.name}):`, source.data.resume_id);
+          dispatch({ type: 'SET_EXTRACTED_AI_RESUME_ID', payload: source.data.resume_id });
+          return; // 첫 번째로 찾은 유효한 ID 사용
+        }
+      }
+
+      console.log('⚠️ AI resume_id를 찾을 수 없습니다.');
+    } catch (error) {
+      console.warn('❌ AI resume_id 추출 중 오류:', error);
+    }
+  };
+
   // 🆕 백엔드 응답에 따른 currentPhase 업데이트 함수
   const updatePhaseFromResponse = (response: any) => {
-    console.log('🔄 currentPhase 업데이트 (단순화된 로직):', response);
+    console.log('🔄 === 전체 응답 구조 분석 START ===');
+    console.log('📋 응답 객체 전체:', JSON.stringify(response, null, 2));
+    console.log('🔍 메타데이터 분석:');
+    console.log('  - response.metadata:', response?.metadata);
+    console.log('  - response.ai_answer:', response?.ai_answer);
+    console.log('  - response.ai_answer?.metadata:', response?.ai_answer?.metadata);
+    console.log('  - response.content:', response?.content);
+    console.log('  - response.turn_info:', response?.turn_info);
+    console.log('🔄 === 전체 응답 구조 분석 END ===');
+    
+    // AI 응답에서 resume_id 추출 및 Context 업데이트
+    extractAndSaveAIResumeId(response);
     
     const nextAgent = response?.metadata?.next_agent;
     const task = response?.metadata?.task;
@@ -180,6 +225,15 @@ const InterviewGO: React.FC = () => {
         setIsTimerActive(false);
         setCanSubmit(false);
         console.log('✅ 면접 완료로 설정됨');
+        
+        // 🆕 백그라운드 피드백 자동 시작
+        const qaHistory = response?.qa_history;
+        if (qaHistory && qaHistory.length > 0) {
+          console.log('🔄 백그라운드 피드백 처리 시작...');
+          triggerBackgroundFeedback(qaHistory);
+        } else {
+          console.warn('⚠️ qa_history가 없어서 피드백을 처리할 수 없습니다:', response);
+        }
     } else if (nextAgent === 'user' || status === 'waiting_for_user' || turnInfo?.is_user_turn) {
         setCurrentPhase('user_turn');
         setCurrentTurn('user');
@@ -652,6 +706,244 @@ const InterviewGO: React.FC = () => {
   const stopTTS = () => {
     setIsTTSPlaying(false);
     // 현재 재생 중인 TTS를 중지하는 로직은 여기에 추가 가능
+  };
+
+  // 🆕 필요한 데이터 추출 함수들
+  const getCurrentUserId = (): number => {
+    // 실제 로그인된 사용자 ID 가져오기
+    const user = tokenManager.getUser();
+    if (user && user.user_id) {
+      return user.user_id;
+    }
+    
+    // 로그인되지 않은 경우 에러 로그
+    console.error('❌ 로그인된 사용자를 찾을 수 없습니다.');
+    throw new Error('로그인된 사용자 정보가 없습니다.');
+  };
+
+  const getUserResumeId = (): number | null => {
+    console.log('🔍 getUserResumeId 호출 시작...');
+    
+    // 1순위: Context에 저장된 이력서 데이터에서 추출
+    if (state.resume?.id) {
+      const resumeId = parseInt(state.resume.id);
+      console.log('📋 Context에서 찾은 resume ID:', state.resume.id, '-> 파싱 결과:', resumeId);
+      
+      if (!isNaN(resumeId)) {
+        // 추가 검증: 로그인된 사용자와 이력서 사용자 정보 매칭 확인
+        const currentUser = tokenManager.getUser();
+        console.log('🔍 이메일 매칭 확인:', {
+          resumeEmail: state.resume.email,
+          currentUserEmail: currentUser?.email,
+          isMatch: state.resume.email === currentUser?.email
+        });
+        
+        if (currentUser && state.resume.email === currentUser.email) {
+          console.log('✅ Context에서 유효한 user_resume_id 반환:', resumeId);
+          return resumeId;
+        } else {
+          console.warn('⚠️ 이력서 소유자와 로그인 사용자가 다릅니다.');
+        }
+      } else {
+        console.warn('⚠️ resume.id 파싱 실패:', state.resume.id);
+      }
+    } else {
+      console.warn('⚠️ Context에 resume 데이터가 없습니다.');
+    }
+    
+    // 2순위: 로그인된 사용자 정보로 추정
+    const currentUser = tokenManager.getUser();
+    if (currentUser?.user_id) {
+      console.log('🔍 로그인된 사용자 정보로 user_resume 추정 시도:', currentUser.user_id);
+      // TODO: API 호출로 user_id에 해당하는 user_resume_id 조회
+      // 지금은 Context 데이터가 없으면 null 반환
+    }
+    
+    console.log('❌ user_resume_id를 찾을 수 없어 null 반환');
+    return null;
+  };
+
+  const getAIResumeId = (): number | null => {
+    // 1순위: AI 응답에서 추출된 resume_id 사용 (가장 정확함)
+    if (state.textCompetitionData?.extracted_ai_resume_id) {
+      console.log('✅ 추출된 AI resume_id 사용:', state.textCompetitionData.extracted_ai_resume_id);
+      return state.textCompetitionData.extracted_ai_resume_id;
+    }
+    
+    // 2순위: 기존 aiPersona에서 resume_id 찾기
+    if (state.textCompetitionData?.aiPersona?.resume_id) {
+      console.log('⚠️ aiPersona에서 resume_id 사용:', state.textCompetitionData.aiPersona.resume_id);
+      return state.textCompetitionData.aiPersona.resume_id;
+    }
+    
+    // 3순위: settings에서 ai_resume_id가 있다면 사용 (create_persona_for_interview에서 전달될 수 있음)
+    if (state.settings && 'ai_resume_id' in state.settings) {
+      const aiResumeId = (state.settings as any).ai_resume_id;
+      if (aiResumeId && aiResumeId !== 0) {
+        console.log('⚠️ settings에서 resume_id 사용:', aiResumeId);
+        return aiResumeId;
+      }
+    }
+    
+    // DB 제약조건 위반 방지를 위해 null 반환 (ai_resume_id=0은 존재하지 않음)
+    console.log('❌ AI resume_id를 찾을 수 없어 null 반환');
+    return null;
+  };
+
+  const getPostingId = (): number | null => {
+    // TODO: 채용공고 ID를 가져오는 로직 구현 필요
+    return state.settings?.posting_id || null;
+  };
+
+  const getCompanyId = (): number | null => {
+    // 1순위: jobPosting에서 company_id 추출 (create_persona_for_interview에서 사용하는 방식)
+    if (state.jobPosting?.company_id) {
+      return state.jobPosting.company_id;
+    }
+    
+    // 2순위: settings에서 posting_id를 통해 company_id 추출하려면 추가 API 호출이 필요
+    // 현재는 posting_id만 있으므로 null 반환
+    return null;
+  };
+
+  const getPositionId = (): number | null => {
+    // 1순위: jobPosting에서 position_id 추출 (create_persona_for_interview에서 사용하는 방식)
+    if (state.jobPosting?.position_id) {
+      return state.jobPosting.position_id;
+    }
+    
+    // 2순위: settings에서 posting_id를 통해 position_id 추출하려면 추가 API 호출이 필요
+    // 현재는 posting_id만 있으므로 null 반환
+    return null;
+  };
+
+  // 🆕 피드백 처리 함수들
+  const triggerBackgroundFeedback = async (qaHistory: any[]) => {
+    try {
+      console.log('🔄 백그라운드 피드백 처리 시작...');
+      
+      // qa_history를 사용자와 AI로 분리
+      const userQAHistory = qaHistory.filter(qa => qa.answerer === "user");
+      const aiQAHistory = qaHistory.filter(qa => qa.answerer === "ai");
+      
+      console.log(`📊 분리된 QA - 사용자: ${userQAHistory.length}개, AI: ${aiQAHistory.length}개`);
+      
+      // 현재 Context 상태 전체 로깅
+      console.log('🔍 === Context 상태 분석 START ===');
+      console.log('state.resume:', state.resume);
+      console.log('state.textCompetitionData:', state.textCompetitionData);
+      console.log('state.settings:', state.settings);
+      console.log('state.jobPosting:', state.jobPosting);
+      const currentUser = tokenManager.getUser();
+      console.log('currentUser:', currentUser);
+      console.log('🔍 === Context 상태 분석 END ===');
+      
+      // 필수 데이터 검증
+      let userId: number;
+      try {
+        userId = getCurrentUserId();
+        console.log(`✅ 사용자 ID 확인: ${userId}`);
+      } catch (error) {
+        console.error('❌ 사용자 ID를 가져올 수 없습니다:', error);
+        throw new Error('로그인이 필요합니다.');
+      }
+      
+      const userResumeId = getUserResumeId();
+      const aiResumeId = getAIResumeId();
+      const postingId = getPostingId();
+      const companyId = getCompanyId();
+      const positionId = getPositionId();
+      
+      console.log('📋 데이터 검증 결과:', {
+        userId,
+        userResumeId,
+        aiResumeId,
+        postingId,
+        companyId,
+        positionId
+      });
+      
+      // 2개의 평가 요청 생성
+      const evaluationRequests = [
+        // 사용자 평가 요청
+        {
+          user_id: userId,
+          user_resume_id: userResumeId,
+          ai_resume_id: null,
+          posting_id: postingId,
+          company_id: companyId,
+          position_id: positionId,
+          qa_pairs: userQAHistory.map(qa => ({
+            question: qa.question,
+            answer: qa.answer,
+            duration: qa.duration || 120,
+            question_level: qa.question_level || 1
+          }))
+        },
+        // AI 지원자 평가 요청
+        {
+          user_id: userId,
+          user_resume_id: null,
+          ai_resume_id: aiResumeId,
+          posting_id: postingId,
+          company_id: companyId,
+          position_id: positionId,
+          qa_pairs: aiQAHistory.map(qa => ({
+            question: qa.question,
+            answer: qa.answer,
+            duration: qa.duration || 120,
+            question_level: qa.question_level || 1
+          }))
+        }
+      ];
+
+      console.log('📤 피드백 평가 API 호출 중...');
+      
+      // 피드백 평가 API 호출
+      const response = await fetch('http://localhost:8000/interview/feedback/evaluate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(evaluationRequests)
+      });
+
+      if (!response.ok) {
+        throw new Error(`피드백 API 오류: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ 피드백 평가 완료:', result);
+
+      // 계획 생성 API 호출 (옵션)
+      if (result.success && result.results) {
+        for (const evalResult of result.results) {
+          if (evalResult.interview_id) {
+            try {
+              const planResponse = await fetch('http://localhost:8000/interview/feedback/plans', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ interview_id: evalResult.interview_id })
+              });
+              
+              if (planResponse.ok) {
+                const planResult = await planResponse.json();
+                console.log(`✅ 면접 계획 생성 완료 (ID: ${evalResult.interview_id}):`, planResult);
+              }
+            } catch (planError) {
+              console.error(`❌ 면접 계획 생성 실패 (ID: ${evalResult.interview_id}):`, planError);
+            }
+          }
+        }
+      }
+
+      console.log('🎉 모든 백그라운드 피드백 처리 완료');
+
+    } catch (error) {
+      console.error('❌ 백그라운드 피드백 처리 실패:', error);
+    }
   };
 
   // 🎤 음성 답변 제출 (녹음 후 자동 제출)
