@@ -174,7 +174,7 @@ const InterviewGO: React.FC = () => {
 
     console.log('🔍 Phase 판단:', { nextAgent, task, status, turnInfo });
 
-    if (task === 'end_interview') {
+    if (task === 'end_interview' || status === 'completed') {
         setCurrentPhase('interview_completed');
         setCurrentTurn('waiting');
         setIsTimerActive(false);
@@ -912,99 +912,52 @@ const InterviewGO: React.FC = () => {
 
                          {/* 컨트롤 버튼 */}
              <div className="space-y-3">
-               {(() => {
-                 const hasAnswer = !!currentAnswer.trim();
-                 const hasSessionId = !!state.sessionId || !isRestoring;
-                 const isUserTurn = currentPhase === 'user_turn';
-                 const isButtonDisabled = !hasAnswer || isLoading || isRestoring || !isUserTurn || !canSubmit;
-                 
-                 return (
-                   <button 
-                     className={`w-full py-3 text-white rounded-lg font-semibold transition-colors ${
-                       isButtonDisabled 
-                         ? 'bg-gray-600 cursor-not-allowed' 
-                         : 'bg-green-600 hover:bg-green-500'
-                     }`}
-                     onClick={submitAnswer}
-                     disabled={isButtonDisabled}
-                   >
-                     {isLoading 
-                       ? '제출 중...' 
-                       : isRestoring
-                       ? '세션 로드 중...'
-                       : !hasSessionId 
-                       ? '세션 없음' 
-                       : !isUserTurn
-                       ? '대기 중...'
-                       : !canSubmit
-                       ? '준비 중...'
-                       : !hasAnswer
-                       ? '답변을 입력해주세요'
-                       : '🚀 답변 제출'
-                     }
-                   </button>
-                 );
-               })()}
+               {currentPhase === 'interview_completed' ? (
+                 // 면접 완료 시 나가기 버튼만 표시
+                 <button 
+                   onClick={() => navigate('/mypage')}
+                   className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold transition-colors"
+                 >
+                   🏠 면접 나가기
+                 </button>
+               ) : (
+                 // 면접 진행 중일 때 답변 제출 버튼 표시
+                 (() => {
+                   const hasAnswer = !!currentAnswer.trim();
+                   const hasSessionId = !!state.sessionId || !isRestoring;
+                   const isUserTurn = currentPhase === 'user_turn';
+                   const isButtonDisabled = !hasAnswer || isLoading || isRestoring || !isUserTurn || !canSubmit;
+                   
+                   return (
+                     <button 
+                       className={`w-full py-3 text-white rounded-lg font-semibold transition-colors ${
+                         isButtonDisabled 
+                           ? 'bg-gray-600 cursor-not-allowed' 
+                           : 'bg-green-600 hover:bg-green-500'
+                       }`}
+                       onClick={submitAnswer}
+                       disabled={isButtonDisabled}
+                     >
+                       {isLoading 
+                         ? '제출 중...' 
+                         : isRestoring
+                         ? '세션 로드 중...'
+                         : !hasSessionId 
+                         ? '세션 없음' 
+                         : !isUserTurn
+                         ? '대기 중...'
+                         : !canSubmit
+                         ? '준비 중...'
+                         : !hasAnswer
+                         ? '답변을 입력해주세요'
+                         : '🚀 답변 제출'
+                       }
+                     </button>
+                   );
+                 })()
+               )}
              </div>
 
-            {/* 🆕 진행 상황 표시 */}
-            <div className="mt-4 text-center">
-              <div className="text-white text-sm mb-2">
-                상태: {currentPhase === 'user_turn' ? '사용자 턴' : 
-                       currentPhase === 'ai_processing' ? 'AI 처리 중' : 
-                       currentPhase === 'interview_completed' ? '면접 완료' : 
-                       '대기'}
-              </div>
-              
-              {/* 🆕 디버깅 정보 */}
-              <div className="text-gray-400 text-xs space-y-1">
-                <div>세션: {state.sessionId ? '✅' : '❌'}</div>
-                <div>복원: {isRestoring ? '🔄' : '✅'}</div>
-                <div>타이머: {isTimerActive ? '⏰' : '⏸️'}</div>
-                <div>제출: {canSubmit ? '✅' : '❌'}</div>
-              </div>
-              
-              {/* 🆕 테스트 버튼들 */}
-              <div className="mt-2 space-y-1">
-                <button
-                  onClick={() => {
-                    setCurrentPhase('user_turn');
-                    setCurrentTurn('user');
-                    setIsTimerActive(true);
-                    setTimeLeft(120);
-                    setCanSubmit(true);
-                    console.log('🧪 수동으로 사용자 턴 설정');
-                  }}
-                  className="w-full py-1 px-2 bg-yellow-600 hover:bg-yellow-500 text-white text-xs rounded"
-                >
-                  🧪 사용자 턴 테스트
-                </button>
-                <button
-                  onClick={() => {
-                    setCurrentPhase('ai_processing');
-                    setCurrentTurn('ai');
-                    setIsTimerActive(false);
-                    setCanSubmit(false);
-                    console.log('🧪 수동으로 AI 턴 설정');
-                  }}
-                  className="w-full py-1 px-2 bg-green-600 hover:bg-green-500 text-white text-xs rounded"
-                >
-                  🧪 AI 턴 테스트
-                </button>
-                <button
-                  onClick={() => {
-                    setCurrentPhase('interview_completed');
-                    setCurrentTurn('waiting');
-                    setIsTimerActive(false);
-                    setCanSubmit(false);
-                    console.log('🧪 수동으로 면접 완료 설정');
-                  }}
-                  className="w-full py-1 px-2 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded"
-                >
-                  🧪 면접 완료 테스트
-                </button>
-              </div>
-            </div>
           </div>
 
           {/* AI 지원자 춘식이 */}
