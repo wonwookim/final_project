@@ -200,7 +200,7 @@ class InterviewService:
             
             # 세션 상태 생성
             initial_settings = {
-                'total_question_limit': 2,  # 디버깅용 - 실제 운영시에는 15로 변경
+                'total_question_limit': 3,  # 디버깅용 - 실제 운영시에는 15로 변경
                 'company_id': company_code_for_persona,  # 모델/질문 생성 로직과 호환되는 문자열 코드 유지
                 'company_numeric_id': company_numeric_id,  # DB 연동을 위한 숫자 ID 별도 보관
                 'position': settings['position'],
@@ -234,10 +234,26 @@ class InterviewService:
             print(f"[Client] -> [InterviewService]")
             print(json.dumps(settings, indent=2, ensure_ascii=False))
             
-            # Orchestrator가 첫 플로우를 처리
-            result = await orchestrator._process_complete_flow()
-            result['session_id'] = session_id
+            # ⚡ INTRO만 처리하고 즉시 API 응답 (속도 최적화)
+            result = await orchestrator._process_initial_flow()
+            # session_id는 이미 _process_initial_flow에서 포함됨
 
+            # 🔍 DEBUG: 최종 API 응답 구조 확인
+            print(f"[🔍 API_RESPONSE_DEBUG] === 최종 API 응답 구조 분석 ===")
+            print(f"[🔍 API_RESPONSE_DEBUG] result 타입: {type(result)}")
+            print(f"[🔍 API_RESPONSE_DEBUG] result 키들: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
+            
+            if isinstance(result, dict):
+                for key, value in result.items():
+                    if key in ['intro_audio', 'first_question_audio']:
+                        print(f"[🔍 API_RESPONSE_DEBUG] {key}: {bool(value)} ({type(value).__name__}) - 길이: {len(str(value)) if value else 0}")
+                    else:
+                        print(f"[🔍 API_RESPONSE_DEBUG] {key}: {bool(value)} ({type(value).__name__})")
+                        if key == 'first_question' and value:
+                            print(f"[🔍 API_RESPONSE_DEBUG] first_question 내용: {str(value)[:50]}...")
+            
+            print(f"[🔍 API_RESPONSE_DEBUG] === FastAPI로 전달될 result ===")
+            
             return result
 
         except Exception as e:

@@ -252,6 +252,20 @@ async def start_ai_competition(
         elapsed_time = end_time - start_time
         interview_logger.info(f"✅ AI 경쟁 면접 시작 성공. 총 처리 시간: {elapsed_time:.4f}초")
         
+        # 🔍 DEBUG: FastAPI 라우터에서 최종 HTTP 응답 전 result 구조 확인
+        print(f"[🔍 FASTAPI_ROUTER_DEBUG] === HTTP 응답 직전 result 구조 ===")
+        print(f"[🔍 FASTAPI_ROUTER_DEBUG] result 타입: {type(result)}")
+        if isinstance(result, dict):
+            print(f"[🔍 FASTAPI_ROUTER_DEBUG] result 키들: {list(result.keys())}")
+            for key, value in result.items():
+                if key in ['intro_audio', 'first_question_audio']:
+                    print(f"[🔍 FASTAPI_ROUTER_DEBUG] {key}: {bool(value)} ({len(str(value)) if value else 0}자)")
+                else:
+                    print(f"[🔍 FASTAPI_ROUTER_DEBUG] {key}: {bool(value)}")
+                    if key == 'first_question' and value:
+                        print(f"[🔍 FASTAPI_ROUTER_DEBUG] first_question 내용: {str(value)[:50]}...")
+        print(f"[🔍 FASTAPI_ROUTER_DEBUG] === FastAPI가 HTTP 응답으로 직렬화할 데이터 ===")
+        
         return result
         
     except Exception as e:
