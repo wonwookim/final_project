@@ -3,6 +3,7 @@ import json
 import random
 import asyncio
 import re
+import base64
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 
@@ -571,6 +572,123 @@ class Orchestrator:
             interview_logger.error(f"AI 지원자 답변 요청 오류: {e}", exc_info=True)
             return "죄송합니다, 답변을 생성하는 데 문제가 발생했습니다."
 
+    async def _generate_tts(self, text: str) -> Optional[str]:
+        """텍스트를 TTS로 변환하여 base64 인코딩된 MP3 데이터 반환"""
+        try:
+            print(f"[🔍 TTS_DEBUG] _generate_tts 함수 시작")
+            print(f"[🔍 TTS_DEBUG] 입력 text: '{text[:100] if text else 'None'}'")
+            print(f"[🔍 TTS_DEBUG] text 타입: {type(text)}")
+            print(f"[🔍 TTS_DEBUG] text 길이: {len(text) if text else 0}")
+            
+            if not text or not text.strip():
+                print(f"[🔍 TTS_DEBUG] ❌ text가 비어있음 - 반환 None")
+                return None
+                
+            from backend.services.voice_service import elevenlabs_tts_stream
+            print(f"[🔍 TTS_DEBUG] voice_service import 성공")
+            print(f"[🔍 TTS_DEBUG] TTS 생성 시작: {text[:50]}...")
+            print(f"[🔍 TTS_DEBUG] 정제된 text: '{text.strip()[:50]}...'")
+            
+            # ElevenLabs API 호출
+            print(f"[🔍 TTS_DEBUG] elevenlabs_tts_stream 호출 시작")
+            audio_bytes = await elevenlabs_tts_stream(
+                text=text.strip(), 
+                voice_id="21m00Tcm4TlvDq8ikWAM"  # Rachel 음성
+            )
+            print(f"[🔍 TTS_DEBUG] elevenlabs_tts_stream 호출 완료")
+            print(f"[🔍 TTS_DEBUG] audio_bytes 타입: {type(audio_bytes)}")
+            print(f"[🔍 TTS_DEBUG] audio_bytes 길이: {len(audio_bytes) if audio_bytes else 0}")
+            
+            if not audio_bytes:
+                print(f"[🔍 TTS_DEBUG] ❌ audio_bytes가 비어있음")
+                return None
+            
+            # base64 인코딩
+            print(f"[🔍 TTS_DEBUG] base64 인코딩 시작")
+            audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+            print(f"[🔍 TTS_DEBUG] base64 인코딩 완료")
+            print(f"[🔍 TTS_DEBUG] ✅ TTS 생성 완료: {len(audio_base64)} chars")
+            
+            return audio_base64
+            
+        except Exception as e:
+            print(f"[🔍 TTS_DEBUG] ❌ TTS 생성 실패: {e}")
+            import traceback
+            print(f"[🔍 TTS_DEBUG] 스택 트레이스: {traceback.format_exc()}")
+            return None
+
+    async def _handle_missing_tts_for_first_response(self, result: Dict[str, Any]) -> None:
+        """첫 번째 응답에서 누락된 TTS를 추가로 생성"""
+        try:
+            current_turn = self.session_state.get('turn_count', 0)
+            
+            print(f"[🔍 TTS_DEBUG] _handle_missing_tts_for_first_response 함수 호출됨")
+            print(f"[🔍 TTS_DEBUG] current_turn: {current_turn}")
+            print(f"[🔍 TTS_DEBUG] result 키들: {list(result.keys())}")
+            
+            # 첫 번째 턴(INTRO + 첫 질문)에서만 처리
+            if current_turn <= 1:
+                print(f"[🔍 TTS_DEBUG] 조건 만족: current_turn({current_turn}) <= 1")
+                print(f"[🔍 TTS_DEBUG] 첫 번째 응답 TTS 보완 처리 시작 (턴 {current_turn})")
+                
+                # INTRO 메시지 TTS 추가 (create_user_waiting_message에서 이미 처리되었을 수 있음)
+                intro_message_exists = 'intro_message' in result
+                intro_audio_exists = 'intro_audio' in result
+                print(f"[🔍 TTS_DEBUG] intro_message 존재: {intro_message_exists}")
+                print(f"[🔍 TTS_DEBUG] intro_audio 존재: {intro_audio_exists}")
+                
+                if intro_message_exists:
+                    intro_text = result['intro_message']
+                    print(f"[🔍 TTS_DEBUG] intro_text: '{intro_text[:100] if intro_text else 'None'}'")
+                    print(f"[🔍 TTS_DEBUG] intro_text.strip() 결과: {bool(intro_text and intro_text.strip())}")
+                    
+                    if not intro_audio_exists and intro_text and intro_text.strip():
+                        print(f"[🔍 TTS_DEBUG] 누락된 INTRO TTS 생성 시작: {intro_text[:50]}...")
+                        intro_audio = await self._generate_tts(intro_text)
+                        print(f"[🔍 TTS_DEBUG] _generate_tts 결과: {bool(intro_audio)} (길이: {len(intro_audio) if intro_audio else 0})")
+                        if intro_audio:
+                            result['intro_audio'] = intro_audio
+                            print(f"[🔍 TTS_DEBUG] ✅ INTRO TTS 보완 완료")
+                        else:
+                            print(f"[🔍 TTS_DEBUG] ❌ INTRO TTS 생성 실패")
+                    else:
+                        if intro_audio_exists:
+                            print(f"[🔍 TTS_DEBUG] ⏭️ INTRO audio 이미 존재함")
+                        if not intro_text or not intro_text.strip():
+                            print(f"[🔍 TTS_DEBUG] ⏭️ INTRO text가 비어있음")
+                
+                # 첫 질문 TTS 추가 (create_user_waiting_message에서 이미 처리되었을 수 있음)
+                question_text = result.get('content', {}).get('content', '')
+                question_audio_exists = 'question_audio' in result
+                print(f"[🔍 TTS_DEBUG] question_text: '{question_text[:100] if question_text else 'None'}'")
+                print(f"[🔍 TTS_DEBUG] question_audio 존재: {question_audio_exists}")
+                print(f"[🔍 TTS_DEBUG] question_text.strip() 결과: {bool(question_text and question_text.strip())}")
+                
+                if question_text and question_text.strip() and not question_audio_exists:
+                    print(f"[🔍 TTS_DEBUG] 누락된 첫 질문 TTS 생성 시작: {question_text[:50]}...")
+                    question_audio = await self._generate_tts(question_text)
+                    print(f"[🔍 TTS_DEBUG] _generate_tts 결과: {bool(question_audio)} (길이: {len(question_audio) if question_audio else 0})")
+                    if question_audio:
+                        result['question_audio'] = question_audio
+                        print(f"[🔍 TTS_DEBUG] ✅ 첫 질문 TTS 보완 완료")
+                    else:
+                        print(f"[🔍 TTS_DEBUG] ❌ 첫 질문 TTS 생성 실패")
+                else:
+                    if question_audio_exists:
+                        print(f"[🔍 TTS_DEBUG] ⏭️ 질문 audio 이미 존재함")
+                    if not question_text or not question_text.strip():
+                        print(f"[🔍 TTS_DEBUG] ⏭️ 질문 text가 비어있음")
+                        
+                print(f"[🔍 TTS_DEBUG] 첫 번째 응답 TTS 보완 처리 완료")
+                print(f"[🔍 TTS_DEBUG] 최종 result 키들: {list(result.keys())}")
+            else:
+                print(f"[🔍 TTS_DEBUG] 조건 불만족: current_turn({current_turn}) > 1, TTS 보완 건너뜀")
+            
+        except Exception as e:
+            print(f"[🔍 TTS_DEBUG] ❌ 첫 번째 응답 TTS 보완 실패: {e}")
+            import traceback
+            print(f"[🔍 TTS_DEBUG] 스택 트레이스: {traceback.format_exc()}")
+
     @staticmethod
     def create_agent_message(session_id: str, task: str, from_agent: str, content_text: str, 
                              turn_count: int, duration: float = 0, content_type: str = "text", 
@@ -669,9 +787,13 @@ class Orchestrator:
             # 사용자 입력 대기 상태인 경우
             if next_agent == "user":
                 print(f"[TRACE] wait for user input")
-                result = self.create_user_waiting_message()
+                result = await self.create_user_waiting_message()
+                
+                # 🆕 첫 번째 응답에서 누락된 TTS 처리
+                await self._handle_missing_tts_for_first_response(result)
+                
                 print(f"[TRACE] Orchestrator -> Client (wait)")
-                print(json.dumps(result, indent=2, ensure_ascii=False))
+                # JSON 출력은 create_user_waiting_message에서 이미 처리됨
                 return result
             
             # 에이전트 작업 수행 (handle_message에서 JSON 출력됨)
@@ -785,7 +907,16 @@ class Orchestrator:
         
         # AI에게 전달할 질문에서 사용자 이름 호칭을 AI용으로 최소 치환
         ai_question = self._format_question_for_ai(question)
+        
+        # 🆕 AI 질문을 클라이언트 전달용으로 임시 저장
+        self.session_state['latest_ai_question'] = ai_question
+        print(f"[DEBUG] AI 질문 임시 저장: {ai_question[:50]}...")
+        
         ai_answer = await self._request_answer_from_ai_candidate(ai_question)
+        
+        # 🆕 AI 답변을 클라이언트 전달용으로 임시 저장  
+        self.session_state['latest_ai_answer'] = ai_answer
+        print(f"[DEBUG] AI 답변 임시 저장: {ai_answer[:50]}...")
         
         # 🆕 개별 질문 상태 체크
         current_questions = self.session_state.get('current_questions')
@@ -814,7 +945,7 @@ class Orchestrator:
         # handle_message에서 JSON 출력됨
         self.handle_message(ai_message)
     
-    def create_user_waiting_message(self) -> Dict[str, Any]:
+    async def create_user_waiting_message(self) -> Dict[str, Any]:
         """사용자 입력 대기 메시지 생성"""
         # 🆕 개별 질문 상태 체크
         current_questions = self.session_state.get('current_questions')
@@ -846,10 +977,29 @@ class Orchestrator:
         response['message'] = '답변을 입력해주세요.'
         response['session_id'] = self.session_id
         
-        # 🆕 INTRO 메시지 포함 (있는 경우)
+        # 🆕 INTRO 메시지 포함 (있는 경우) - 한 번만 전달 + TTS 변환
         intro_message = self.session_state.get('intro_message')
+        print(f"[🔍 TTS_DEBUG] create_user_waiting_message - intro_message 존재: {bool(intro_message)}")
         if intro_message:
+            print(f"[🔍 TTS_DEBUG] intro_message 내용: '{intro_message[:100] if intro_message else 'None'}'")
             response['intro_message'] = intro_message
+            print(f"[🔍 TTS_DEBUG] INTRO 메시지 클라이언트 전달: {intro_message[:50]}...")
+            
+            # TTS 변환
+            print(f"[🔍 TTS_DEBUG] INTRO TTS 생성 시작...")
+            intro_audio = await self._generate_tts(intro_message)
+            print(f"[🔍 TTS_DEBUG] INTRO TTS 생성 결과: {bool(intro_audio)} (길이: {len(intro_audio) if intro_audio else 0})")
+            if intro_audio:
+                response['intro_audio'] = intro_audio
+                print(f"[🔍 TTS_DEBUG] ✅ INTRO TTS 생성 완료")
+            else:
+                print(f"[🔍 TTS_DEBUG] ❌ INTRO TTS 생성 실패")
+            
+            # 한 번 전달 후 삭제
+            del self.session_state['intro_message']
+            print(f"[🔍 TTS_DEBUG] intro_message 세션에서 삭제됨")
+        else:
+            print(f"[🔍 TTS_DEBUG] intro_message가 세션에 없음")
         
         # 🆕 턴 정보 추가 (개별 질문 정보 포함)
         try:
@@ -867,6 +1017,87 @@ class Orchestrator:
                 'resume_id': ai_resume_id
             }
         }
+        
+        # 🆕 AI 질문과 답변을 클라이언트로 전달 (TTS용) + TTS 변환
+        latest_ai_question = self.session_state.get('latest_ai_question')
+        latest_ai_answer = self.session_state.get('latest_ai_answer')
+        
+        print(f"[DEBUG] AI 데이터 전달 체크:")
+        print(f"  - latest_ai_question 존재: {bool(latest_ai_question)}")
+        print(f"  - latest_ai_answer 존재: {bool(latest_ai_answer)}")
+        
+        if latest_ai_question:
+            response['ai_question'] = {
+                'content': latest_ai_question
+            }
+            print(f"[DEBUG] AI 질문 클라이언트 전달: {latest_ai_question[:50]}...")
+            
+            # TTS 변환
+            ai_question_audio = await self._generate_tts(latest_ai_question)
+            if ai_question_audio:
+                response['ai_question_audio'] = ai_question_audio
+                print(f"[DEBUG] AI 질문 TTS 생성 완료")
+            
+            # 한번 전달 후 삭제
+            del self.session_state['latest_ai_question']
+            
+        if latest_ai_answer:
+            response['ai_answer'] = {
+                'content': latest_ai_answer
+            }
+            print(f"[DEBUG] AI 답변 클라이언트 전달: {latest_ai_answer[:50]}...")
+            
+            # TTS 변환
+            ai_answer_audio = await self._generate_tts(latest_ai_answer)
+            if ai_answer_audio:
+                response['ai_answer_audio'] = ai_answer_audio
+                print(f"[DEBUG] AI 답변 TTS 생성 완료")
+            
+            # 한번 전달 후 삭제
+            del self.session_state['latest_ai_answer']
+        
+        # 🆕 사용자 질문 TTS 변환
+        print(f"[🔍 TTS_DEBUG] 사용자 질문 TTS 변환 체크:")
+        print(f"[🔍 TTS_DEBUG] question_text: '{question_text[:100] if question_text else 'None'}'")
+        print(f"[🔍 TTS_DEBUG] question_text.strip() 결과: {bool(question_text and question_text.strip())}")
+        if question_text and question_text.strip():
+            print(f"[🔍 TTS_DEBUG] 사용자 질문 TTS 생성 시작...")
+            question_audio = await self._generate_tts(question_text)
+            print(f"[🔍 TTS_DEBUG] 사용자 질문 TTS 생성 결과: {bool(question_audio)} (길이: {len(question_audio) if question_audio else 0})")
+            if question_audio:
+                response['question_audio'] = question_audio
+                print(f"[🔍 TTS_DEBUG] ✅ 사용자 질문 TTS 생성 완료: {question_text[:50]}...")
+            else:
+                print(f"[🔍 TTS_DEBUG] ❌ 사용자 질문 TTS 생성 실패")
+        else:
+            print(f"[🔍 TTS_DEBUG] 사용자 질문 text가 비어있음, TTS 건너뜀")
+        
+        # 🆕 최종 응답 JSON 로그 (디버깅용) - 오디오 데이터 축약
+        print(f"[DEBUG] 최종 클라이언트 응답 JSON:")
+        response_for_log = response.copy()
+        
+        # 오디오 필드들을 길이 정보로 대체
+        audio_fields = ['intro_audio', 'ai_question_audio', 'ai_answer_audio', 'question_audio']
+        for field in audio_fields:
+            if field in response_for_log:
+                audio_data = response_for_log[field]
+                if audio_data:
+                    response_for_log[field] = f"[AUDIO_DATA:{len(audio_data)} chars]"
+                else:
+                    response_for_log[field] = "[AUDIO_DATA:EMPTY]"
+        
+        print(json.dumps(response_for_log, indent=2, ensure_ascii=False))
+        
+        # 🆕 TTS 생성 상태 요약
+        print(f"[🔍 TTS_SUMMARY] === TTS 생성 결과 요약 ===")
+        for field in audio_fields:
+            if field in response:
+                status = "✅ 성공" if response[field] else "❌ 실패"
+                length = len(response[field]) if response[field] else 0
+                print(f"[🔍 TTS_SUMMARY] {field}: {status} ({length} chars)")
+            else:
+                print(f"[🔍 TTS_SUMMARY] {field}: ⏭️ 없음")
+        print(f"[🔍 TTS_SUMMARY] ========================")
         
         return response
 

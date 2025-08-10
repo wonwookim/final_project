@@ -94,6 +94,10 @@ const InterviewGO: React.FC = () => {
   const [isTTSPlaying, setIsTTSPlaying] = useState(false);
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
   
+  // 🆕 AI 질문/답변 관련 상태
+  const [currentAIQuestion, setCurrentAIQuestion] = useState<string>('');
+  const [currentAIAnswer, setCurrentAIAnswer] = useState<string>('');
+  
   // 🆕 턴 관리 상태
   const [currentTurn, setCurrentTurn] = useState<'user' | 'ai' | 'waiting'>('waiting');
   const [timeLeft, setTimeLeft] = useState(120); // 2분 타이머
@@ -157,11 +161,11 @@ const InterviewGO: React.FC = () => {
     submitAnswer();
   };
 
-  // 🆕 TTS 관련 함수들
-  const playTTSAndWait = async (text: string): Promise<void> => {
-    return new Promise(async (resolve, reject) => {
+  // 🆕 백엔드에서 생성된 base64 오디오 재생 함수
+  const playBase64Audio = async (base64Data: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
       try {
-        console.log('🔊 TTS 재생 시작:', text.substring(0, 30) + '...');
+        console.log('🔊 Base64 오디오 재생 시작');
         setIsTTSPlaying(true);
         
         // 이전 오디오가 있으면 정지
@@ -170,28 +174,38 @@ const InterviewGO: React.FC = () => {
           currentAudio.currentTime = 0;
         }
         
-        // TTS API 호출하여 오디오 생성
-        const audio = await interviewApi.playTTS(text);
+        // base64 → blob → Audio 객체 생성
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const audioBlob = new Blob([bytes], { type: 'audio/mp3' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        
         setCurrentAudio(audio);
         
         // 재생 완료 이벤트
         audio.onended = () => {
-          console.log('✅ TTS 재생 완료');
+          console.log('✅ Base64 오디오 재생 완료');
           setIsTTSPlaying(false);
           setCurrentAudio(null);
+          URL.revokeObjectURL(audioUrl); // 메모리 정리
           resolve();
         };
         
         // 재생 에러 이벤트
         audio.onerror = () => {
-          console.error('❌ TTS 재생 실패');
+          console.error('❌ Base64 오디오 재생 실패');
           setIsTTSPlaying(false);
           setCurrentAudio(null);
-          reject(new Error('TTS 재생 실패'));
+          URL.revokeObjectURL(audioUrl); // 메모리 정리
+          reject(new Error('Base64 오디오 재생 실패'));
         };
         
         // 오디오 재생 시작
-        await audio.play();
+        audio.play();
         
       } catch (error) {
         console.error('❌ TTS 호출 실패:', error);
@@ -211,14 +225,39 @@ const InterviewGO: React.FC = () => {
     setIsTTSPlaying(false);
   };
 
-  // 🆕 질문 TTS 재생 (답변 제출 후 새 질문)
-  const playQuestionTTS = async (question: string) => {
+  // 🆕 백엔드에서 받은 오디오들을 순차적으로 재생하는 함수
+  const playSequentialAudio = async (response: any) => {
     try {
-      console.log('🎤 질문 TTS 재생:', question);
-      await playTTSAndWait(question);
-      console.log('✅ 질문 TTS 재생 완료 - 답변 입력 활성화');
+      console.log('🎵 순차 오디오 재생 시작');
+      
+      // 1. INTRO 오디오 재생
+      if (response.intro_audio) {
+        console.log('🎤 INTRO 오디오 재생');
+        await playBase64Audio(response.intro_audio);
+      }
+      
+      // 2. AI 질문 오디오 재생
+      if (response.ai_question_audio) {
+        console.log('🤖 AI 질문 오디오 재생');
+        await playBase64Audio(response.ai_question_audio);
+      }
+      
+      // 3. AI 답변 오디오 재생
+      if (response.ai_answer_audio) {
+        console.log('🤖 AI 답변 오디오 재생');
+        await playBase64Audio(response.ai_answer_audio);
+      }
+      
+      // 4. 사용자 질문 오디오 재생
+      if (response.question_audio) {
+        console.log('👤 사용자 질문 오디오 재생');
+        await playBase64Audio(response.question_audio);
+      }
+      
+      console.log('✅ 모든 오디오 재생 완료');
+      
     } catch (error) {
-      console.error('❌ 질문 TTS 재생 실패:', error);
+      console.error('❌ 순차 오디오 재생 실패:', error);
       // TTS 실패해도 정상 진행
     }
   };
@@ -329,7 +368,8 @@ const InterviewGO: React.FC = () => {
         setCanRecord(true);  // 🎤 녹음 활성화
     }
 
-    // AI 답변 및 질문 TTS 처리
+    // AI 질문, 답변 및 사용자 질문 TTS 처리
+    const aiQuestion = response?.ai_question?.content;
     const aiAnswer = response?.ai_answer?.content || response?.ai_response?.content;
     const question = response?.content?.content;
     
@@ -337,30 +377,28 @@ const InterviewGO: React.FC = () => {
         setCurrentQuestion(question);
         console.log('📝 질문 업데이트:', question);
     }
-
-    // TTS 순차 재생 (AI 답변 → 사용자 질문)
-    if (aiAnswer && aiAnswer.trim()) {
-        console.log('🤖 AI 답변 감지, TTS 재생 시작:', aiAnswer);
-        playTTSAndWait(aiAnswer)
-            .then(() => {
-                console.log('✅ AI 답변 TTS 재생 완료');
-                // AI 답변 완료 후 질문 TTS 재생
-                if (question && question.trim()) {
-                    return playQuestionTTS(question);
-                }
-            })
-            .catch(error => {
-                console.error('❌ AI 답변 TTS 재생 실패:', error);
-                // AI 답변 TTS 실패 시에도 질문 TTS 진행
-                if (question && question.trim()) {
-                    playQuestionTTS(question);
-                }
-            });
-    } else if (question && question.trim()) {
-        // AI 답변이 없으면 바로 질문 TTS 재생
-        console.log('📝 질문 TTS 재생:', question);
-        playQuestionTTS(question);
+    
+    // AI 질문 상태 업데이트
+    if (aiQuestion && aiQuestion.trim()) {
+        setCurrentAIQuestion(aiQuestion);
+        console.log('🤖 AI 질문 상태 업데이트:', aiQuestion);
     }
+    
+    // AI 답변 상태 업데이트
+    if (aiAnswer && aiAnswer.trim()) {
+        setCurrentAIAnswer(aiAnswer);
+        console.log('🤖 AI 답변 상태 업데이트:', aiAnswer);
+    }
+
+    // 🆕 백엔드에서 생성된 오디오들을 순차 재생
+    console.log('🔍 백엔드 오디오 데이터 분석:');
+    console.log('  - INTRO 오디오 존재:', !!response.intro_audio);
+    console.log('  - AI 질문 오디오 존재:', !!response.ai_question_audio);
+    console.log('  - AI 답변 오디오 존재:', !!response.ai_answer_audio);
+    console.log('  - 사용자 질문 오디오 존재:', !!response.question_audio);
+    
+    // 백엔드에서 생성된 모든 오디오를 순차적으로 재생
+    playSequentialAudio(response);
     
     // 🎤 녹음 권한 및 상태 업데이트
     updateVoicePermissions();
@@ -522,7 +560,7 @@ const InterviewGO: React.FC = () => {
                 console.log('📝 질문 데이터 처리 시작');
                 const questionData = processQuestion(response);
                 
-                // 🆕 INTRO 메시지 처리 (TTS 재생)
+                // 🆕 INTRO 메시지 처리 (텍스트 표시용)
                 const introMessageFromResponse = (response as any)?.intro_message;
                 if (introMessageFromResponse) {
                   console.log('📢 응답에서 INTRO 메시지 감지:', introMessageFromResponse);
@@ -530,43 +568,20 @@ const InterviewGO: React.FC = () => {
                   setHasIntroMessage(true);
                   setShowIntroMessage(true);
                   
-                  // INTRO TTS 재생 후 질문 UI로 전환
-                  playTTSAndWait(introMessageFromResponse)
-                    .then(() => {
-                      console.log('🎤 INTRO TTS 재생 완료 - 질문 UI로 전환');
-                      setShowIntroMessage(false);
-                      setHasIntroMessage(false);
-                      
-                      // 질문 TTS 재생
-                      if (questionData?.question) {
-                        return playTTSAndWait(questionData.question);
-                      }
-                    })
-                    .then(() => {
-                      console.log('🎤 질문 TTS 재생 완료 - 답변 입력 활성화');
-                      // 답변 입력 활성화는 이미 processQuestion에서 처리됨
-                    })
-                    .catch(error => {
-                      console.error('❌ TTS 재생 실패:', error);
-                      // TTS 실패 시 정상 플로우로 진행
-                      setShowIntroMessage(false);
-                      setHasIntroMessage(false);
-                    });
+                  // INTRO 표시 후 잠시 후 숨기기 (TTS는 백엔드에서 자동 처리됨)
+                  setTimeout(() => {
+                    setShowIntroMessage(false);
+                    setHasIntroMessage(false);
+                  }, 3000); // 3초 후 숨김
                   
-                  console.log('📢 INTRO TTS 재생 시작 - 완료 후 질문으로 전환');
+                  console.log('📢 INTRO 메시지 표시 - TTS는 백엔드에서 자동 처리');
                 } else {
-                  console.log('📝 INTRO 메시지가 없어서 바로 질문 TTS 재생');
-                  // INTRO가 없으면 바로 질문 TTS 재생
-                  if (questionData?.question) {
-                    playTTSAndWait(questionData.question)
-                      .then(() => {
-                        console.log('🎤 질문 TTS 재생 완료 - 답변 입력 활성화');
-                      })
-                      .catch(error => {
-                        console.error('❌ 질문 TTS 재생 실패:', error);
-                      });
-                  }
+                  console.log('📝 INTRO 메시지 없음 - 바로 질문 진행');
                 }
+                
+                // 🆕 첫 번째 응답에서도 TTS 재생 처리
+                console.log('🎵 첫 번째 응답 TTS 재생 처리 시작');
+                updatePhaseFromResponse(response);
                 
                 setIsLoading(false);
                 
@@ -1299,24 +1314,18 @@ const InterviewGO: React.FC = () => {
                   </span>
                 </button>
                 
-                {/* TTS 버튼 */}
-                <button
-                  onClick={() => currentQuestion ? playQuestionTTS(currentQuestion) : null}
-                  disabled={!currentQuestion || isTTSPlaying}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium transition-all ${
-                    !currentQuestion ? 'bg-gray-600 text-gray-400 cursor-not-allowed' :
-                    isTTSPlaying ? 'bg-orange-500 text-white animate-pulse' :
-                    'bg-green-500 text-white hover:bg-green-600'
-                  }`}
-                  title="질문 다시 듣기"
-                >
+                {/* TTS 상태 표시 */}
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium ${
+                  isTTSPlaying ? 'bg-green-500 text-white animate-pulse' :
+                  'bg-green-600 text-white'
+                }`}>
                   <span className="text-lg">
-                    {isTTSPlaying ? '🔇' : '🔊'}
+                    {isTTSPlaying ? '🔊' : '🎵'}
                   </span>
                   <span className="text-xs">
-                    {isTTSPlaying ? '재생중' : '다시듣기'}
+                    {isTTSPlaying ? '음성 재생 중...' : '자동 음성 재생'}
                   </span>
-                </button>
+                </div>
               </div>
               
               <div className="flex items-center justify-between mt-2">
@@ -1401,6 +1410,32 @@ const InterviewGO: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* AI 지원자 질문 표시 */}
+            {currentAIQuestion && (
+              <div className="text-center mb-6">
+                <div className="text-orange-400 text-sm mb-2">🎯 AI 지원자용 질문</div>
+                <div className="text-white text-base leading-relaxed whitespace-pre-line mb-3 bg-orange-900/20 rounded-lg p-4 border border-orange-500/30">
+                  {currentAIQuestion}
+                </div>
+                <div className="text-orange-300 text-xs">
+                  🔊 음성은 자동으로 재생됩니다
+                </div>
+              </div>
+            )}
+
+            {/* AI 지원자 답변 표시 */}
+            {currentAIAnswer && (
+              <div className="text-center mb-6">
+                <div className="text-purple-400 text-sm mb-2">🤖 AI 지원자 답변 (춘식이)</div>
+                <div className="text-white text-base leading-relaxed whitespace-pre-line mb-3 bg-purple-900/20 rounded-lg p-4 border border-purple-500/30">
+                  {currentAIAnswer}
+                </div>
+                <div className="text-purple-300 text-xs">
+                  🔊 음성은 자동으로 재생됩니다
+                </div>
+              </div>
+            )}
 
                          {/* 컨트롤 버튼 */}
              <div className="space-y-3">

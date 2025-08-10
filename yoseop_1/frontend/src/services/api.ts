@@ -219,6 +219,11 @@ export const interviewApi = {
       answer_seq: number;
       current_interviewer: string;
     };
+    // 🆕 TTS 오디오 필드들 추가
+    intro_audio?: string;
+    ai_question_audio?: string;
+    ai_answer_audio?: string;
+    question_audio?: string;
   }> {
     const response = await apiClient.post('/interview/answer', answerData);
     return response.data as {
@@ -238,6 +243,11 @@ export const interviewApi = {
         answer_seq: number;
         current_interviewer: string;
       };
+      // 🆕 TTS 오디오 필드들 추가
+      intro_audio?: string;
+      ai_question_audio?: string;
+      ai_answer_audio?: string;
+      question_audio?: string;
     };
   },
 
@@ -272,6 +282,11 @@ export const interviewApi = {
       answer_seq: number;
       current_interviewer: string;
     };
+    // 🆕 TTS 오디오 필드들 추가
+    intro_audio?: string;
+    ai_question_audio?: string;
+    ai_answer_audio?: string;
+    question_audio?: string;
   }> {
     // 🎯 무조건 InterviewerService 사용하도록 하드코딩
     console.log('🐛 DEBUG: API로 전송하는 원본 설정값:', settings);
@@ -302,6 +317,11 @@ export const interviewApi = {
         answer_seq: number;
         current_interviewer: string;
       };
+      // 🆕 TTS 오디오 필드들 추가
+      intro_audio?: string;
+      ai_question_audio?: string;
+      ai_answer_audio?: string;
+      question_audio?: string;
     };
   },
 
@@ -320,6 +340,11 @@ export const interviewApi = {
       answer_seq: number;
       current_interviewer: string;
     };
+    // 🆕 TTS 오디오 필드들 추가
+    intro_audio?: string;
+    ai_question_audio?: string;
+    ai_answer_audio?: string;
+    question_audio?: string;
   }> {
     const response = await apiClient.post('/interview/answer', {
       session_id: sessionId,
@@ -340,6 +365,11 @@ export const interviewApi = {
         answer_seq: number;
         current_interviewer: string;
       };
+      // 🆕 TTS 오디오 필드들 추가
+      intro_audio?: string;
+      ai_question_audio?: string;
+      ai_answer_audio?: string;
+      question_audio?: string;
     };
   },
 
