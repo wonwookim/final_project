@@ -5,7 +5,10 @@ import asyncio
 import re
 import base64
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
+
+# TTS 동시 요청 제한을 위한 세마포어 추가
+_tts_semaphore = asyncio.Semaphore(1)  # 한 번에 하나의 TTS 요청만 허용
 
 @dataclass
 class Metadata:
@@ -76,7 +79,16 @@ class Orchestrator:
             # current_question은 설정하지 않음 (답변 요청하지 않음)
             
         elif task == "question_generated":
-            self.session_state['current_question'] = content
+            # 턴 0에서 받은 메시지는 인트로 메시지로 처리
+            current_turn = self.session_state.get('turn_count', 0)
+            if current_turn == 0:
+                self.session_state['intro_message'] = content
+                self.session_state['turn_count'] += 1  # 턴 0 완료, 턴 1로 이동
+                print(f"[DEBUG] 인트로 메시지 처리 완료: 턴 {current_turn} -> {self.session_state['turn_count']}")
+            else:
+                # 일반 질문 처리
+                self.session_state['current_question'] = content
+                print(f"[DEBUG] 일반 질문 처리: 턴 {current_turn}")
             
             # 🆕 질문 타입 추출 로직 제거 - QuestionGenerator에서 결정한 면접관 사용
             # current_interviewer는 QuestionGenerator에서 이미 설정됨
@@ -574,48 +586,49 @@ class Orchestrator:
 
     async def _generate_tts(self, text: str) -> Optional[str]:
         """텍스트를 TTS로 변환하여 base64 인코딩된 MP3 데이터 반환"""
-        try:
-            print(f"[🔍 TTS_DEBUG] _generate_tts 함수 시작")
-            print(f"[🔍 TTS_DEBUG] 입력 text: '{text[:100] if text else 'None'}'")
-            print(f"[🔍 TTS_DEBUG] text 타입: {type(text)}")
-            print(f"[🔍 TTS_DEBUG] text 길이: {len(text) if text else 0}")
-            
-            if not text or not text.strip():
-                print(f"[🔍 TTS_DEBUG] ❌ text가 비어있음 - 반환 None")
-                return None
+        async with _tts_semaphore:  # TTS 동시 요청 제한
+            try:
+                print(f"[🔍 TTS_DEBUG] _generate_tts 함수 시작 (세마포어 획득)")
+                print(f"[🔍 TTS_DEBUG] 입력 text: '{text[:100] if text else 'None'}'")
+                print(f"[🔍 TTS_DEBUG] text 타입: {type(text)}")
+                print(f"[🔍 TTS_DEBUG] text 길이: {len(text) if text else 0}")
                 
-            from backend.services.voice_service import elevenlabs_tts_stream
-            print(f"[🔍 TTS_DEBUG] voice_service import 성공")
-            print(f"[🔍 TTS_DEBUG] TTS 생성 시작: {text[:50]}...")
-            print(f"[🔍 TTS_DEBUG] 정제된 text: '{text.strip()[:50]}...'")
-            
-            # ElevenLabs API 호출
-            print(f"[🔍 TTS_DEBUG] elevenlabs_tts_stream 호출 시작")
-            audio_bytes = await elevenlabs_tts_stream(
-                text=text.strip(), 
-                voice_id="21m00Tcm4TlvDq8ikWAM"  # Rachel 음성
-            )
-            print(f"[🔍 TTS_DEBUG] elevenlabs_tts_stream 호출 완료")
-            print(f"[🔍 TTS_DEBUG] audio_bytes 타입: {type(audio_bytes)}")
-            print(f"[🔍 TTS_DEBUG] audio_bytes 길이: {len(audio_bytes) if audio_bytes else 0}")
-            
-            if not audio_bytes:
-                print(f"[🔍 TTS_DEBUG] ❌ audio_bytes가 비어있음")
+                if not text or not text.strip():
+                    print(f"[🔍 TTS_DEBUG] ❌ text가 비어있음 - 반환 None")
+                    return None
+                    
+                from backend.services.voice_service import elevenlabs_tts_stream
+                print(f"[🔍 TTS_DEBUG] voice_service import 성공")
+                print(f"[🔍 TTS_DEBUG] TTS 생성 시작: {text[:50]}...")
+                print(f"[🔍 TTS_DEBUG] 정제된 text: '{text.strip()[:50]}...'")
+                
+                # ElevenLabs API 호출
+                print(f"[🔍 TTS_DEBUG] elevenlabs_tts_stream 호출 시작")
+                audio_bytes = await elevenlabs_tts_stream(
+                    text=text.strip(), 
+                    voice_id="21m00Tcm4TlvDq8ikWAM"  # Rachel 음성
+                )
+                print(f"[🔍 TTS_DEBUG] elevenlabs_tts_stream 호출 완료")
+                print(f"[🔍 TTS_DEBUG] audio_bytes 타입: {type(audio_bytes)}")
+                print(f"[🔍 TTS_DEBUG] audio_bytes 길이: {len(audio_bytes) if audio_bytes else 0}")
+                
+                if not audio_bytes:
+                    print(f"[🔍 TTS_DEBUG] ❌ audio_bytes가 비어있음")
+                    return None
+                
+                # base64 인코딩
+                print(f"[🔍 TTS_DEBUG] base64 인코딩 시작")
+                audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+                print(f"[🔍 TTS_DEBUG] base64 인코딩 완료")
+                print(f"[🔍 TTS_DEBUG] ✅ TTS 생성 완료: {len(audio_base64)} chars (세마포어 해제)")
+                
+                return audio_base64
+                
+            except Exception as e:
+                print(f"[🔍 TTS_DEBUG] ❌ TTS 생성 실패: {e}")
+                import traceback
+                print(f"[🔍 TTS_DEBUG] 스택 트레이스: {traceback.format_exc()}")
                 return None
-            
-            # base64 인코딩
-            print(f"[🔍 TTS_DEBUG] base64 인코딩 시작")
-            audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
-            print(f"[🔍 TTS_DEBUG] base64 인코딩 완료")
-            print(f"[🔍 TTS_DEBUG] ✅ TTS 생성 완료: {len(audio_base64)} chars")
-            
-            return audio_base64
-            
-        except Exception as e:
-            print(f"[🔍 TTS_DEBUG] ❌ TTS 생성 실패: {e}")
-            import traceback
-            print(f"[🔍 TTS_DEBUG] 스택 트레이스: {traceback.format_exc()}")
-            return None
 
     async def _handle_missing_tts_for_first_response(self, result: Dict[str, Any]) -> None:
         """첫 번째 응답에서 누락된 TTS를 추가로 생성"""
@@ -688,6 +701,86 @@ class Orchestrator:
             print(f"[🔍 TTS_DEBUG] ❌ 첫 번째 응답 TTS 보완 실패: {e}")
             import traceback
             print(f"[🔍 TTS_DEBUG] 스택 트레이스: {traceback.format_exc()}")
+
+    async def _generate_and_play_tts(self, text: str, agent_type: str = "interviewer") -> None:
+        """텍스트를 TTS로 변환하고 재생한 후 다음 작업으로 넘어감"""
+        try:
+            if not text or not text.strip():
+                print(f"[🔊 TTS_PLAY] {agent_type} 텍스트가 비어있음 - TTS 건너뜀")
+                return
+            
+            print(f"[🔊 TTS_PLAY] {agent_type} TTS 생성 및 재생 시작: {text[:50]}...")
+            
+            # TTS 생성
+            audio_base64 = await self._generate_tts(text)
+            if not audio_base64:
+                print(f"[🔊 TTS_PLAY] ❌ {agent_type} TTS 생성 실패")
+                return
+            
+            # TTS 재생 시작
+            print(f"[🔊 TTS_PLAY] ✅ {agent_type} TTS 생성 완료, 재생 시작")
+            
+            # 재생 완료까지 대기
+            # 방법 1: 텍스트 길이 기반 대략적 재생 시간 계산 (초당 약 3-4음절)
+            estimated_duration = len(text) / 3.5  # 초당 약 3.5음절로 계산
+            min_duration = 1.0  # 최소 1초
+            max_duration = 10.0  # 최대 10초
+            wait_time = max(min_duration, min(estimated_duration, max_duration))
+            
+            print(f"[🔊 TTS_PLAY] 📊 예상 재생 시간: {wait_time:.1f}초 (텍스트 길이: {len(text)}자)")
+            await asyncio.sleep(wait_time)
+            
+            print(f"[🔊 TTS_PLAY] ✅ {agent_type} TTS 재생 완료, 다음 작업 진행")
+            
+        except Exception as e:
+            print(f"[🔊 TTS_PLAY] ❌ {agent_type} TTS 처리 실패: {e}")
+            import traceback
+            print(f"[🔊 TTS_PLAY] 스택 트레이스: {traceback.format_exc()}")
+
+    async def _generate_and_play_tts_with_callback(self, text: str, agent_type: str = "interviewer", 
+                                                 on_complete: callable = None) -> None:
+        """텍스트를 TTS로 변환하고 재생한 후 콜백 함수 실행"""
+        try:
+            if not text or not text.strip():
+                print(f"[🔊 TTS_PLAY] {agent_type} 텍스트가 비어있음 - TTS 건너뜀")
+                if on_complete:
+                    await on_complete()
+                return
+            
+            print(f"[🔊 TTS_PLAY] {agent_type} TTS 생성 및 재생 시작: {text[:50]}...")
+            
+            # TTS 생성
+            audio_base64 = await self._generate_tts(text)
+            if not audio_base64:
+                print(f"[🔊 TTS_PLAY] ❌ {agent_type} TTS 생성 실패")
+                if on_complete:
+                    await on_complete()
+                return
+            
+            # TTS 재생 시작
+            print(f"[🔊 TTS_PLAY] ✅ {agent_type} TTS 생성 완료, 재생 시작")
+            
+            # 재생 완료까지 대기
+            estimated_duration = len(text) / 3.5
+            min_duration = 1.0
+            max_duration = 10.0
+            wait_time = max(min_duration, min(estimated_duration, max_duration))
+            
+            print(f"[🔊 TTS_PLAY] 📊 예상 재생 시간: {wait_time:.1f}초 (텍스트 길이: {len(text)}자)")
+            await asyncio.sleep(wait_time)
+            
+            print(f"[🔊 TTS_PLAY] ✅ {agent_type} TTS 재생 완료")
+            
+            # 콜백 함수 실행
+            if on_complete:
+                await on_complete()
+            
+        except Exception as e:
+            print(f"[🔊 TTS_PLAY] ❌ {agent_type} TTS 처리 실패: {e}")
+            import traceback
+            print(f"[🔊 TTS_PLAY] 스택 트레이스: {traceback.format_exc()}")
+            if on_complete:
+                await on_complete()
 
     @staticmethod
     def create_agent_message(session_id: str, task: str, from_agent: str, content_text: str, 
@@ -799,13 +892,13 @@ class Orchestrator:
             # 에이전트 작업 수행 (handle_message에서 JSON 출력됨)
             if next_agent == "interviewer":
                 print(f"[TRACE] interviewer task start")
-                await self._process_interviewer_task()
+                await self._process_interviewer_task_parallel()
             elif next_agent == "interviewer_individual":
                 print(f"[TRACE] interviewer individual follow-up task start")
-                await self._process_individual_interviewer_task()
+                await self._process_individual_interviewer_task_parallel()
             elif next_agent == "ai":
                 print(f"[TRACE] ai task start")
-                await self._process_ai_task(next_message.get("content", {}).get("content"))
+                await self._process_ai_task_parallel(next_message.get("content", {}).get("content"))
             
             print(f"[TRACE] loop end")
     
@@ -844,6 +937,15 @@ class Orchestrator:
             # TRACE 출력: interviewer -> orchestrator (individual_questions_generated)
             self.handle_message(questions_message)
             
+            # 🆕 개별 질문 TTS 생성 및 재생
+            user_question = question_result.get('user_question', {}).get('question', '')
+            ai_question = question_result.get('ai_question', {}).get('question', '')
+            
+            if user_question:
+                await self._generate_and_play_tts(user_question, "면접관(사용자용)")
+            if ai_question:
+                await self._generate_and_play_tts(ai_question, "면접관(AI용)")
+            
         else:
             # 일반 질문 처리
             question_content = question_result if isinstance(question_result, str) else str(question_result)
@@ -866,6 +968,10 @@ class Orchestrator:
             
             # TRACE 출력: interviewer -> orchestrator (question_generated)
             self.handle_message(question_message)
+            
+            # 🆕 면접관 질문 TTS 생성 및 재생
+            if question_content:
+                await self._generate_and_play_tts(question_content, "면접관")
     
     async def _process_individual_interviewer_task(self):
         """개별 꼬리질문 생성 작업 처리"""
@@ -896,10 +1002,70 @@ class Orchestrator:
             # TRACE 출력: interviewer -> orchestrator (individual_questions_generated)
             self.handle_message(questions_message)
             
+            # 🆕 개별 꼬리질문 TTS 생성 및 재생
+            user_question = individual_questions.get('user_question', {}).get('question', '')
+            ai_question = individual_questions.get('ai_question', {}).get('question', '')
+            
+            if user_question:
+                await self._generate_and_play_tts(user_question, "면접관(개별-사용자용)")
+            if ai_question:
+                await self._generate_and_play_tts(ai_question, "면접관(개별-AI용)")
+            
         except Exception as e:
             print(f"[TRACE][ERROR] individual follow-up generation failed: {e}")
             # 폴백: 일반 질문으로 대체
             await self._process_interviewer_task()
+
+    async def _process_individual_interviewer_task_parallel(self) -> Dict[str, Any]:
+        """
+        🆕 병렬 처리를 적용한 개별 꼬리질문 생성 작업 처리
+        """
+        print(f"[TRACE] Orchestrator -> Interviewer (generate_individual_follow_up)")
+        
+        # 현재 상태 디버깅
+        current_interviewer = self.session_state.get('current_interviewer')
+        turn_state = self.session_state.get('interviewer_turn_state', {})
+        current_turn = self.session_state.get('turn_count', 0)
+        
+        print(f"[TRACE] individual follow-up start turn={current_turn}, interviewer={current_interviewer}")
+        
+        try:
+            # 개별 꼬리질문 생성 요청
+            individual_questions = await self._request_individual_follow_up_questions()
+            
+            # 개별 질문 메시지 생성 및 처리
+            questions_message = self.create_agent_message(
+                session_id=self.session_id,
+                task="individual_questions_generated",
+                from_agent="interviewer",
+                content_text=json.dumps(individual_questions),  # Dict를 JSON으로 변환
+                turn_count=current_turn,
+                content_type=current_interviewer or "HR",
+                start_time=self.session_state.get('start_time')
+            )
+            
+            # TRACE 출력: interviewer -> orchestrator (individual_questions_generated)
+            self.handle_message(questions_message)
+            
+            # 🆕 병렬 TTS 처리 - 재생을 기다리지 않고 즉시 다음 작업 준비
+            user_question = individual_questions.get('user_question', {}).get('question', '')
+            ai_question = individual_questions.get('ai_question', {}).get('question', '')
+            
+            print(f"[DEBUG] 개별 질문 TTS 처리: 사용자용='{user_question[:30]}...', AI용='{ai_question[:30]}...'")
+            
+            if user_question:
+                print(f"[DEBUG] 사용자용 질문 TTS 태스크 생성")
+                asyncio.create_task(self._generate_and_play_tts_parallel(user_question, "면접관(개별-사용자용)"))
+            if ai_question:
+                print(f"[DEBUG] AI용 질문 TTS 태스크 생성")
+                asyncio.create_task(self._generate_and_play_tts_parallel(ai_question, "면접관(개별-AI용)"))
+            
+            return questions_message
+            
+        except Exception as e:
+            print(f"[TRACE][ERROR] individual follow-up generation failed: {e}")
+            # 폴백: 일반 질문으로 대체
+            return await self._process_interviewer_task_parallel()
     
     async def _process_ai_task(self, question: str):
         """AI 지원자 작업 처리"""
@@ -944,7 +1110,11 @@ class Orchestrator:
         
         # handle_message에서 JSON 출력됨
         self.handle_message(ai_message)
-    
+        
+        # 🆕 AI 답변 TTS 생성 및 재생
+        if ai_answer:
+            await self._generate_and_play_tts(ai_answer, "AI지원자")
+
     async def create_user_waiting_message(self) -> Dict[str, Any]:
         """사용자 입력 대기 메시지 생성"""
         # 🆕 개별 질문 상태 체크
@@ -1138,5 +1308,166 @@ class Orchestrator:
             return question
         except Exception:
             return question
+
+    async def _generate_and_play_tts_parallel(self, text: str, agent_type: str = "interviewer") -> None:
+        """
+        🆕 병렬 처리를 통한 효율적인 TTS 생성 및 재생
+        TTS 생성과 재생을 별도 태스크로 분리하여 동시에 처리
+        """
+        try:
+            print(f"🎵 [{agent_type}] TTS 병렬 처리 시작: {text[:50]}...")
+            print(f"[DEBUG] TTS 함수 호출됨 - agent_type: {agent_type}, text_length: {len(text)}")
+            
+            # TTS 생성 태스크 (백그라운드에서 실행)
+            print(f"🎵 [{agent_type}] TTS 생성 태스크 시작 (세마포어 대기 중...)")
+            tts_task = asyncio.create_task(self._generate_tts_async(text))
+            
+            # TTS 생성이 완료될 때까지 대기
+            audio_data = await tts_task
+            
+            if audio_data:
+                # 재생 태스크 시작 (백그라운드에서 실행)
+                playback_task = asyncio.create_task(self._play_audio_async(audio_data, text))
+                
+                # 재생 태스크를 백그라운드에서 실행하고 즉시 반환
+                # 이렇게 하면 재생 중에도 다음 작업을 준비할 수 있음
+                print(f"🎵 [{agent_type}] TTS 재생 시작 (백그라운드)")
+                
+                # 재생 완료를 기다리지 않고 즉시 반환
+                # 필요시 나중에 playback_task를 await할 수 있음
+                
+            else:
+                print(f"❌ [{agent_type}] TTS 생성 실패")
+                
+        except Exception as e:
+            print(f"❌ [{agent_type}] TTS 병렬 처리 중 오류: {e}")
+
+    async def _generate_tts_async(self, text: str) -> Optional[str]:
+        """
+        🆕 비동기 TTS 생성
+        """
+        try:
+            print(f"[DEBUG] _generate_tts_async 호출됨 - text_length: {len(text)}")
+            # 실제 TTS 서비스 호출을 비동기로 처리
+            audio_data = await self._generate_tts(text)
+            print(f"[DEBUG] _generate_tts_async 완료 - audio_data: {'있음' if audio_data else '없음'}")
+            return audio_data
+        except Exception as e:
+            print(f"TTS 생성 중 오류: {e}")
+            return None
+
+    async def _play_audio_async(self, audio_data: str, text: str) -> None:
+        """
+        🆕 비동기 오디오 재생 (시뮬레이션)
+        """
+        try:
+            # 재생 시간 계산
+            estimated_duration = len(text) * 0.06  # 초 단위
+            
+            print(f"🔊 오디오 재생 시작 (예상 시간: {estimated_duration:.1f}초)")
+            
+            # 재생 시간만큼 대기 (실제로는 오디오 재생 API 호출)
+            await asyncio.sleep(estimated_duration)
+            
+            print(f"✅ 오디오 재생 완료")
+            
+        except Exception as e:
+            print(f"오디오 재생 중 오류: {e}")
+
+    async def _process_interviewer_task_parallel(self) -> Dict[str, Any]:
+        """
+        🆕 병렬 처리를 적용한 면접관 태스크 처리
+        """
+        try:
+            # 질문 요청
+            question_content = await self._request_question_from_interviewer()
+            
+            if question_content:
+                # 질문 메시지 생성 및 처리
+                question_message = self.create_agent_message(
+                        session_id=self.session_id,
+                        task="question_generated",
+                        content_text=question_content,
+                        from_agent="interviewer",
+                        turn_count=self.session_state.get('turn_count', 0)
+                    )
+                
+                self.handle_message(question_message)
+                
+                # 🆕 병렬 TTS 처리 - 재생을 기다리지 않고 즉시 다음 작업 준비
+                if question_content:
+                    asyncio.create_task(self._generate_and_play_tts_parallel(question_content, "면접관"))
+                
+                return question_message
+            else:
+                return self.create_agent_message(
+                    session_id=self.session_id,
+                    task="error",
+                    content_text="질문 생성 실패",
+                    from_agent="orchestrator",
+                    turn_count=self.session_state.get('turn_count', 0)
+                )
+                
+        except Exception as e:
+            print(f"면접관 태스크 처리 중 오류: {e}")
+            return self.create_agent_message(
+                session_id=self.session_id,
+                task="error",
+                content_text=f"면접관 태스크 오류: {str(e)}",
+                from_agent="orchestrator",
+                turn_count=self.session_state.get('turn_count', 0)
+            )
+
+    async def _process_ai_task_parallel(self, question: str) -> Dict[str, Any]:
+        """
+        🆕 병렬 처리를 적용한 AI 태스크 처리
+        """
+        try:
+            print(f"[DEBUG] AI 태스크 시작: {question[:50]}...")
+            
+            # AI 답변 요청
+            ai_answer = await self._request_answer_from_ai_candidate(question)
+            
+            if ai_answer:
+                print(f"[DEBUG] AI 답변 생성 완료: {ai_answer[:50]}...")
+                
+                # AI 답변 메시지 생성 및 처리
+                ai_message = self.create_agent_message(
+                        session_id=self.session_id,
+                        task="answer_generated",
+                        content_text=ai_answer,
+                        from_agent="ai",
+                        turn_count=self.session_state.get('turn_count', 0)
+                    )
+                
+                self.handle_message(ai_message)
+                
+                # 🆕 병렬 TTS 처리 - 재생을 기다리지 않고 즉시 다음 작업 준비
+                if ai_answer:
+                    print(f"[DEBUG] AI TTS 태스크 생성 시작")
+                    asyncio.create_task(self._generate_and_play_tts_parallel(ai_answer, "AI지원자"))
+                    print(f"[DEBUG] AI TTS 태스크 생성 완료")
+                else:
+                    print(f"[DEBUG] AI 답변이 비어있어 TTS 건너뜀")
+                
+                return ai_message
+            else:
+                return self.create_agent_message(
+                    session_id=self.session_id,
+                    task="error",
+                    content_text="AI 답변 생성 실패",
+                    from_agent="orchestrator",
+                    turn_count=self.session_state.get('turn_count', 0)
+                )
+                
+        except Exception as e:
+            print(f"AI 태스크 처리 중 오류: {e}")
+            return self.create_agent_message(
+                session_id=self.session_id,
+                task="error",
+                content_text=f"AI 태스크 오류: {str(e)}",
+                from_agent="orchestrator",
+                turn_count=self.session_state.get('turn_count', 0)
+            )
 
     
