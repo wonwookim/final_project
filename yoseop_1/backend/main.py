@@ -28,6 +28,9 @@ try:
     # S3 비디오 API 임포트
     sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 's3'))
     from test.video_api import router as test_video_router
+    
+    # 시선 분석 API 임포트
+    from test.gaze_api import get_gaze_router
 
     DATABASE_ENABLED = True
     print("데이터베이스 확장 로드 성공")
@@ -83,6 +86,7 @@ if DATABASE_ENABLED:
     app.include_router(position_router)
     app.include_router(interview_router)
     app.include_router(test_video_router)  # S3 테스트 비디오 API 라우터 추가
+    app.include_router(get_gaze_router())  # 시선 분석 API 라우터 추가
     # app.include_router(migration_router)
     # app.include_router(database_router)
 
