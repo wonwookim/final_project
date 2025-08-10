@@ -619,6 +619,31 @@ export const interviewApi = {
       system_status: string;
     };
   },
+
+  // TTS (Text-to-Speech) 음성 재생
+  async playTTS(text: string): Promise<HTMLAudioElement> {
+    console.log('🔊 TTS 요청:', text.substring(0, 50) + '...');
+    
+    const response = await apiClient.post('/interview/tts', 
+      { 
+        text: text,
+        voice_id: '21m00Tcm4TlvDq8ikWAM' // Rachel 음성 (무료 기본 제공)
+      }, 
+      { 
+        responseType: 'blob' // 오디오 데이터를 blob으로 받음
+      }
+    );
+    
+    // Blob을 오디오 URL로 변환
+    const audioBlob = new Blob([response.data as BlobPart], { type: 'audio/mp3' });
+    const audioUrl = URL.createObjectURL(audioBlob);
+    
+    // Audio 객체 생성 및 반환
+    const audio = new Audio(audioUrl);
+    
+    console.log('✅ TTS 오디오 생성 완료');
+    return audio;
+  },
 };
 
 // 에러 처리 유틸리티
