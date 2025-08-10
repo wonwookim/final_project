@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PlayerProps, TestPlayResponse } from './types';
+
+const API_BASE_URL = 'http://127.0.0.1:8000';
 
 const VideoTestPlayer: React.FC<PlayerProps> = ({ testId, onError }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -8,41 +10,76 @@ const VideoTestPlayer: React.FC<PlayerProps> = ({ testId, onError }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  useEffect(() => {
-    if (testId) {
-      loadVideo();
-    }
-  }, [testId]);
-
-  const loadVideo = async () => {
+  const loadVideo = useCallback(async () => {
     setIsLoading(true);
     
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('auth_token');
       if (!token) {
         throw new Error('로그인이 필요합니다');
       }
 
-      const response = await fetch(`/video/test/play/${testId}`, {
+      console.log('🎥 비디오 로드 시작:', { testId, token: token.substring(0, 50) + '...' });
+
+      const response = await fetch(`${API_BASE_URL}/video/play/${testId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+      
+      console.log('🎥 API 응답:', { status: response.status, statusText: response.statusText });
 
       if (!response.ok) {
-        throw new Error(`비디오 로드 실패: ${response.status}`);
+        const errorData = await response.json().catch(() => ({ detail: null }));
+        console.error('❌ 비디오 로드 실패:', { status: response.status, errorData });
+        throw new Error(`비디오 로드 실패 (${response.status}): ${(errorData as any)?.detail || response.statusText}`);
       }
 
       const data: TestPlayResponse = await response.json();
+      console.log('✅ 비디오 데이터 받음:', {
+        play_url: data.play_url ? `${data.play_url.substring(0, 100)}...` : 'null',
+        file_name: data.file_name,
+        file_type: data.file_type,
+        test_id: data.test_id
+      });
       setVideoInfo(data);
       setVideoUrl(data.play_url);
+      
+      // Presigned URL 유효성 체크
+      if (data.play_url) {
+        console.log('🔗 Presigned URL 유효성 체크 시작...');
+        try {
+          const urlCheck = await fetch(data.play_url, { method: 'HEAD' });
+          console.log('🔗 Presigned URL 체크 결과:', {
+            status: urlCheck.status,
+            statusText: urlCheck.statusText,
+            headers: {
+              'content-type': urlCheck.headers.get('content-type'),
+              'content-length': urlCheck.headers.get('content-length')
+            }
+          });
+          if (!urlCheck.ok) {
+            console.error('❌ Presigned URL이 유효하지 않음:', urlCheck.status);
+          }
+        } catch (urlError) {
+          console.error('❌ Presigned URL 체크 실패:', urlError);
+        }
+      } else {
+        console.error('❌ play_url이 null이거나 비어있음');
+      }
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '비디오를 로드할 수 없습니다';
+      console.error('❌ 비디오 로드 실패:', { error, testId, errorMessage });
       onError(errorMessage);
-      console.error('Video load failed:', error);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [testId, onError]); // testId와 onError를 의존성으로 추가
+
+  useEffect(() => {
+    if (testId) {
+      loadVideo();
+    }
+  }, [testId, loadVideo]); // loadVideo를 의존성 배열에 추가
 
   const handlePlay = () => {
     if (videoRef.current) {
@@ -117,9 +154,41 @@ const VideoTestPlayer: React.FC<PlayerProps> = ({ testId, onError }) => {
           src={videoUrl}
           controls
           className="w-full max-w-md mx-auto rounded-lg bg-gray-900"
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
+          onPlay={() => {
+            console.log('🎬 비디오 재생 시작');
+            setIsPlaying(true);
+          }}
+          onPause={() => {
+            console.log('⏸️ 비디오 일시정지');
+            setIsPlaying(false);
+          }}
           onEnded={handleVideoEnded}
+          onLoadStart={() => console.log('📂 비디오 로드 시작')}
+          onLoadedMetadata={(e) => {
+            const video = e.target as HTMLVideoElement;
+            console.log('📋 비디오 메타데이터 로드됨:', {
+              duration: video.duration,
+              videoWidth: video.videoWidth,
+              videoHeight: video.videoHeight,
+              readyState: video.readyState
+            });
+          }}
+          onLoadedData={() => console.log('📊 비디오 데이터 로드됨')}
+          onCanPlay={() => console.log('▶️ 비디오 재생 가능')}
+          onCanPlayThrough={() => console.log('🎯 비디오 끊김없이 재생 가능')}
+          onError={(e) => {
+            const video = e.target as HTMLVideoElement;
+            console.error('❌ 비디오 재생 오류:', {
+              error: video.error,
+              networkState: video.networkState,
+              readyState: video.readyState,
+              src: videoUrl?.substring(0, 100) + '...'
+            });
+          }}
+          onStalled={() => console.warn('⚠️ 비디오 로딩 지연')}
+          onSuspend={() => console.log('⏸️ 비디오 로딩 중단')}
+          onAbort={() => console.log('❌ 비디오 로딩 중단됨')}
+          onEmptied={() => console.log('🗑️ 비디오 소스 비워짐')}
           preload="metadata"
         >
           Your browser does not support the video tag.

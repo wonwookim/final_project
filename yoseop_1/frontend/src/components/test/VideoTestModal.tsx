@@ -22,6 +22,7 @@ const VideoTestModal: React.FC<VideoTestModalProps> = ({ isOpen, onClose }) => {
   });
 
   const resetSession = () => {
+    console.log('🔄 세션 초기화 - 녹화 단계로 리셋');
     setSessionState({
       step: 'record',
       isRecording: false,
@@ -35,6 +36,12 @@ const VideoTestModal: React.FC<VideoTestModalProps> = ({ isOpen, onClose }) => {
   };
 
   const handleRecordingComplete = (blob: Blob) => {
+    console.log('🎬 녹화 완료 - Modal에서 업로드 단계로 전환:', {
+      blobSize: blob.size,
+      blobType: blob.type,
+      currentStep: sessionState.step
+    });
+    
     setSessionState(prev => ({
       ...prev,
       step: 'upload',
@@ -152,26 +159,41 @@ const VideoTestModal: React.FC<VideoTestModalProps> = ({ isOpen, onClose }) => {
 
           {/* 단계별 컴포넌트 */}
           {sessionState.step === 'record' && (
-            <VideoTestRecorder
-              onRecordingComplete={handleRecordingComplete}
-              onError={handleError}
-            />
+            <>
+              <div className="text-center text-sm text-blue-600 mb-4">
+                📹 1단계: 비디오 녹화
+              </div>
+              <VideoTestRecorder
+                onRecordingComplete={handleRecordingComplete}
+                onError={handleError}
+              />
+            </>
           )}
 
           {sessionState.step === 'upload' && sessionState.recordedBlob && (
-            <VideoTestUploader
-              blob={sessionState.recordedBlob}
-              onUploadComplete={handleUploadComplete}
-              onUploadProgress={handleUploadProgress}
-              onError={handleError}
-            />
+            <>
+              <div className="text-center text-sm text-blue-600 mb-4">
+                📤 2단계: S3에 업로드 중... (크기: {(sessionState.recordedBlob.size / (1024 * 1024)).toFixed(2)} MB)
+              </div>
+              <VideoTestUploader
+                blob={sessionState.recordedBlob}
+                onUploadComplete={handleUploadComplete}
+                onUploadProgress={handleUploadProgress}
+                onError={handleError}
+              />
+            </>
           )}
 
           {sessionState.step === 'play' && sessionState.testId && (
-            <VideoTestPlayer
-              testId={sessionState.testId}
-              onError={handleError}
-            />
+            <>
+              <div className="text-center text-sm text-blue-600 mb-4">
+                🎬 3단계: 비디오 재생
+              </div>
+              <VideoTestPlayer
+                testId={sessionState.testId}
+                onError={handleError}
+              />
+            </>
           )}
         </div>
 
