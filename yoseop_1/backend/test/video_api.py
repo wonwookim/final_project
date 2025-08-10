@@ -121,7 +121,7 @@ async def get_test_upload_url(
     print(f"[DEBUG] Using user token for DB access: {user_token[:50]}...")
     
     try:
-        result = supabase.table('media_files').insert({
+        insert_data = {
             'user_id': current_user.user_id,
             'interview_id': 110,  # 테스트용으로 기존 interview_id 사용
             'file_name': request.file_name,
@@ -130,34 +130,59 @@ async def get_test_upload_url(
             's3_url': f"https://{BUCKET_NAME}.s3.ap-northeast-2.amazonaws.com/{s3_key}",
             'file_size': request.file_size,
             'duration': None
-        }).execute()
+        }
+        print(f"[DEBUG] DB 삽입할 데이터: {insert_data}")
+        
+        result = supabase.table('media_files').insert(insert_data).execute()
+        print(f"[DEBUG] DB 삽입 결과: {result}")
+        print(f"[DEBUG] 삽입된 데이터: {result.data}")
         
         if not result.data:
+            print(f"[ERROR] DB 레코드 생성 실패 - result.data가 비어있음")
             raise HTTPException(status_code=500, detail="DB 레코드 생성 실패")
+            
+        media_id = result.data[0]['media_id']
+        print(f"[DEBUG] 생성된 media_id: {media_id}")
+        
+        # 삽입 후 바로 조회해서 확인
+        verification = supabase.table('media_files').select('*').eq('media_id', media_id).execute()
+        print(f"[DEBUG] 삽입 직후 확인 조회: {verification.data}")
             
     except Exception as e:
         print(f"[ERROR] DB insertion error: {str(e)}")
+        print(f"[ERROR] 삽입 시도한 데이터: {insert_data}")
         raise HTTPException(status_code=500, detail=f"DB 오류: {str(e)}")
     
     return {
         'upload_url': upload_url,
-        'media_id': result.data[0]['media_id']
+        'media_id': result.data[0]['media_id'],
+        'test_id': result.data[0]['media_id']  # 일관성을 위해 test_id도 추가
     }
 
 @router.get("/play/{test_id}")
-async def get_play_url(test_id: str, current_user=Depends(auth_service.get_current_user)):
+async def get_play_url(
+    test_id: str, 
+    current_user=Depends(auth_service.get_current_user),
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
     """재생용 Presigned URL 생성 (test_id = media_id)"""
     
     try:
-        # DB에서 파일 정보 조회 (media_id 기반, RLS 정책 통과를 위해 user_id도 확인)
-        supabase = get_supabase_client()
-        result = supabase.table('media_files').select('s3_key, file_name, file_type, media_id').eq('media_id', test_id).eq('user_id', current_user.user_id).execute()
-        
         print(f"[DEBUG] 재생 API 호출: test_id={test_id}, user_id={current_user.user_id}")
-        print(f"[DEBUG] DB 쿼리 결과: {result.data}")
+        print(f"[DEBUG] 현재 사용자 정보: {current_user}")
+        
+        # 사용자 토큰을 사용한 Supabase 클라이언트 (업로드/완료 API와 동일)
+        user_token = credentials.credentials
+        supabase = get_user_supabase_client(user_token)
+        print(f"[DEBUG] 재생 API에서 user token 사용: {user_token[:50]}...")
+        
+        # user token을 사용하여 DB에서 파일 정보 조회
+        print(f"[DEBUG] media_id={test_id}, user_id={current_user.user_id}로 파일 조회")
+        result = supabase.table('media_files').select('s3_key, file_name, file_type, media_id').eq('media_id', test_id).eq('user_id', current_user.user_id).execute()
+        print(f"[DEBUG] 조회 결과: {len(result.data)}개 발견")
         
         if not result.data:
-            print(f"[DEBUG] 파일을 찾을 수 없음: media_id={test_id}")
+            print(f"[DEBUG] 파일을 찾을 수 없음: media_id={test_id}, user_id={current_user.user_id}")
             raise HTTPException(status_code=404, detail=f"미디어 파일을 찾을 수 없습니다 (ID: {test_id})")
         
         # 파일 정보 가져오기
@@ -176,12 +201,18 @@ async def get_play_url(test_id: str, current_user=Depends(auth_service.get_curre
             ExpiresIn=3600
         )
         
-        return {
+        print(f"[DEBUG] 생성된 Presigned URL: {play_url[:100]}...")
+        print(f"[DEBUG] S3 버킷: {BUCKET_NAME}, S3 키: {s3_key}")
+        
+        response_data = {
             'play_url': play_url,
             'file_name': file_info['file_name'],
             'file_type': file_info['file_type'],
             'test_id': test_id
         }
+        print(f"[DEBUG] 재생 API 응답: {response_data}")
+        
+        return response_data
         
     except HTTPException:
         raise
@@ -213,11 +244,16 @@ async def complete_upload(
             update_data['duration'] = duration
             
         # 먼저 레코드가 존재하는지 확인
+        print(f"[DEBUG] 완료 API에서 레코드 존재 확인: media_id={media_id}, user_id={current_user.user_id}")
         check_result = supabase.table('media_files').select('*').eq('media_id', media_id).eq('user_id', current_user.user_id).execute()
-        print(f"[DEBUG] 레코드 존재 확인: {len(check_result.data)}개 발견")
+        print(f"[DEBUG] 완료 API 레코드 존재 확인: {len(check_result.data)}개 발견")
+        print(f"[DEBUG] 완료 API 조회된 레코드: {check_result.data}")
         
         if not check_result.data:
-            print(f"[DEBUG] 미디어 파일 찾을 수 없음: media_id={media_id}, user_id={current_user.user_id}")
+            print(f"[DEBUG] 완료 API에서 미디어 파일 찾을 수 없음: media_id={media_id}, user_id={current_user.user_id}")
+            # 전체 조회로 실제 존재하는지 확인
+            all_check = supabase.table('media_files').select('*').eq('media_id', media_id).execute()
+            print(f"[DEBUG] 완료 API 전체 조회 결과: {all_check.data}")
             raise HTTPException(status_code=404, detail=f"미디어 파일을 찾을 수 없습니다 (ID: {media_id})")
         
         existing_record = check_result.data[0]
