@@ -30,7 +30,7 @@ export interface TestVideo {
 }
 
 export interface TestSessionState {
-  step: 'record' | 'upload' | 'play' | 'complete';
+  step: 'calibration' | 'record' | 'upload' | 'analyze' | 'result' | 'complete';
   isRecording: boolean;
   isUploading: boolean;
   uploadProgress: number;
@@ -38,6 +38,13 @@ export interface TestSessionState {
   recordedBlob: Blob | null;
   testId: string | null;
   mediaId: string | null;
+  // 시선 분석 관련 상태
+  calibrationSessionId: string | null;
+  isCalibrating: boolean;
+  calibrationPhase: string;
+  isAnalyzing: boolean;
+  analysisTaskId: string | null;
+  gazeResult: GazeAnalysisResult | null;
 }
 
 export interface RecorderProps {
@@ -55,4 +62,80 @@ export interface UploaderProps {
 export interface PlayerProps {
   testId: string;
   onError: (error: string) => void;
+}
+
+// 시선 분석 관련 타입들
+export interface CalibrationPoint {
+  x: number;
+  y: number;
+  label: string;
+}
+
+export interface CalibrationStartResponse {
+  session_id: string;
+  status: string;
+  message: string;
+}
+
+export interface CalibrationStatusResponse {
+  session_id: string;
+  current_phase: string;
+  elapsed_time: number;
+  is_collecting: boolean;
+  collected_points: { [key: string]: number };
+  progress: number;
+  instructions: string;
+}
+
+export interface CalibrationResult {
+  session_id: string;
+  calibration_points: [number, number][];
+  point_details: { [key: string]: CalibrationPoint };
+  collection_stats: { [key: string]: number };
+  completed_at: number;
+}
+
+export interface GazeAnalysisResult {
+  gaze_score: number;
+  total_frames: number;
+  analyzed_frames: number;
+  in_range_frames: number;
+  in_range_ratio: number;
+  jitter_score: number;
+  stability_rating: string;
+  feedback: string;
+  gaze_points: [number, number][];
+  analysis_duration: number;
+}
+
+export interface VideoAnalysisResponse {
+  task_id: string;
+  status: string;
+  message: string;
+}
+
+export interface AnalysisStatusResponse {
+  task_id: string;
+  status: 'processing' | 'completed' | 'failed';
+  progress?: number;
+  result?: GazeAnalysisResult;
+  error?: string;
+}
+
+export interface CalibrationProps {
+  onCalibrationComplete: (sessionId: string) => void;
+  onError: (error: string) => void;
+}
+
+export interface GazeAnalysisProps {
+  videoUrl: string;
+  calibrationSessionId: string;
+  onAnalysisComplete: (result: GazeAnalysisResult) => void;
+  onProgress: (progress: number) => void;
+  onError: (error: string) => void;
+}
+
+export interface GazeResultProps {
+  result: GazeAnalysisResult;
+  onRestart: () => void;
 }
