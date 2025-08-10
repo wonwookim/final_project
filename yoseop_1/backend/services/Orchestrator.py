@@ -68,7 +68,9 @@ class Orchestrator:
     def _update_state_from_message(self, task: str, content: str, from_agent: str) -> None:
         """메시지로부터 세션 상태 업데이트"""
         if task == "intro_generated":
-            # 인트로 메시지 생성 완료 - 답변 없이 바로 턴 증가
+            # 인트로 메시지 생성 완료 - 세션에 저장
+            self.session_state['intro_message'] = content
+            # 답변 없이 바로 턴 증가
             self.session_state['turn_count'] += 1  # 턴 0 완료, 턴 1로 이동
             # current_question은 설정하지 않음 (답변 요청하지 않음)
             
@@ -843,6 +845,11 @@ class Orchestrator:
         response['status'] = 'waiting_for_user'
         response['message'] = '답변을 입력해주세요.'
         response['session_id'] = self.session_id
+        
+        # 🆕 INTRO 메시지 포함 (있는 경우)
+        intro_message = self.session_state.get('intro_message')
+        if intro_message:
+            response['intro_message'] = intro_message
         
         # 🆕 턴 정보 추가 (개별 질문 정보 포함)
         try:

@@ -85,6 +85,11 @@ const InterviewGO: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(true); // 복원 상태 추가
   
+  // 🆕 INTRO 메시지 관련 상태
+  const [introMessage, setIntroMessage] = useState<string>('');
+  const [hasIntroMessage, setHasIntroMessage] = useState(false);
+  const [showIntroMessage, setShowIntroMessage] = useState(false);
+  
   // 🆕 턴 관리 상태
   const [currentTurn, setCurrentTurn] = useState<'user' | 'ai' | 'waiting'>('waiting');
   const [timeLeft, setTimeLeft] = useState(120); // 2분 타이머
@@ -321,6 +326,18 @@ const InterviewGO: React.FC = () => {
     }
   };
 
+  // 🆕 사용자 턴 상태 설정 헬퍼 함수
+  const setUserTurnState = (question: string, source: string) => {
+    console.log(`✅ 사용자 턴 설정 (${source}):`, question);
+    setCurrentPhase('user_turn');
+    setCurrentTurn('user');
+    setIsTimerActive(true);
+    setTimeLeft(120);
+    setCanSubmit(true);
+    setCanRecord(true);
+    setCurrentQuestion(question);
+  };
+
   // 🆕 초기 턴 상태 설정 (세션 로드 완료 후)
   useEffect(() => {
     if (!isRestoring && state.sessionId) {
@@ -335,40 +352,150 @@ const InterviewGO: React.FC = () => {
             const parsedState = JSON.parse(savedState);
             console.log('📦 localStorage에서 면접 상태 확인:', parsedState);
             
-            // 면접 시작 응답에서 턴 정보 확인
+            // 🆕 API 호출이 필요한 경우 (환경 체크에서 온 경우)
+            if (parsedState.needsApiCall && !parsedState.apiCallCompleted) {
+              console.log('🚀 환경 체크에서 온 새로운 면접 - 첫 질문 로딩 시작');
+              setCurrentQuestion("첫 번째 질문을 준비하고 있습니다...");
+              setCurrentPhase('waiting');
+              setCurrentTurn('waiting');
+              setIsLoading(true);
+              
+              try {
+                let response: any;
+                const finalSettings = parsedState.settings;
+                
+                if (finalSettings.mode === 'ai_competition') {
+                  console.log('🤖 AI 경쟁 모드 - API 호출 시작');
+                  response = await interviewApi.startAICompetition(finalSettings);
+                } else {
+                  console.log('👤 일반 모드 - API 호출 시작');
+                  response = await interviewApi.startInterview(finalSettings);
+                }
+                
+                console.log('✅ 첫 질문 로딩 완료:', response);
+                
+                // 🔧 백엔드에서 받은 실제 세션 ID로 업데이트
+                if (response.session_id) {
+                  console.log('🔄 세션 ID 업데이트:', parsedState.sessionId, '->', response.session_id);
+                  
+                  // Context 업데이트
+                  dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
+                  
+                  // localStorage도 즉시 업데이트 (나중에 다시 업데이트하지만 일관성을 위해)
+                  parsedState.sessionId = response.session_id;
+                }
+                
+                // 질문 처리 함수 (response를 파라미터로 받음)
+                const processQuestion = (apiResponse: any) => {
+                  const responseContent = apiResponse?.content;
+                  const contentText = responseContent?.content;
+                  const contentType = responseContent?.type;
+                  
+                  if (apiResponse && contentText) {
+                    try {
+                      console.log('📝 컨텐츠 추출 성공:', contentText, '타입:', contentType);
+                      
+                      // 일반 질문 처리 (HR, TECH, COLLABORATION 등)
+                      const questionData = {
+                        id: `q_${Date.now()}`,
+                        question: contentText,
+                        category: contentType || 'HR',
+                        time_limit: 120,
+                        keywords: []
+                      };
+                        
+                      dispatch({ 
+                        type: 'ADD_QUESTION', 
+                        payload: questionData
+                      });
+                      
+                      setCurrentQuestion(questionData.question);
+                      console.log('✅ 질문 설정 완료:', questionData.question);
+                      
+                      // 면접 시작
+                      setUserTurnState(questionData.question, "API 로딩");
+                      
+                      return questionData; // questionData 반환
+                      
+                    } catch (error) {
+                      console.error('❌ 컨텐츠 처리 실패:', error);
+                      setCurrentQuestion("컨텐츠를 처리하는 중 오류가 발생했습니다.");
+                    }
+                  } else {
+                    console.warn('⚠️ API 응답에 컨텐츠가 없습니다:', apiResponse);
+                    setCurrentQuestion("컨텐츠를 받지 못했습니다. 새로고침해주세요.");
+                  }
+                  return null;
+                };
+
+                // 🆕 질문 데이터 먼저 처리 (INTRO 여부와 관계없이)
+                console.log('📝 질문 데이터 처리 시작');
+                const questionData = processQuestion(response);
+                
+                // 🆕 INTRO 메시지 처리 (있는 경우 UI만 순차 표시)
+                const introMessageFromResponse = (response as any)?.intro_message;
+                if (introMessageFromResponse) {
+                  console.log('📢 응답에서 INTRO 메시지 감지:', introMessageFromResponse);
+                  setIntroMessage(introMessageFromResponse);
+                  setHasIntroMessage(true);
+                  setShowIntroMessage(true);
+                  
+                  // INTRO 표시 후 4초 뒤에 질문 UI로 전환 (데이터는 이미 준비됨)
+                  setTimeout(() => {
+                    setShowIntroMessage(false);
+                    setHasIntroMessage(false); // INTRO 상태 완전히 정리
+                    console.log('⏰ INTRO 시간 종료 - 질문 UI로 전환');
+                  }, 4000);
+                  
+                  console.log('📢 INTRO 메시지 표시 중 (4초 후 질문으로 전환)');
+                } else {
+                  console.log('📝 INTRO 메시지가 없어서 바로 질문 표시');
+                }
+                
+                setIsLoading(false);
+                
+                // 🆕 즉시 localStorage 업데이트 (재호출 방지)
+                const updatedState = {
+                  ...parsedState,
+                  sessionId: response.session_id || parsedState.sessionId, // 실제 세션 ID 우선 사용
+                  apiCallCompleted: true, // 🆕 즉시 완료 표시로 재호출 방지
+                  interviewStartResponse: response,
+                  questions: questionData ? [questionData] : []
+                };
+                localStorage.setItem('interview_state', JSON.stringify(updatedState));
+                console.log('💾 localStorage 즉시 업데이트 완료 - 재호출 방지');
+                
+                console.log('✅ 첫 질문 로딩 및 면접 시작 완료');
+                return;
+                
+              } catch (error) {
+                console.error('❌ 첫 질문 로딩 실패:', error);
+                setCurrentQuestion("질문 로딩에 실패했습니다. 새로고침해주세요.");
+                setIsLoading(false);
+                setCurrentPhase('unknown');
+                setCurrentTurn('waiting');
+                
+                const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
+                alert(`면접 시작에 실패했습니다: ${errorMessage}\n\n다시 시도해주세요.`);
+                return;
+              }
+            }
+            
+            // 면접 시작 응답에서 턴 정보 확인 (기존 로직)
             if (parsedState.interviewStartResponse && parsedState.interviewStartResponse.status === 'waiting_for_user') {
-              console.log('✅ localStorage에서 사용자 턴 정보 발견');
-              setCurrentPhase('user_turn');
-              setCurrentTurn('user');
-              setIsTimerActive(true);
-              setTimeLeft(120);
-              setCanSubmit(true);
-              setCanRecord(true);  // 🎤 녹음 활성화
-              setCurrentQuestion(parsedState.interviewStartResponse.content?.content || "질문을 불러오는 중...");
-              console.log('✅ 초기 사용자 턴 설정 완료 (localStorage)');
+              const question = parsedState.interviewStartResponse.content?.content || "질문을 불러오는 중...";
+              setUserTurnState(question, "localStorage");
               return;
             }
           }
           
           // 2. localStorage에 없으면 현재 면접 상태만 확인 (API 재호출 없이)
           console.log('🔄 현재 면접 상태 확인');
-          if (state.settings) {
-            try {
-              // 면접 시작 API를 재호출하지 않고, 현재 상태만 확인
-              // AI 경쟁 면접은 보통 사용자 턴으로 시작하므로 기본값 설정
-              console.log('✅ AI 경쟁 면접 기본값으로 사용자 턴 설정');
-              setCurrentPhase('user_turn');
-              setCurrentTurn('user');
-              setIsTimerActive(true);
-              setTimeLeft(120);
-              setCanSubmit(true);
-              setCanRecord(true);  // 🎤 녹음 활성화
-              setCurrentQuestion("면접을 시작합니다. 첫 번째 질문을 기다려주세요.");
-              console.log('✅ 초기 사용자 턴 설정 완료 (기본값)');
-              return;
-            } catch (apiError) {
-              console.log('⚠️ 기본값 설정 실패, 세션 상태로 fallback:', apiError);
-            }
+          const currentSettings = state.settings;
+          if (currentSettings) {
+            console.log('✅ AI 경쟁 면접 기본값으로 사용자 턴 설정');
+            setUserTurnState("면접을 시작합니다. 첫 번째 질문을 기다려주세요.", "기본값");
+            return;
           }
           
           // 3. 세션 상태 확인 (fallback)
@@ -381,14 +508,8 @@ const InterviewGO: React.FC = () => {
             console.log('🔍 초기 세션에서 턴 상태 발견:', status);
             
             if (status === 'waiting_for_user') {
-              setCurrentPhase('user_turn');
-              setCurrentTurn('user');
-              setIsTimerActive(true);
-              setTimeLeft(120);
-              setCanSubmit(true);
-              setCanRecord(true);  // 🎤 녹음 활성화
-              setCurrentQuestion(sessionState.state?.current_question || "질문을 불러오는 중...");
-              console.log('✅ 초기 사용자 턴 설정 완료 (세션 상태)');
+              const question = sessionState.state?.current_question || "질문을 불러오는 중...";
+              setUserTurnState(question, "세션 상태");
               return;
             }
           }
@@ -412,7 +533,7 @@ const InterviewGO: React.FC = () => {
       
       checkInitialTurnStatus();
     }
-  }, [isRestoring, state.sessionId, state.settings]);
+  }, [isRestoring, state.sessionId, dispatch]);
 
   // 🆕 주기적 턴 상태 확인 제거 - 턴 정보는 답변 제출 후 응답에서만 받아옴
 
@@ -1185,12 +1306,33 @@ const InterviewGO: React.FC = () => {
               )}
             </div>
 
-            {/* 현재 질문 표시 */}
+            {/* INTRO 메시지 및 현재 질문 표시 */}
             <div className="text-center mb-6">
-              <div className="text-gray-400 text-sm mb-2">현재 질문</div>
-              <div className="text-white text-base leading-relaxed line-clamp-2 mb-3">
-                {currentQuestion || "질문을 불러오는 중..."}
-              </div>
+              {showIntroMessage && hasIntroMessage ? (
+                // INTRO 메시지 표시
+                <div className="intro-message">
+                  <div className="text-blue-400 text-sm mb-2">🎤 면접관 인사</div>
+                  <div className="text-white text-base leading-relaxed whitespace-pre-line mb-3 bg-blue-900/20 rounded-lg p-4 border border-blue-500/30">
+                    {introMessage}
+                  </div>
+                  <div className="text-gray-400 text-xs">잠시 후 면접이 시작됩니다...</div>
+                </div>
+              ) : (
+                // 일반 질문 표시
+                <div>
+                  <div className="text-gray-400 text-sm mb-2">현재 질문</div>
+                  <div className="text-white text-base leading-relaxed line-clamp-2 mb-3">
+                    {isLoading ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                        <span className="text-blue-400">첫 번째 질문을 준비하고 있습니다...</span>
+                      </div>
+                    ) : (
+                      currentQuestion || "질문을 불러오는 중..."
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
                          {/* 컨트롤 버튼 */}
