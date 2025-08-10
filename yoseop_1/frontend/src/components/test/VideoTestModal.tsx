@@ -2,7 +2,10 @@ import React, { useState } from 'react';
 import VideoTestRecorder from './VideoTestRecorder';
 import VideoTestUploader from './VideoTestUploader';
 import VideoTestPlayer from './VideoTestPlayer';
-import { TestSessionState } from './types';
+import VideoCalibration from './VideoCalibration';
+import VideoGazeAnalysis from './VideoGazeAnalysis';
+import VideoGazeResult from './VideoGazeResult';
+import { TestSessionState, GazeAnalysisResult } from './types';
 
 interface VideoTestModalProps {
   isOpen: boolean;
@@ -11,27 +14,41 @@ interface VideoTestModalProps {
 
 const VideoTestModal: React.FC<VideoTestModalProps> = ({ isOpen, onClose }) => {
   const [sessionState, setSessionState] = useState<TestSessionState>({
-    step: 'record',
+    step: 'calibration',
     isRecording: false,
     isUploading: false,
     uploadProgress: 0,
     error: null,
     recordedBlob: null,
     testId: null,
-    mediaId: null
+    mediaId: null,
+    // 시선 분석 관련 상태
+    calibrationSessionId: null,
+    isCalibrating: false,
+    calibrationPhase: 'ready',
+    isAnalyzing: false,
+    analysisTaskId: null,
+    gazeResult: null,
   });
 
   const resetSession = () => {
-    console.log('🔄 세션 초기화 - 녹화 단계로 리셋');
+    console.log('🔄 세션 초기화 - 캘리브레이션 단계로 리셋');
     setSessionState({
-      step: 'record',
+      step: 'calibration',
       isRecording: false,
       isUploading: false,
       uploadProgress: 0,
       error: null,
       recordedBlob: null,
       testId: null,
-      mediaId: null
+      mediaId: null,
+      // 시선 분석 관련 상태 초기화
+      calibrationSessionId: null,
+      isCalibrating: false,
+      calibrationPhase: 'ready',
+      isAnalyzing: false,
+      analysisTaskId: null,
+      gazeResult: null,
     });
   };
 
@@ -53,7 +70,7 @@ const VideoTestModal: React.FC<VideoTestModalProps> = ({ isOpen, onClose }) => {
   const handleUploadComplete = (testId: string, mediaId: string) => {
     setSessionState(prev => ({
       ...prev,
-      step: 'play',
+      step: 'analyze',
       testId,
       mediaId,
       error: null
@@ -79,6 +96,35 @@ const VideoTestModal: React.FC<VideoTestModalProps> = ({ isOpen, onClose }) => {
     onClose();
   };
 
+  // 새로운 핸들러 함수들
+  const handleCalibrationComplete = (sessionId: string) => {
+    console.log('🎯 캘리브레이션 완료 - 녹화 단계로 전환:', sessionId);
+    setSessionState(prev => ({
+      ...prev,
+      step: 'record',
+      calibrationSessionId: sessionId,
+      error: null
+    }));
+  };
+
+  const handleAnalysisComplete = (result: GazeAnalysisResult) => {
+    console.log('🔍 시선 분석 완료 - 결과 단계로 전환:', result);
+    setSessionState(prev => ({
+      ...prev,
+      step: 'result',
+      gazeResult: result,
+      isAnalyzing: false,
+      error: null
+    }));
+  };
+
+  const handleAnalysisProgress = (progress: number) => {
+    setSessionState(prev => ({
+      ...prev,
+      uploadProgress: Math.round(progress * 100)
+    }));
+  };
+
   const goBackToRecord = () => {
     setSessionState(prev => ({
       ...prev,
@@ -87,7 +133,26 @@ const VideoTestModal: React.FC<VideoTestModalProps> = ({ isOpen, onClose }) => {
       testId: null,
       mediaId: null,
       error: null,
-      uploadProgress: 0
+      uploadProgress: 0,
+      isAnalyzing: false,
+      analysisTaskId: null,
+      gazeResult: null
+    }));
+  };
+
+  const goBackToCalibration = () => {
+    setSessionState(prev => ({
+      ...prev,
+      step: 'calibration',
+      recordedBlob: null,
+      testId: null,
+      mediaId: null,
+      error: null,
+      uploadProgress: 0,
+      calibrationSessionId: null,
+      isAnalyzing: false,
+      analysisTaskId: null,
+      gazeResult: null
     }));
   };
 
@@ -100,8 +165,8 @@ const VideoTestModal: React.FC<VideoTestModalProps> = ({ isOpen, onClose }) => {
         <div className="border-b border-gray-200 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">🎬 S3 비디오 테스트</h2>
-              <p className="text-gray-600 text-sm mt-1">동영상 녹화, 업로드, 재생 기능을 테스트합니다</p>
+              <h2 className="text-2xl font-bold text-gray-900">👁️ 시선 분석 테스트</h2>
+              <p className="text-gray-600 text-sm mt-1">4포인트 캘리브레이션 → 면접 녹화 → 시선 분석</p>
             </div>
             <button
               onClick={handleClose}
@@ -113,31 +178,38 @@ const VideoTestModal: React.FC<VideoTestModalProps> = ({ isOpen, onClose }) => {
           
           {/* 진행 단계 표시 */}
           <div className="flex justify-center mt-6">
-            <div className="flex items-center space-x-4">
-              <div className={`flex items-center space-x-2 ${sessionState.step === 'record' ? 'text-blue-600' : sessionState.step === 'upload' || sessionState.step === 'play' ? 'text-green-600' : 'text-gray-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${sessionState.step === 'record' ? 'bg-blue-100' : sessionState.step === 'upload' || sessionState.step === 'play' ? 'bg-green-100' : 'bg-gray-100'}`}>
-                  1
-                </div>
-                <span className="text-sm font-medium">녹화</span>
-              </div>
-              
-              <div className="w-8 h-0.5 bg-gray-300"></div>
-              
-              <div className={`flex items-center space-x-2 ${sessionState.step === 'upload' ? 'text-blue-600' : sessionState.step === 'play' ? 'text-green-600' : 'text-gray-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${sessionState.step === 'upload' ? 'bg-blue-100' : sessionState.step === 'play' ? 'bg-green-100' : 'bg-gray-100'}`}>
-                  2
-                </div>
-                <span className="text-sm font-medium">업로드</span>
-              </div>
-              
-              <div className="w-8 h-0.5 bg-gray-300"></div>
-              
-              <div className={`flex items-center space-x-2 ${sessionState.step === 'play' ? 'text-blue-600' : 'text-gray-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${sessionState.step === 'play' ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                  3
-                </div>
-                <span className="text-sm font-medium">재생</span>
-              </div>
+            <div className="flex items-center space-x-2 overflow-x-auto">
+              {[
+                { step: 'calibration', label: '캘리브레이션', icon: '🎯' },
+                { step: 'record', label: '녹화', icon: '🎬' },
+                { step: 'upload', label: '업로드', icon: '📤' },
+                { step: 'analyze', label: '분석', icon: '🔍' },
+                { step: 'result', label: '결과', icon: '📊' }
+              ].map((item, index) => {
+                const isActive = sessionState.step === item.step;
+                const isCompleted = ['calibration', 'record', 'upload', 'analyze', 'result'].indexOf(sessionState.step) > index;
+                
+                return (
+                  <React.Fragment key={item.step}>
+                    <div className={`flex items-center space-x-1 ${
+                      isActive ? 'text-blue-600' : 
+                      isCompleted ? 'text-green-600' : 
+                      'text-gray-400'
+                    }`}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                        isActive ? 'bg-blue-100' : 
+                        isCompleted ? 'bg-green-100' : 
+                        'bg-gray-100'
+                      }`}>
+                        {isCompleted ? '✓' : index + 1}
+                      </div>
+                      <span className="text-xs font-medium hidden sm:block">{item.label}</span>
+                      <span className="text-sm sm:hidden">{item.icon}</span>
+                    </div>
+                    {index < 4 && <div className="w-4 h-0.5 bg-gray-300"></div>}
+                  </React.Fragment>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -158,10 +230,22 @@ const VideoTestModal: React.FC<VideoTestModalProps> = ({ isOpen, onClose }) => {
           )}
 
           {/* 단계별 컴포넌트 */}
+          {sessionState.step === 'calibration' && (
+            <>
+              <div className="text-center text-sm text-blue-600 mb-4">
+                🎯 1단계: 시선 캘리브레이션
+              </div>
+              <VideoCalibration
+                onCalibrationComplete={handleCalibrationComplete}
+                onError={handleError}
+              />
+            </>
+          )}
+
           {sessionState.step === 'record' && (
             <>
               <div className="text-center text-sm text-blue-600 mb-4">
-                📹 1단계: 비디오 녹화
+                🎬 2단계: 면접 동영상 녹화
               </div>
               <VideoTestRecorder
                 onRecordingComplete={handleRecordingComplete}
@@ -173,7 +257,7 @@ const VideoTestModal: React.FC<VideoTestModalProps> = ({ isOpen, onClose }) => {
           {sessionState.step === 'upload' && sessionState.recordedBlob && (
             <>
               <div className="text-center text-sm text-blue-600 mb-4">
-                📤 2단계: S3에 업로드 중... (크기: {(sessionState.recordedBlob.size / (1024 * 1024)).toFixed(2)} MB)
+                📤 3단계: S3에 업로드 중... (크기: {(sessionState.recordedBlob.size / (1024 * 1024)).toFixed(2)} MB)
               </div>
               <VideoTestUploader
                 blob={sessionState.recordedBlob}
@@ -184,14 +268,29 @@ const VideoTestModal: React.FC<VideoTestModalProps> = ({ isOpen, onClose }) => {
             </>
           )}
 
-          {sessionState.step === 'play' && sessionState.testId && (
+          {sessionState.step === 'analyze' && sessionState.testId && sessionState.calibrationSessionId && (
             <>
               <div className="text-center text-sm text-blue-600 mb-4">
-                🎬 3단계: 비디오 재생
+                🔍 4단계: 시선 분석 진행 중
               </div>
-              <VideoTestPlayer
-                testId={sessionState.testId}
+              <VideoGazeAnalysis
+                videoUrl={`http://127.0.0.1:8000/video/play/${sessionState.testId}`}
+                calibrationSessionId={sessionState.calibrationSessionId}
+                onAnalysisComplete={handleAnalysisComplete}
+                onProgress={handleAnalysisProgress}
                 onError={handleError}
+              />
+            </>
+          )}
+
+          {sessionState.step === 'result' && sessionState.gazeResult && (
+            <>
+              <div className="text-center text-sm text-blue-600 mb-4">
+                📊 5단계: 시선 분석 결과
+              </div>
+              <VideoGazeResult
+                result={sessionState.gazeResult}
+                onRestart={resetSession}
               />
             </>
           )}
@@ -201,12 +300,28 @@ const VideoTestModal: React.FC<VideoTestModalProps> = ({ isOpen, onClose }) => {
         <div className="border-t border-gray-200 p-6">
           <div className="flex justify-between">
             <div className="flex space-x-3">
-              {sessionState.step !== 'record' && (
+              {sessionState.step === 'record' && (
+                <button
+                  onClick={goBackToCalibration}
+                  className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  🎯 캘리브레이션 다시하기
+                </button>
+              )}
+              {(sessionState.step === 'upload' || sessionState.step === 'analyze') && (
                 <button
                   onClick={goBackToRecord}
                   className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   🔄 다시 녹화
+                </button>
+              )}
+              {sessionState.step === 'result' && (
+                <button
+                  onClick={resetSession}
+                  className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  🔄 처음부터 다시
                 </button>
               )}
             </div>
