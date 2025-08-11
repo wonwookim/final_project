@@ -81,13 +81,8 @@ class InterviewResponse(BaseModel):
     """면접 응답 모델"""
     interview_id: int
     user_id: int
-<<<<<<< HEAD
     ai_resume_id: Optional[int] = None  # ✅ AI 면접에서만 사용
     user_resume_id: Optional[int] = None  # ✅ 사용자 면접에서만 사용
-=======
-    ai_resume_id: Optional[int] = None
-    user_resume_id: Optional[int] = None
->>>>>>> main
     posting_id: int
     company_id: int
     position_id: int
