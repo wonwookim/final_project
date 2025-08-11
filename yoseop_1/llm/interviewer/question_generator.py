@@ -144,11 +144,6 @@ class QuestionGenerator:
         intro_message = f"""
 {company_name}에 지원해주셔서 감사합니다.
 
-면접관 소개:
-- HR 면접관: 인사 및 지원 동기 파악
-- 기술 면접관: 기술 역량 및 프로젝트 경험 검증  
-- 협업 면접관: 팀워크 및 소프트 스킬 평가
-
 {user_name}님, 면접을 시작하겠습니다.
 """
         

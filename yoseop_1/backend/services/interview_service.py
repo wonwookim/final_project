@@ -11,6 +11,8 @@ from llm.candidate.quality_controller import QualityLevel
 from llm.shared.logging_config import interview_logger
 
 from backend.services.Orchestrator import Orchestrator
+from backend.services.supabase_client import get_supabase_client
+from backend.services.existing_tables_service import existing_tables_service
 
 class InterviewService:
     def __init__(self):
@@ -90,10 +92,54 @@ class InterviewService:
         return session_state, None
 
     async def _create_ai_persona(self, ai_candidate_model: AICandidateModel, company_id: str, position: str):
-        persona = await asyncio.to_thread(
-            ai_candidate_model.create_persona_for_interview, company_id, position
-        )
-        return persona if persona else ai_candidate_model._create_default_persona(company_id, position)
+        try:
+            persona = await asyncio.to_thread(
+                ai_candidate_model.create_persona_for_interview, company_id, position
+            )
+            return persona if persona else ai_candidate_model._create_default_persona(company_id, position)
+        except Exception as e:
+            interview_logger.error(
+                f"AI 페르소나 생성 실패(안전 폴백 적용): company_id={company_id}, position={position}, error={e}",
+                exc_info=True
+            )
+            # 모델 내부 예외가 발생해도 서비스는 기본 페르소나로 계속 진행
+            return ai_candidate_model._create_default_persona(company_id, position)
+
+    async def _resolve_ai_resume_id(self, session_like: Dict[str, Any]) -> Optional[int]:
+        """가능한 단서로 AI 이력서 ID를 유추합니다."""
+        try:
+            # 1) 이미 설정되어 있으면 사용
+            if session_like.get('ai_resume_id'):
+                return int(session_like['ai_resume_id'])
+
+            client = get_supabase_client()
+
+            # 2) position_id가 있으면 해당 포지션의 ai_resume 중 하나 선택
+            position_id = session_like.get('position_id')
+            if position_id:
+                res = client.table('ai_resume').select('ai_resume_id').eq('position_id', position_id).limit(1).execute()
+                if res.data:
+                    return int(res.data[0]['ai_resume_id'])
+
+            # 3) posting_id로 position_id를 복원 후 재시도
+            posting_id = session_like.get('posting_id')
+            if posting_id:
+                try:
+                    posting = await existing_tables_service.get_posting_by_id(posting_id)
+                    if posting and posting.get('position_id'):
+                        res = client.table('ai_resume').select('ai_resume_id').eq('position_id', posting['position_id']).limit(1).execute()
+                        if res.data:
+                            return int(res.data[0]['ai_resume_id'])
+                except Exception:
+                    pass
+
+            # 4) 최후 수단: 아무 ai_resume 한 개
+            res_any = client.table('ai_resume').select('ai_resume_id').limit(1).execute()
+            if res_any.data:
+                return int(res_any.data[0]['ai_resume_id'])
+        except Exception as e:
+            interview_logger.warning(f"ai_resume_id 유추 실패: {e}")
+        return None
 
     def _get_orchestrator_or_error(self, session_id: str) -> tuple[Optional[Orchestrator], Optional[Dict]]:
         orchestrator = self.active_orchestrators.get(session_id)
@@ -124,7 +170,15 @@ class InterviewService:
                 return {"error": "Orchestrator를 찾을 수 없습니다."}
             
             result = await orchestrator.process_user_answer(user_answer, time_spent)
-            
+
+            # 면접이 완료되면 피드백 평가를 백그라운드로 트리거
+            try:
+                if isinstance(result, dict) and result.get('status') == 'completed':
+                    interview_logger.info(f"🏁 완료 상태 수신. 피드백 트리거 실행: session_id={session_id}")
+                    asyncio.create_task(self.trigger_feedback_for_session(session_id))
+            except Exception as e:
+                interview_logger.error(f"❌ 피드백 트리거 실패: session_id={session_id}, error={e}")
+
             return result
 
         except Exception as e:
@@ -134,17 +188,35 @@ class InterviewService:
     async def start_ai_competition(self, settings: Dict[str, Any], start_time: float = None) -> Dict[str, Any]:
         try:
             session_id = f"comp_{uuid.uuid4().hex[:12]}"
-            company_id = self.get_company_id(settings['company'])
-            ai_persona = await self._create_ai_persona(self.ai_candidate_model, company_id, settings['position'])
+            # 회사 식별자 분리: 모델/프롬프트용 문자열 코드 vs. DB용 숫자 ID
+            company_code_for_persona = self.get_company_id(settings['company'])  # 예: 'naver', 'kakao'
+            company_numeric_id = settings.get('company_id')  # DB의 정수 ID일 수 있음
+            ai_persona = await self._create_ai_persona(self.ai_candidate_model, company_code_for_persona, settings['position'])
+            ai_resume_id = getattr(ai_persona, 'resume_id', None) if ai_persona else None
+
+            # 보강: persona에서 못 받은 경우 다양한 단서로 유추
+            if not ai_resume_id:
+                ai_resume_id = await self._resolve_ai_resume_id(settings)
             
             # 세션 상태 생성
             initial_settings = {
                 'total_question_limit': 3,  # 디버깅용 - 실제 운영시에는 15로 변경
-                'company_id': company_id,
+                'company_id': company_code_for_persona,  # 모델/질문 생성 로직과 호환되는 문자열 코드 유지
+                'company_numeric_id': company_numeric_id,  # DB 연동을 위한 숫자 ID 별도 보관
                 'position': settings['position'],
+                'position_id': settings.get('position_id'),
+                'posting_id': settings.get('posting_id'),
+                'user_id': settings.get('user_id'),
                 'user_name': settings['candidate_name'],
-                'ai_persona': ai_persona
+                'ai_persona': ai_persona,
+                'ai_resume_id': int(ai_resume_id) if ai_resume_id else None
             }
+            # 사용자 이력서 ID를 세션에 저장 (있으면)
+            if settings.get('user_resume_id'):
+                try:
+                    initial_settings['user_resume_id'] = int(settings['user_resume_id'])
+                except Exception:
+                    initial_settings['user_resume_id'] = None
             
             session_state = self.create_session_state(session_id, initial_settings)
             
@@ -162,10 +234,26 @@ class InterviewService:
             print(f"[Client] -> [InterviewService]")
             print(json.dumps(settings, indent=2, ensure_ascii=False))
             
-            # Orchestrator가 첫 플로우를 처리
-            result = await orchestrator._process_complete_flow()
-            result['session_id'] = session_id
+            # ⚡ INTRO만 처리하고 즉시 API 응답 (속도 최적화)
+            result = await orchestrator._process_initial_flow()
+            # session_id는 이미 _process_initial_flow에서 포함됨
 
+            # 🔍 DEBUG: 최종 API 응답 구조 확인
+            print(f"[🔍 API_RESPONSE_DEBUG] === 최종 API 응답 구조 분석 ===")
+            print(f"[🔍 API_RESPONSE_DEBUG] result 타입: {type(result)}")
+            print(f"[🔍 API_RESPONSE_DEBUG] result 키들: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
+            
+            if isinstance(result, dict):
+                for key, value in result.items():
+                    if key in ['intro_audio', 'first_question_audio']:
+                        print(f"[🔍 API_RESPONSE_DEBUG] {key}: {bool(value)} ({type(value).__name__}) - 길이: {len(str(value)) if value else 0}")
+                    else:
+                        print(f"[🔍 API_RESPONSE_DEBUG] {key}: {bool(value)} ({type(value).__name__})")
+                        if key == 'first_question' and value:
+                            print(f"[🔍 API_RESPONSE_DEBUG] first_question 내용: {str(value)[:50]}...")
+            
+            print(f"[🔍 API_RESPONSE_DEBUG] === FastAPI로 전달될 result ===")
+            
             return result
 
         except Exception as e:
@@ -179,4 +267,108 @@ class InterviewService:
             return error
         
         return session_state
+
+    async def trigger_feedback_for_session(self, session_id: str) -> None:
+        """면접 완료 시 세션의 QA 히스토리를 기반으로 피드백 평가/계획을 백그라운드에서 실행"""
+        try:
+            from llm.feedback.api_models import QuestionAnswerPair
+            from llm.feedback.api_service import InterviewEvaluationService
+
+            session_state = self.session_states.get(session_id)
+            if not session_state:
+                return
+
+            qa_history = session_state.get('qa_history', [])
+            if not qa_history:
+                return
+
+            user_id = session_state.get('user_id')
+            # 평가 서비스는 숫자 company_id를 요구하므로 numeric 우선 사용
+            company_id = session_state.get('company_numeric_id') or session_state.get('company_id')
+            position_id = session_state.get('position_id')
+            posting_id = session_state.get('posting_id')
+            ai_resume_id = session_state.get('ai_resume_id') or await self._resolve_ai_resume_id(session_state)
+            user_resume_id = session_state.get('user_resume_id')
+
+            # 필수 값(company_id, user_id)이 없으면 실행하지 않음
+            interview_logger.info(f"🔍 피드백 실행 조건 체크: company_id={company_id}, user_id={user_id}")
+            if not company_id or not user_id:
+                interview_logger.warning(f"⚠️ 필수값 누락으로 피드백 실행 중단: company_id={company_id}, user_id={user_id}")
+                return
+
+            # 사용자/AI 분리
+            user_qas = [qa for qa in qa_history if qa.get('answerer') == 'user']
+            ai_qas = [qa for qa in qa_history if qa.get('answerer') == 'ai']
+            interview_logger.info(f"📊 QA 히스토리 분석: user_qas={len(user_qas)}개, ai_qas={len(ai_qas)}개")
+
+            # QuestionAnswerPair 목록 생성
+            def build_pairs(items: list) -> list:
+                pairs: list[QuestionAnswerPair] = []
+                for qa in items:
+                    pairs.append(QuestionAnswerPair(
+                        question=qa.get('question', ''),
+                        answer=qa.get('answer', ''),
+                        duration=qa.get('duration') or 120,
+                        question_level=qa.get('question_level') or 1,
+                    ))
+                return pairs
+
+            evaluation_service = InterviewEvaluationService()
+            shared_interview_id = None
+
+            # 사용자 평가 (새로운 interview 세션 생성)
+            if user_qas:
+                interview_logger.info(f"👤 사용자 평가 시작: {len(user_qas)}개 질문")
+                user_pairs = build_pairs(user_qas)
+                user_eval = evaluation_service.evaluate_multiple_questions(
+                    user_id=user_id,
+                    qa_pairs=user_pairs,
+                    ai_resume_id=ai_resume_id,  # AI 이력서 ID도 함께 전달
+                    user_resume_id=user_resume_id,
+                    posting_id=posting_id,
+                    company_id=company_id,
+                    position_id=position_id,
+                    who='user'  # 사용자 데이터임을 명시
+                )
+
+                # 공유할 interview_id 저장
+                if user_eval and user_eval.get('success') and user_eval.get('interview_id'):
+                    shared_interview_id = user_eval['interview_id']
+                    interview_logger.info(f"✅ 사용자 평가 완료: interview_id={shared_interview_id}")
+                    
+                    # 계획 생성
+                    try:
+                        evaluation_service.generate_interview_plans(shared_interview_id)
+                        interview_logger.info(f"✅ 면접 계획 생성 완료: interview_id={shared_interview_id}")
+                    except Exception as e:
+                        interview_logger.error(f"❌ 면접 계획 생성 실패: interview_id={shared_interview_id}, error={str(e)}", exc_info=True)
+                else:
+                    interview_logger.error(f"❌ 사용자 평가 실패: {user_eval}")
+            else:
+                interview_logger.warning(f"⚠️ 사용자 QA가 없어서 평가를 건너뜀")
+
+            # AI 평가 (기존 interview 세션 재사용)
+            if ai_qas and shared_interview_id:
+                interview_logger.info(f"🤖 AI 평가 시작: {len(ai_qas)}개 질문, 기존 interview_id={shared_interview_id}")
+                ai_pairs = build_pairs(ai_qas)
+                ai_eval = evaluation_service.evaluate_multiple_questions(
+                    user_id=user_id,
+                    qa_pairs=ai_pairs,
+                    ai_resume_id=ai_resume_id,
+                    user_resume_id=user_resume_id,
+                    posting_id=posting_id,
+                    company_id=company_id,
+                    position_id=position_id,
+                    who='candidate',  # AI 지원자 데이터임을 명시
+                    existing_interview_id=shared_interview_id  # 기존 interview_id 재사용
+                )
+                interview_logger.info(f"✅ AI 평가 완료: {ai_eval}")
+            elif ai_qas:
+                interview_logger.warning(f"⚠️ AI QA가 있지만 shared_interview_id가 없어서 AI 평가 건너뜀")
+            else:
+                interview_logger.info(f"ℹ️ AI QA가 없어서 AI 평가 건너뜀")
+
+        except Exception as e:
+            interview_logger.error(f"❌ 피드백 처리 중 예외 발생: {str(e)}", exc_info=True)
+            return
 

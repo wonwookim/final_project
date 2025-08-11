@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse, HTMLResponse
 from typing import Optional
 import logging
-from typing import List
+from typing import List, Union
 from backend.services.supabase_client import supabase_client
 from backend.schemas.user import UserResponse
 from schemas.interview import InterviewHistoryResponse, InterviewSettings, AnswerSubmission, AICompetitionAnswerSubmission, CompetitionTurnSubmission, InterviewResponse, TTSRequest, STTResponse
@@ -174,7 +174,8 @@ async def get_next_question_ai_competition(
 @interview_router.post("/ai/start")
 async def start_ai_competition(
     settings: InterviewSettings,
-    service: InterviewService = Depends(get_interview_service)
+    service: InterviewService = Depends(get_interview_service),
+    current_user: UserResponse = Depends(auth_service.get_current_user)
 ):
     """AI 지원자와의 경쟁 면접 시작"""
     start_time = time.perf_counter()  # 시간 측정 시작
@@ -182,6 +183,19 @@ async def start_ai_competition(
         # 🐛 디버깅: FastAPI에서 받은 설정값 로깅
         interview_logger.info(f"🐛 FastAPI DEBUG: 받은 settings = {settings.dict()}")
         interview_logger.info(f"🐛 FastAPI DEBUG: use_interviewer_service = {settings.use_interviewer_service}")
+        
+        # 🆕 user_resume_id가 없으면 DB에서 자동으로 조회
+        if not settings.user_resume_id:
+            try:
+                from backend.services.existing_tables_service import existing_tables_service
+                user_resumes = await existing_tables_service.get_user_resumes(current_user.user_id)
+                if user_resumes:
+                    settings.user_resume_id = user_resumes[0].get('user_resume_id')  # 첫 번째 이력서 사용
+                    interview_logger.info(f"✅ 자동 조회된 user_resume_id: {settings.user_resume_id}")
+                else:
+                    interview_logger.warning(f"⚠️ 사용자 이력서를 찾을 수 없음: user_id={current_user.user_id}")
+            except Exception as e:
+                interview_logger.error(f"❌ user_resume_id 자동 조회 실패: {e}")
         
         # 🆕 posting_id가 있으면 DB에서 실제 채용공고 정보를 가져와서 사용
         if settings.posting_id:
@@ -201,7 +215,9 @@ async def start_ai_competition(
                     "company_id": posting_info.get('company_id'),
                     "position_id": posting_info.get('position_id'),
                     "difficulty": settings.difficulty,  # 난이도 값 추가 (첫 번째 파일에서)
-                    "use_interviewer_service": settings.use_interviewer_service
+                    "use_interviewer_service": settings.use_interviewer_service,
+                    "user_id": current_user.user_id,
+                    "user_resume_id": settings.user_resume_id
                 }
             else:
                 interview_logger.warning(f"⚠️ 채용공고를 찾을 수 없음: posting_id={settings.posting_id}, fallback to original")
@@ -210,7 +226,9 @@ async def start_ai_competition(
                     "position": settings.position,
                     "candidate_name": settings.candidate_name,
                     "difficulty": settings.difficulty,  # 난이도 값 추가 (첫 번째 파일에서)
-                    "use_interviewer_service": settings.use_interviewer_service
+                    "use_interviewer_service": settings.use_interviewer_service,
+                    "user_id": current_user.user_id,
+                    "user_resume_id": settings.user_resume_id
                 }
         else:
             # 기존 방식: company/position 문자열 사용
@@ -219,7 +237,9 @@ async def start_ai_competition(
                 "position": settings.position,
                 "candidate_name": settings.candidate_name,
                 "difficulty": settings.difficulty,  # 난이도 값 추가 (첫 번째 파일에서)
-                "use_interviewer_service": settings.use_interviewer_service
+                "use_interviewer_service": settings.use_interviewer_service,
+                "user_id": current_user.user_id,
+                "user_resume_id": settings.user_resume_id
             }
         
         # 🐛 디버깅: 서비스에 전달할 settings_dict 로깅
@@ -231,6 +251,20 @@ async def start_ai_competition(
         end_time = time.perf_counter()
         elapsed_time = end_time - start_time
         interview_logger.info(f"✅ AI 경쟁 면접 시작 성공. 총 처리 시간: {elapsed_time:.4f}초")
+        
+        # 🔍 DEBUG: FastAPI 라우터에서 최종 HTTP 응답 전 result 구조 확인
+        print(f"[🔍 FASTAPI_ROUTER_DEBUG] === HTTP 응답 직전 result 구조 ===")
+        print(f"[🔍 FASTAPI_ROUTER_DEBUG] result 타입: {type(result)}")
+        if isinstance(result, dict):
+            print(f"[🔍 FASTAPI_ROUTER_DEBUG] result 키들: {list(result.keys())}")
+            for key, value in result.items():
+                if key in ['intro_audio', 'first_question_audio']:
+                    print(f"[🔍 FASTAPI_ROUTER_DEBUG] {key}: {bool(value)} ({len(str(value)) if value else 0}자)")
+                else:
+                    print(f"[🔍 FASTAPI_ROUTER_DEBUG] {key}: {bool(value)}")
+                    if key == 'first_question' and value:
+                        print(f"[🔍 FASTAPI_ROUTER_DEBUG] first_question 내용: {str(value)[:50]}...")
+        print(f"[🔍 FASTAPI_ROUTER_DEBUG] === FastAPI가 HTTP 응답으로 직렬화할 데이터 ===")
         
         return result
         
@@ -378,7 +412,14 @@ async def get_interview_history(current_user: UserResponse = Depends(auth_servic
     
     if not res.data:
         raise HTTPException(status_code=404, detail="No interview history found")
-    return res.data
+    # ai_resume_id/user_resume_id가 None인 경우에도 스키마 검증을 통과하도록 보정
+    data = res.data
+    for row in data:
+        if 'ai_resume_id' in row and row['ai_resume_id'] is None:
+            row['ai_resume_id'] = None
+        if 'user_resume_id' in row and row['user_resume_id'] is None:
+            row['user_resume_id'] = None
+    return data
 
 
 @interview_router.get("/history/{interview_id}", response_model=List[InterviewHistoryResponse])
@@ -677,23 +718,48 @@ try:
     # 전역 평가 서비스 인스턴스 (싱글톤)
     evaluation_service = InterviewEvaluationService()
     
-    @interview_router.post("/feedback/evaluate", response_model=QuestionResponse)
-    async def evaluate_interview(request: QuestionRequest):
-        """면접 질문-답변 일괄 평가"""
+    @interview_router.post("/feedback/evaluate")
+    async def evaluate_interview(request: Union[QuestionRequest, List[QuestionRequest]]):
+        """면접 질문-답변 평가 (단일 또는 배치)"""
         try:
-            interview_logger.info(f"면접 평가 요청: user_id={request.user_id}, questions={len(request.qa_pairs)}")
-            
-            result = evaluation_service.evaluate_multiple_questions(
-                user_id=request.user_id,
-                qa_pairs=request.qa_pairs,
-                ai_resume_id=request.ai_resume_id,
-                user_resume_id=request.user_resume_id,
-                posting_id=request.posting_id,
-                company_id=request.company_id,
-                position_id=request.position_id
-            )
-            
-            return QuestionResponse(**result)
+            # 단일 요청인지 리스트인지 체크
+            if isinstance(request, list):
+                # 리스트인 경우 - 배치 처리
+                results = []
+                for i, req in enumerate(request):
+                    interview_logger.info(f"배치 평가 {i+1}/{len(request)}: user_id={req.user_id}, questions={len(req.qa_pairs)}")
+                    
+                    result = evaluation_service.evaluate_multiple_questions(
+                        user_id=req.user_id,
+                        qa_pairs=req.qa_pairs,
+                        ai_resume_id=req.ai_resume_id,
+                        user_resume_id=req.user_resume_id,
+                        posting_id=req.posting_id,
+                        company_id=req.company_id,
+                        position_id=req.position_id
+                    )
+                    results.append(result)
+                
+                return {
+                    "success": True,
+                    "message": f"{len(results)}개 평가 완료",
+                    "results": results
+                }
+            else:
+                # 기존 단일 처리 로직 유지
+                interview_logger.info(f"면접 평가 요청: user_id={request.user_id}, questions={len(request.qa_pairs)}")
+                
+                result = evaluation_service.evaluate_multiple_questions(
+                    user_id=request.user_id,
+                    qa_pairs=request.qa_pairs,
+                    ai_resume_id=request.ai_resume_id,
+                    user_resume_id=request.user_resume_id,
+                    posting_id=request.posting_id,
+                    company_id=request.company_id,
+                    position_id=request.position_id
+                )
+                
+                return QuestionResponse(**result)
             
         except Exception as e:
             interview_logger.error(f"면접 평가 오류: {str(e)}")
