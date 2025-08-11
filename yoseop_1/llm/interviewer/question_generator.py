@@ -10,6 +10,7 @@ import json
 import random
 import time
 import openai
+import logging
 from typing import Dict, List, Any, Optional
 from dotenv import load_dotenv
 
@@ -82,8 +83,11 @@ class QuestionGenerator:
                     company_name = company.get('name', '')
                     english_id = company_id_mapping.get(company_name, company_name.lower())
                     companies_dict[english_id] = company
+                    # 한글명으로도 접근 가능하도록 추가
+                    companies_dict[company_name] = company
                     
             print(f"[SUCCESS] 회사 데이터 로딩 완료: {len(companies_dict)}개")
+            print(f"[DEBUG] 로딩된 회사 키들: {list(companies_dict.keys())}")
             return companies_dict
         except Exception as e:
             print(f"[ERROR] 회사 데이터 로딩 실패: {e}")
@@ -158,9 +162,20 @@ class QuestionGenerator:
                                  user_resume: Dict, user_answer: str = None, 
                                  chun_sik_answer: str = None, previous_qa_pairs: List[Dict] = None) -> Dict:
         """면접관 역할별 질문 생성"""
+        print(f"[DEBUG] 질문 생성 요청: company_id='{company_id}', role='{interviewer_role}'")
+        print(f"[DEBUG] 사용 가능한 회사 키들: {list(self.companies_data.keys())}")
+        
         company_info = self.companies_data.get(company_id, {})
         if not company_info:
-            raise ValueError(f"회사 정보를 찾을 수 없습니다: {company_id}")
+            print(f"[WARNING] 회사 정보를 찾을 수 없음: {company_id}, 기본 회사 정보로 대체")
+            # 에러 대신 기본 회사 정보 생성
+            company_info = {
+                "name": company_id.capitalize(),
+                "id": company_id,
+                "core_competencies": [],
+                "tech_focus": [],
+                "talent_profile": "혁신적인 기술 회사"
+            }
         
         # 주제 선택
         topic_pool = self.topic_pools.get(interviewer_role, [])
@@ -454,7 +469,7 @@ class QuestionGenerator:
     
     def _generate_from_db_template_with_topic(self, user_resume: Dict, company_info: Dict, 
                                             interviewer_role: str, topic: str) -> Dict:
-        """주제 특화 DB 템플릿 기반 질문 생성"""
+        """주제 특화 DB 템플릿 기반 질문 생성 (LLM 튜닝 포함)"""
         question_type = self.interviewer_role_to_db_id.get(interviewer_role)
         if not question_type:
             raise ValueError(f"지원되지 않는 면접관 역할: {interviewer_role}")
@@ -472,16 +487,27 @@ class QuestionGenerator:
         selected_template = random.choice(role_questions)
         question_content = selected_template.get('question_content', '질문을 생성할 수 없습니다.')
         
+        # 템플릿에 데이터 주입 (참조질문 커스터마이징)
+        question_content = self._inject_data_to_template(question_content, user_resume, company_info)
+        
+        # ⭐ 새로운 LLM 튜닝 단계 추가 ⭐
+        enhanced_question = self._enhance_db_template_with_llm(
+            db_template=question_content,
+            user_resume=user_resume,
+            company_info=company_info,
+            interviewer_role=interviewer_role
+        )
+        
         # 이름 호명 추가
         candidate_name = user_resume.get('name', '지원자') if user_resume else '지원자'
-        question_with_name = self._add_candidate_name_to_question(question_content, candidate_name)
+        final_question = self._add_candidate_name_to_question(enhanced_question, candidate_name)
         
         return {
-            'question': question_with_name,
+            'question': final_question,
             'intent': f"{topic} 관련 {selected_template.get('question_intent', f'{interviewer_role} 역량 평가')}",
             'interviewer_type': interviewer_role,
             'topic': topic,
-            'question_source': 'db_template'
+            'question_source': 'db_template_enhanced'  # 소스 표시 변경
         }
     
     def _generate_from_llm_with_topic(self, user_resume: Dict, company_info: Dict, 
@@ -730,6 +756,28 @@ AI 지원자 특성을 고려한 질문 생성 가이드라인:
             return self._get_fallback_follow_up_question(interviewer_role, previous_question, 
                                                        {"name": "AI 지원자"})
 
+    def _inject_data_to_template(self, template: str, user_resume: Dict, company_info: Dict) -> str:
+        """템플릿에 실제 데이터 동적 주입"""
+        result = template
+        
+        # 회사 정보 치환
+        result = result.replace('{company_name}', company_info.get('name', '회사'))
+        result = result.replace('{talent_profile}', company_info.get('talent_profile', ''))
+        result = result.replace('{tech_focus}', ', '.join(company_info.get('tech_focus', [])))
+        
+        # 지원자 정보 치환 
+        if user_resume:
+            result = result.replace('{candidate_name}', user_resume.get('name', '지원자'))
+            result = result.replace('{experience_years}', str(user_resume.get('career_years', '0')))
+            result = result.replace('{main_skills}', ', '.join(user_resume.get('technical_skills', [])[:3]))
+        
+        # AI 지원자 이름 통일
+        result = result.replace('{persona_name}', '춘식이')
+        
+        return result
+
+
+
     def _add_candidate_name_to_question(self, question: str, candidate_name: str) -> str:
         """질문에 지원자 이름 호명 추가"""
         if not candidate_name or candidate_name == '지원자':
@@ -744,3 +792,54 @@ AI 지원자 특성을 고려한 질문 생성 가이드라인:
             return f"{candidate_name}님, {question}"
         else:
             return f"{candidate_name}님, {question}."
+
+    def _enhance_db_template_with_llm(self, db_template: str, user_resume: Dict, 
+                                    company_info: Dict, interviewer_role: str) -> str:
+        """DB 템플릿을 LLM으로 튜닝/개선하는 메서드"""
+        try:
+            # 프롬프트 빌더를 사용하여 고도화된 튜닝 프롬프트 생성
+            enhancement_prompt = self.prompt_builder.build_db_template_enhancement_prompt(
+                db_template=db_template,
+                user_resume=user_resume,
+                company_info=company_info,
+                interviewer_role=interviewer_role
+            )
+            
+            # 시스템 프롬프트
+            system_prompt = self.prompt_builder.build_system_prompt_for_question_generation()
+            
+            # OpenAI API 호출
+            response = self.openai_client.chat.completions.create(
+                model=GPT_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": enhancement_prompt}
+                ],
+                max_tokens=300,
+                temperature=0.7
+            )
+            
+            # 응답 파싱
+            response_text = response.choices[0].message.content.strip()
+            
+            try:
+                # JSON 파싱 시도
+                import json
+                result = json.loads(response_text)
+                
+                if 'question' in result and result['question'].strip():
+                    return result['question'].strip()
+                else:
+                    logger.warning(f"LLM 응답에 question 필드가 없음: {result}")
+                    return db_template
+                    
+            except json.JSONDecodeError as e:
+                logger.warning(f"LLM 응답 JSON 파싱 실패: {response_text}, 에러: {e}")
+                return db_template
+                
+        except Exception as e:
+            logger.error(f"DB 템플릿 LLM 튜닝 실패: {e}")
+            return db_template
+
+# 로거 초기화
+logger = logging.getLogger(__name__)
