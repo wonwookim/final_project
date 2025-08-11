@@ -93,6 +93,12 @@ export interface CalibrationResult {
   point_details: { [key: string]: CalibrationPoint };
   collection_stats: { [key: string]: number };
   completed_at: number;
+  allowed_range?: {
+    left_bound: number;
+    right_bound: number;
+    top_bound: number;
+    bottom_bound: number;
+  };
 }
 
 export interface GazeAnalysisResult {
@@ -102,10 +108,18 @@ export interface GazeAnalysisResult {
   in_range_frames: number;
   in_range_ratio: number;
   jitter_score: number;
+  compliance_score: number;
   stability_rating: string;
   feedback: string;
   gaze_points: [number, number][];
   analysis_duration: number;
+  allowed_range: {
+    left_bound: number;
+    right_bound: number;
+    top_bound: number;
+    bottom_bound: number;
+  };
+  calibration_points: [number, number][];
 }
 
 export interface VideoAnalysisResponse {

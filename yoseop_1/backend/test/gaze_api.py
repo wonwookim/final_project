@@ -46,6 +46,8 @@ class CalibrationStatusResponse(BaseModel):
 class CalibrationResult(BaseModel):
     session_id: str
     calibration_points: List[Tuple[float, float]]
+    initial_face_size: Optional[float] = None # 🚀 추가
+    allowed_range: Optional[Dict[str, float]] = None # 🎯 허용 범위 추가
 
 class VideoAnalysisRequest(BaseModel):
     video_url: str
@@ -63,11 +65,13 @@ class GazeAnalysisResult(BaseModel):
     in_range_frames: int
     in_range_ratio: float
     jitter_score: int
-    compliance_score: int # 🚀 추가
+    compliance_score: int
     stability_rating: str
     feedback: str
     gaze_points: List[Tuple[float, float]]
     analysis_duration: float
+    allowed_range: Dict[str, float]
+    calibration_points: List[Tuple[float, float]]
 
 class AnalysisStatusResponse(BaseModel):
     task_id: str
@@ -79,7 +83,7 @@ class AnalysisStatusResponse(BaseModel):
 
 # --- 백그라운드 분석 작업 ---
 
-async def run_video_analysis(task_id: str, bucket: str, key: str, calibration_points: List[Tuple[float, float]]):
+async def run_video_analysis(task_id: str, bucket: str, key: str, calibration_points: List[Tuple[float, float]], initial_face_size: Optional[float]): # 🚀 initial_face_size 추가
     """
     백그라운드에서 S3의 동영상을 직접 분석 (URL 변환 없음)
     """
@@ -95,6 +99,7 @@ async def run_video_analysis(task_id: str, bucket: str, key: str, calibration_po
             bucket=bucket,
             key=key,
             calibration_points=calibration_points,
+            initial_face_size=initial_face_size, # 🚀 전달
             frame_skip=10
         )
         
@@ -120,11 +125,13 @@ async def run_video_analysis(task_id: str, bucket: str, key: str, calibration_po
                 in_range_frames=result.in_range_frames,
                 in_range_ratio=result.in_range_ratio,
                 jitter_score=result.jitter_score,
-                compliance_score=result.compliance_score, # 🚀 추가
+                compliance_score=result.compliance_score,
                 stability_rating=result.stability_rating,
                 feedback=result.feedback,
                 gaze_points=result.gaze_points,
-                analysis_duration=analysis_duration
+                analysis_duration=analysis_duration,
+                allowed_range=result.allowed_range,
+                calibration_points=result.calibration_points
             )
         })
 
@@ -157,6 +164,7 @@ async def analyze_gaze(
         if not calib_result or len(calib_result.get('calibration_points', [])) != 4:
             raise HTTPException(status_code=404, detail="유효한 캘리브레이션 데이터를 찾을 수 없습니다.")
         calibration_points = calib_result['calibration_points']
+        initial_face_size = calib_result.get('initial_face_size') # 🚀 추출
 
         supabase = get_user_supabase_client(credentials.credentials)
         db_result = supabase.table('media_files').select('s3_key').eq('media_id', media_id).eq('user_id', current_user.user_id).execute()
@@ -179,7 +187,8 @@ async def analyze_gaze(
             task_id,
             BUCKET_NAME,
             s3_key,
-            calibration_points
+            calibration_points,
+            initial_face_size # 🚀 전달
         )
 
         return VideoAnalysisResponse(
@@ -249,6 +258,20 @@ async def get_calibration_result(session_id: str):
     result = calibration_manager.get_calibration_result(session_id)
     if result is None or not result.get('calibration_points'):
         raise HTTPException(status_code=404, detail="캘리브레이션 결과를 찾을 수 없거나 아직 완료되지 않았습니다.")
+    
+    # 허용 범위 계산 추가
+    calibration_points = result.get('calibration_points', [])
+    print(f"🎯 [DEBUG] Calibration points count: {len(calibration_points)}")
+    print(f"🎯 [DEBUG] Calibration points: {calibration_points}")
+    
+    if len(calibration_points) == 4:
+        # GazeAnalyzer의 범위 계산 로직 재사용
+        allowed_range = gaze_analyzer.calculate_allowed_gaze_range(calibration_points)
+        result['allowed_range'] = allowed_range
+        print(f"🎯 [DEBUG] Calculated allowed range: {allowed_range}")
+    else:
+        print(f"🎯 [DEBUG] Not enough calibration points for range calculation")
+    
     return CalibrationResult(**result)
 
 def get_gaze_router():
