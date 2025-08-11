@@ -45,22 +45,49 @@ class GazeAnalyzer:
         self.right_iris_indices = [473, 474, 475, 476, 477]  # 오른쪽 동공
     
     def download_video_from_s3(self, s3_url: str) -> str:
-        """S3에서 동영상을 임시 파일로 다운로드"""
+        """S3에서 동영상을 임시 파일로 다운로드 (타임아웃 및 진행률 포함)"""
         try:
-            response = requests.get(s3_url, stream=True)
+            print(f"🌐 [DOWNLOAD] 다운로드 시작: {s3_url}")
+            
+            # 타임아웃 설정 (30초)
+            response = requests.get(s3_url, stream=True, timeout=(10, 30))
             response.raise_for_status()
+            
+            total_size = int(response.headers.get('Content-Length', 0))
+            print(f"📏 [DOWNLOAD] 파일 크기: {total_size} bytes")
             
             # 임시 파일 생성
             temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.webm')
             
-            # 스트리밍 다운로드
+            # 스트리밍 다운로드 (진행률 표시)
+            downloaded = 0
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     temp_file.write(chunk)
+                    downloaded += len(chunk)
+                    
+                    # 진행률 출력 (10MB마다)
+                    if downloaded % (10 * 1024 * 1024) == 0:
+                        progress = (downloaded / total_size * 100) if total_size > 0 else 0
+                        print(f"📥 [DOWNLOAD] 진행률: {progress:.1f}% ({downloaded}/{total_size})")
             
             temp_file.close()
+            print(f"✅ [DOWNLOAD] 다운로드 완료: {temp_file.name}")
             return temp_file.name
             
+        except requests.exceptions.Timeout:
+            raise Exception("동영상 다운로드 시간 초과 (30초)")
+        except requests.exceptions.ConnectionError:
+            raise Exception("동영상 다운로드 연결 실패")
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 403:
+                raise Exception("동영상 접근 권한이 없습니다. 인증 토큰을 확인하세요.")
+            elif e.response.status_code == 401:
+                raise Exception("인증이 만료되었습니다. 다시 로그인하세요.")
+            elif e.response.status_code == 404:
+                raise Exception("동영상 파일을 찾을 수 없습니다.")
+            else:
+                raise Exception(f"동영상 다운로드 HTTP 오류: {e.response.status_code}")
         except Exception as e:
             raise Exception(f"동영상 다운로드 실패: {str(e)}")
     

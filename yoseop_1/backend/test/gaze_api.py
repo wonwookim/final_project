@@ -98,6 +98,7 @@ class AnalysisStatusResponse(BaseModel):
     progress: Optional[float] = None
     result: Optional[GazeAnalysisResult] = None
     error: Optional[str] = None
+    message: Optional[str] = None
 
 
 # 분석 작업 상태 관리
@@ -241,6 +242,51 @@ async def analyze_video(request: VideoAnalysisRequest, background_tasks: Backgro
                 ]
             }
         
+        # 동영상 URL을 S3 직접 URL로 미리 변환
+        actual_video_url = request.video_url
+        if request.video_url.startswith('http://127.0.0.1:8000/video/play/'):
+            media_id = request.video_url.split('/')[-1]
+            print(f"🎬 [ANALYZE] 동영상 분석 전 S3 URL 변환 시작: {media_id}")
+            
+            try:
+                # 직접 DB에서 S3 URL 조회
+                import sys
+                import os
+                sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'backend'))
+                from services.supabase_client import get_supabase_client
+                
+                supabase = get_supabase_client()
+                result = supabase.table('media_files').select('s3_url, s3_key').eq('media_id', media_id).execute()
+                
+                if result.data:
+                    file_info = result.data[0]
+                    if file_info.get('s3_url'):
+                        actual_video_url = file_info['s3_url']
+                        print(f"✅ [ANALYZE] S3 직접 URL 사용: {actual_video_url[:50]}...")
+                    else:
+                        # S3 Presigned URL 생성
+                        import boto3
+                        s3_client = boto3.client(
+                            's3',
+                            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+                            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+                            region_name=os.getenv('AWS_REGION', 'ap-northeast-2')
+                        )
+                        
+                        s3_key = file_info['s3_key']
+                        actual_video_url = s3_client.generate_presigned_url(
+                            'get_object',
+                            Params={'Bucket': 'betago-s3', 'Key': s3_key},
+                            ExpiresIn=86400  # 24시간
+                        )
+                        print(f"🔗 [ANALYZE] S3 Presigned URL 생성: {actual_video_url[:50]}...")
+                else:
+                    print(f"⚠️ [ANALYZE] 미디어 파일을 찾을 수 없음: {media_id}")
+                    
+            except Exception as url_error:
+                print(f"⚠️ [ANALYZE] S3 URL 변환 실패: {url_error}")
+                # 원본 URL 유지
+        
         # 분석 작업 ID 생성
         task_id = str(uuid.uuid4())
         
@@ -250,15 +296,21 @@ async def analyze_video(request: VideoAnalysisRequest, background_tasks: Backgro
             'progress': 0.0,
             'started_at': datetime.now(),
             'video_url': request.video_url,
+            'actual_video_url': actual_video_url,  # 변환된 URL 저장
             'session_id': request.session_id,
             'calibration_points': calibration_result['calibration_points']
         }
         
-        # 백그라운드에서 분석 시작
+        # 디버깅: 실제 전달되는 URL 확인
+        print(f"🔍 [ANALYZE] 원본 URL: {request.video_url}")
+        print(f"🔍 [ANALYZE] 변환된 URL: {actual_video_url}")
+        print(f"🔍 [ANALYZE] URL 변환 여부: {'✅ 성공' if actual_video_url != request.video_url else '❌ 실패'}")
+        
+        # 백그라운드에서 분석 시작 (변환된 URL 사용)
         background_tasks.add_task(
             run_video_analysis, 
             task_id, 
-            request.video_url, 
+            actual_video_url,  # 변환된 URL 전달
             calibration_result['calibration_points']
         )
         
@@ -275,10 +327,26 @@ async def analyze_video(request: VideoAnalysisRequest, background_tasks: Backgro
 
 
 async def run_video_analysis(task_id: str, video_url: str, calibration_points: List[Tuple[float, float]]):
-    """백그라운드에서 동영상 분석 실행 (향상된 로깅 포함)"""
+    """백그라운드에서 동영상 분석 실행 (상세한 단계별 로깅 포함)"""
+    import asyncio
+    import signal
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+    
+    # 전체 분석 타임아웃 설정 (5분)
+    ANALYSIS_TIMEOUT = 300  # seconds
+    
+    def timeout_handler():
+        print(f"⏰ [ANALYSIS] 분석 시간 초과 ({ANALYSIS_TIMEOUT}초)")
+        analysis_tasks[task_id].update({
+            'status': 'failed',
+            'error': f'분석 시간 초과 ({ANALYSIS_TIMEOUT}초)',
+            'failed_at': datetime.now()
+        })
+    
     try:
         print(f"🔍 [ANALYSIS] 분석 시작 - Task ID: {task_id}")
-        print(f"🔍 [ANALYSIS] Video URL: {video_url}")
+        print(f"🔍 [ANALYSIS] 백그라운드 함수가 받은 Video URL: {video_url}")
+        print(f"🔍 [ANALYSIS] URL 타입: {'S3 직접' if video_url.startswith('https://') else 'FastAPI 로컬' if video_url.startswith('http://127.0.0.1') else '알 수 없음'}")
         print(f"🔍 [ANALYSIS] Calibration Points: {calibration_points}")
         
         start_time = datetime.now()
@@ -295,28 +363,125 @@ async def run_video_analysis(task_id: str, video_url: str, calibration_points: L
             ]
             print(f"✅ [ANALYSIS] 기본 캘리브레이션 포인트 적용: {calibration_points}")
         
-        # 진행 상황 업데이트
+        # 1단계: 동영상 다운로드 시작 (10%)
         analysis_tasks[task_id]['progress'] = 0.1
         analysis_tasks[task_id]['message'] = "동영상 다운로드 중..."
-        print(f"📥 [ANALYSIS] 동영상 다운로드 시작")
+        print(f"📥 [ANALYSIS] 1단계: 동영상 다운로드 시작")
         
-        # 동영상 분석 실행
-        print(f"🔄 [ANALYSIS] gaze_analyzer.analyze_video 호출")
-        analysis_tasks[task_id]['progress'] = 0.2
-        analysis_tasks[task_id]['message'] = "동영상 분석 중..."
+        # 동영상 URL 최종 검증 및 강제 변환 시도
+        final_video_url = video_url
         
-        result = gaze_analyzer.analyze_video(
-            video_path_or_url=video_url,
-            calibration_points=calibration_points,
-            frame_skip=10  # 성능 최적화
-        )
+        if video_url.startswith('http://127.0.0.1:8000/video/play/'):
+            print(f"🚨 [ANALYSIS] 로컬 서버 URL 감지 - 긴급 변환 시도!")
+            media_id = video_url.split('/')[-1]
+            
+            try:
+                # 직접 DB에서 S3 URL 조회 시도
+                import sys
+                import os
+                sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'backend'))
+                from services.supabase_client import get_supabase_client
+                
+                supabase = get_supabase_client()
+                result = supabase.table('media_files').select('s3_url, s3_key').eq('media_id', media_id).execute()
+                
+                if result.data:
+                    file_info = result.data[0]
+                    if file_info.get('s3_url'):
+                        final_video_url = file_info['s3_url']
+                        print(f"✅ [ANALYSIS] 긴급 S3 URL 변환 성공: {final_video_url[:50]}...")
+                    else:
+                        # S3 Presigned URL 생성
+                        import boto3
+                        s3_client = boto3.client(
+                            's3',
+                            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+                            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+                            region_name=os.getenv('AWS_REGION', 'ap-northeast-2')
+                        )
+                        
+                        s3_key = file_info['s3_key']
+                        final_video_url = s3_client.generate_presigned_url(
+                            'get_object',
+                            Params={'Bucket': 'betago-s3', 'Key': s3_key},
+                            ExpiresIn=86400  # 24시간
+                        )
+                        print(f"🔗 [ANALYSIS] 긴급 Presigned URL 생성: {final_video_url[:50]}...")
+                else:
+                    print(f"❌ [ANALYSIS] 긴급 변환 실패 - 미디어 파일 없음: {media_id}")
+                    
+            except Exception as emergency_error:
+                print(f"❌ [ANALYSIS] 긴급 URL 변환 실패: {emergency_error}")
         
-        print(f"✅ [ANALYSIS] 분석 완료")
+        elif video_url.startswith('https://'):
+            print(f"✅ [ANALYSIS] S3 직접 URL 사용: {video_url[:50]}...")
+            
+        else:
+            print(f"⚠️ [ANALYSIS] 알 수 없는 URL 형식: {video_url[:30]}...")
+            
+        print(f"🎯 [ANALYSIS] 최종 사용 URL: {final_video_url[:50]}...")
+        
+        # 2단계: 동영상 준비 완료 (30%)
+        analysis_tasks[task_id]['progress'] = 0.3
+        analysis_tasks[task_id]['message'] = "동영상 분석 준비 중..."
+        print(f"🔄 [ANALYSIS] 2단계: 동영상 분석 준비")
+        
+        # MediaPipe 초기화 확인
+        try:
+            print(f"🤖 [ANALYSIS] MediaPipe 초기화 상태 확인")
+            if hasattr(gaze_analyzer, 'face_mesh') and gaze_analyzer.face_mesh:
+                print(f"✅ [ANALYSIS] MediaPipe FaceMesh 정상 초기화됨")
+            else:
+                print(f"❌ [ANALYSIS] MediaPipe FaceMesh 초기화 실패")
+        except Exception as mp_error:
+            print(f"❌ [ANALYSIS] MediaPipe 확인 오류: {mp_error}")
+        
+        # 3단계: MediaPipe 분석 시작 (40%)
+        analysis_tasks[task_id]['progress'] = 0.4
+        analysis_tasks[task_id]['message'] = "MediaPipe로 시선 추적 중..."
+        print(f"🔄 [ANALYSIS] 3단계: gaze_analyzer.analyze_video 호출 시작")
+        print(f"📊 [ANALYSIS] 분석 매개변수:")
+        print(f"   - video_url: {video_url}")
+        print(f"   - calibration_points: {len(calibration_points)}개")
+        print(f"   - frame_skip: 10")
+        
+        # 분석 실행 (여기서 멈출 가능성이 높음)
+        try:
+            print(f"⚡ [ANALYSIS] analyze_video 메서드 호출 중...")
+            print(f"🎬 [ANALYSIS] gaze_analyzer로 전달할 URL: {final_video_url}")
+            result = gaze_analyzer.analyze_video(
+                video_path_or_url=final_video_url,  # 최종 변환된 URL 사용
+                calibration_points=calibration_points,
+                frame_skip=10  # 성능 최적화
+            )
+            print(f"✅ [ANALYSIS] analyze_video 완료!")
+            print(f"📈 [ANALYSIS] 분석 결과 미리보기:")
+            print(f"   - gaze_score: {result.gaze_score}")
+            print(f"   - total_frames: {result.total_frames}")
+            print(f"   - analyzed_frames: {result.analyzed_frames}")
+            print(f"   - stability_rating: {result.stability_rating}")
+            
+        except Exception as analyze_error:
+            print(f"❌ [ANALYSIS] analyze_video에서 예외 발생: {analyze_error}")
+            print(f"❌ [ANALYSIS] 예외 타입: {type(analyze_error).__name__}")
+            import traceback
+            print(f"❌ [ANALYSIS] 스택트레이스:")
+            traceback.print_exc()
+            raise analyze_error  # 상위로 전파
+        
+        # 4단계: 분석 완료, 점수 계산 중 (85%)
+        analysis_tasks[task_id]['progress'] = 0.85
+        analysis_tasks[task_id]['message'] = "시선 안정성 점수 계산 중..."
+        print(f"📊 [ANALYSIS] 4단계: 점수 계산 중")
+        
+        print(f"✅ [ANALYSIS] 5단계: 전체 분석 완료")
         
         end_time = datetime.now()
         analysis_duration = (end_time - start_time).total_seconds()
+        print(f"⏱️ [ANALYSIS] 총 분석 시간: {analysis_duration:.2f}초")
         
         # 결과 저장
+        print(f"💾 [ANALYSIS] 결과 저장 중...")
         analysis_tasks[task_id].update({
             'status': 'completed',
             'progress': 1.0,
@@ -335,21 +500,40 @@ async def run_video_analysis(task_id: str, video_url: str, calibration_points: L
             )
         })
         
-        print(f"🎉 [ANALYSIS] 결과 저장 완료 - 점수: {result.gaze_score}")
+        print(f"🎉 [ANALYSIS] 결과 저장 완료 - 최종 점수: {result.gaze_score}")
         
     except Exception as e:
-        # 오류 처리
+        # 상세한 오류 처리
         error_msg = str(e)
+        error_type = type(e).__name__
         print(f"❌ [ANALYSIS] 분석 실패: {error_msg}")
-        print(f"❌ [ANALYSIS] 예외 타입: {type(e).__name__}")
+        print(f"❌ [ANALYSIS] 예외 타입: {error_type}")
+        
+        # 구체적인 오류 분류
+        if "동영상" in error_msg.lower() or "video" in error_msg.lower():
+            print(f"🎬 [ANALYSIS] 동영상 관련 오류 감지")
+        elif "mediapipe" in error_msg.lower() or "face" in error_msg.lower():
+            print(f"🤖 [ANALYSIS] MediaPipe 관련 오류 감지")
+        elif "connect" in error_msg.lower() or "download" in error_msg.lower():
+            print(f"🌐 [ANALYSIS] 네트워크/다운로드 관련 오류 감지")
+        elif "memory" in error_msg.lower() or "resource" in error_msg.lower():
+            print(f"💾 [ANALYSIS] 메모리/리소스 관련 오류 감지")
         
         import traceback
+        print(f"❌ [ANALYSIS] 전체 스택트레이스:")
         traceback.print_exc()
+        
+        # 현재 상태 정보
+        current_time = datetime.now()
+        elapsed_time = (current_time - start_time).total_seconds()
+        print(f"⏱️ [ANALYSIS] 오류 발생까지 경과 시간: {elapsed_time:.2f}초")
+        print(f"📊 [ANALYSIS] 오류 발생시 진행률: {analysis_tasks[task_id].get('progress', 0) * 100:.1f}%")
         
         analysis_tasks[task_id].update({
             'status': 'failed',
-            'error': error_msg,
-            'failed_at': datetime.now()
+            'error': f"[{error_type}] {error_msg}",
+            'failed_at': current_time,
+            'elapsed_time': elapsed_time
         })
 
 
@@ -365,7 +549,8 @@ async def get_analysis_status(task_id: str):
         task_id=task_id,
         status=task['status'],
         progress=task.get('progress'),
-        error=task.get('error')
+        error=task.get('error'),
+        message=task.get('message', '분석 진행 중...')
     )
     
     # 완료된 경우 결과 포함
@@ -463,6 +648,160 @@ async def health_check():
         "active_calibration_sessions": len(calibration_manager.sessions),
         "active_analysis_tasks": len(analysis_tasks)
     }
+
+
+@router.get("/internal/video/{media_id}")
+async def get_internal_video_url(media_id: str):
+    """시선 분석용 내부 동영상 URL (인증 없음)"""
+    import boto3
+    import os
+    
+    # S3 클라이언트 초기화
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+        region_name=os.getenv('AWS_REGION', 'ap-northeast-2')
+    )
+    
+    BUCKET_NAME = 'betago-s3'
+    
+    try:
+        print(f"🎬 [INTERNAL_VIDEO] media_id={media_id} 동영상 URL 요청")
+        
+        # 일반 supabase 클라이언트로 미디어 파일 정보 조회 (RLS 우회)
+        from .gaze_calibration import calibration_manager  # supabase import 위해
+        import sys
+        sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'backend'))
+        from services.supabase_client import get_supabase_client
+        
+        supabase = get_supabase_client()
+        
+        # 관리자 권한으로 조회 (RLS 우회)
+        result = supabase.table('media_files').select('s3_key, file_name, s3_url').eq('media_id', media_id).execute()
+        
+        if not result.data:
+            print(f"❌ [INTERNAL_VIDEO] 미디어 파일 찾을 수 없음: {media_id}")
+            raise HTTPException(status_code=404, detail=f"미디어 파일을 찾을 수 없습니다: {media_id}")
+        
+        file_info = result.data[0]
+        s3_key = file_info['s3_key']
+        s3_url = file_info.get('s3_url')  # 저장된 S3 URL이 있으면 사용
+        
+        print(f"✅ [INTERNAL_VIDEO] 파일 정보: s3_key={s3_key}")
+        
+        # 직접 S3 URL을 반환 (presigned URL 없이)
+        if s3_url and s3_url.startswith('https://'):
+            print(f"🌐 [INTERNAL_VIDEO] 저장된 S3 URL 사용: {s3_url[:50]}...")
+            return {
+                'video_url': s3_url,
+                'media_id': media_id,
+                'method': 'direct_s3'
+            }
+        else:
+            # Presigned URL 생성 (24시간 유효)
+            video_url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': BUCKET_NAME, 'Key': s3_key},
+                ExpiresIn=86400  # 24시간
+            )
+            
+            print(f"🔗 [INTERNAL_VIDEO] Presigned URL 생성: {video_url[:50]}...")
+            
+            return {
+                'video_url': video_url,
+                'media_id': media_id,
+                'method': 'presigned'
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ [INTERNAL_VIDEO] 오류 발생: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"내부 동영상 URL 생성 오류: {str(e)}")
+
+
+@router.get("/test/environment")
+async def test_environment():
+    """MediaPipe 및 OpenCV 환경 테스트"""
+    result = {
+        "timestamp": datetime.now().isoformat(),
+        "tests": {}
+    }
+    
+    # 1. MediaPipe 임포트 테스트
+    try:
+        import mediapipe as mp
+        result["tests"]["mediapipe_import"] = {
+            "status": "✅ 성공",
+            "version": mp.__version__
+        }
+    except ImportError as e:
+        result["tests"]["mediapipe_import"] = {
+            "status": "❌ 실패",
+            "error": str(e)
+        }
+    
+    # 2. OpenCV 임포트 테스트
+    try:
+        import cv2
+        result["tests"]["opencv_import"] = {
+            "status": "✅ 성공", 
+            "version": cv2.__version__
+        }
+    except ImportError as e:
+        result["tests"]["opencv_import"] = {
+            "status": "❌ 실패",
+            "error": str(e)
+        }
+    
+    # 3. gaze_analyzer 초기화 테스트
+    try:
+        if hasattr(gaze_analyzer, 'face_mesh') and gaze_analyzer.face_mesh:
+            result["tests"]["gaze_analyzer"] = {
+                "status": "✅ 성공",
+                "face_mesh_initialized": True
+            }
+        else:
+            result["tests"]["gaze_analyzer"] = {
+                "status": "❌ 실패",
+                "face_mesh_initialized": False
+            }
+    except Exception as e:
+        result["tests"]["gaze_analyzer"] = {
+            "status": "❌ 실패",
+            "error": str(e)
+        }
+    
+    # 4. 임시 파일 생성 테스트
+    try:
+        import tempfile
+        import os
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.test')
+        temp_file.write(b"test data")
+        temp_file.close()
+        os.unlink(temp_file.name)
+        result["tests"]["temp_files"] = {"status": "✅ 성공"}
+    except Exception as e:
+        result["tests"]["temp_files"] = {
+            "status": "❌ 실패",
+            "error": str(e)
+        }
+    
+    # 5. requests 라이브러리 테스트
+    try:
+        import requests
+        result["tests"]["requests"] = {
+            "status": "✅ 성공",
+            "version": requests.__version__
+        }
+    except ImportError as e:
+        result["tests"]["requests"] = {
+            "status": "❌ 실패",
+            "error": str(e)
+        }
+    
+    return result
 
 
 # 웹캠 스트림용 엔드포인트 (선택적)

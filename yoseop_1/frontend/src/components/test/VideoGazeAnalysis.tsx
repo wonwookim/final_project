@@ -111,18 +111,24 @@ const VideoGazeAnalysis: React.FC<GazeAnalysisProps> = ({
 
   // 상태별 메시지 업데이트
   const updateMessage = (statusData: AnalysisStatusResponse) => {
-    const progress = statusData.progress || 0;
-    
-    if (progress < 0.2) {
-      setCurrentMessage('동영상 다운로드 중...');
-    } else if (progress < 0.4) {
-      setCurrentMessage('동영상 분석 준비 중...');
-    } else if (progress < 0.8) {
-      setCurrentMessage('MediaPipe로 시선 추적 중...');
-    } else if (progress < 0.95) {
-      setCurrentMessage('시선 안정성 점수 계산 중...');
+    // 백엔드에서 message가 오면 사용, 없으면 기본 메시지
+    if (statusData.message) {
+      setCurrentMessage(statusData.message);
     } else {
-      setCurrentMessage('분석 완료 중...');
+      // 기존 로직 유지 (fallback)
+      const progress = statusData.progress || 0;
+      
+      if (progress < 0.2) {
+        setCurrentMessage('동영상 다운로드 중...');
+      } else if (progress < 0.4) {
+        setCurrentMessage('동영상 분석 준비 중...');
+      } else if (progress < 0.8) {
+        setCurrentMessage('MediaPipe로 시선 추적 중...');
+      } else if (progress < 0.95) {
+        setCurrentMessage('시선 안정성 점수 계산 중...');
+      } else {
+        setCurrentMessage('분석 완료 중...');
+      }
     }
   };
 

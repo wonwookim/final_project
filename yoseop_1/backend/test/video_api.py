@@ -123,7 +123,7 @@ async def get_test_upload_url(
     try:
         insert_data = {
             'user_id': current_user.user_id,
-            'interview_id': 110,  # 테스트용으로 기존 interview_id 사용
+            'interview_id': 175,  # 테스트용으로 기존 interview_id 사용
             'file_name': request.file_name,
             'file_type': request.file_type,
             's3_key': s3_key,

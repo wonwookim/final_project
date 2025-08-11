@@ -120,6 +120,7 @@ export interface AnalysisStatusResponse {
   progress?: number;
   result?: GazeAnalysisResult;
   error?: string;
+  message?: string;
 }
 
 export interface CalibrationProps {

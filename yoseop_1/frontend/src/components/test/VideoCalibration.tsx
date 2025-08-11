@@ -21,6 +21,7 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
   const [status, setStatus] = useState<CalibrationStatusResponse | null>(null);
   const [isStarted, setIsStarted] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [testMode, setTestMode] = useState(false); // 테스트 모드 추가
   
   // 실시간 피드백 상태
   const [realtimeFeedback, setRealtimeFeedback] = useState<FrameFeedback | null>(null);
@@ -34,20 +35,46 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
   // 웹캠 스트림 시작
   const startCamera = useCallback(async () => {
     try {
+      console.log('📹 [DEBUG] navigator.mediaDevices 접근 시작');
+      
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.warn('⚠️ [DEBUG] 웹캠 미지원, 테스트 모드로 전환');
+        setTestMode(true);
+        return;
+      }
+      
+      console.log('📹 [DEBUG] getUserMedia 호출');
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { width: 640, height: 480 }, 
         audio: false 
       });
       
+      console.log('📹 [DEBUG] 스트림 획득 성공:', stream);
+      
       streamRef.current = stream;
+      console.log('📹 [DEBUG] streamRef 설정 완료');
+      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        console.log('📹 [DEBUG] video 엘리먼트에 스트림 연결 완료');
+      } else {
+        console.warn('⚠️ [DEBUG] videoRef.current가 null입니다');
       }
       
-      console.log('✅ 웹캠 스트림 시작됨');
+      console.log('✅ [DEBUG] 웹캠 스트림 시작 완료');
     } catch (error) {
-      console.error('❌ 웹캠 접근 실패:', error);
-      onError('웹캠에 접근할 수 없습니다. 권한을 확인해주세요.');
+      console.error('❌ [DEBUG] 웹캠 접근 실패:', error);
+      console.error('❌ [DEBUG] 웹캠 에러 상세:', (error as Error)?.message);
+      
+      // 권한 거부시 테스트 모드로 전환
+      if ((error as Error)?.name === 'NotAllowedError' || 
+          (error as Error)?.name === 'PermissionDeniedError') {
+        console.log('🔄 [DEBUG] 권한 거부 - 테스트 모드로 전환');
+        setTestMode(true);
+        return;
+      }
+      
+      onError('웹캠에 접근할 수 없습니다. 권한을 확인하거나 테스트 모드를 사용하세요.');
     }
   }, [onError]);
 
@@ -123,41 +150,193 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
       clearInterval(frameStreamInterval.current);
     }
     
+    // 테스트 모드인 경우 가상 프레임 전송
+    if (testMode) {
+      startTestModeFrameStreaming(sessionId);
+      return;
+    }
+    
     frameStreamInterval.current = setInterval(() => {
       captureAndSendFrame(sessionId);
     }, 200); // 200ms마다 프레임 전송 (5fps)
-  }, [captureAndSendFrame]);
+  }, [captureAndSendFrame, testMode]);
+
+  // 테스트 모드용 가상 프레임 스트리밍
+  const startTestModeFrameStreaming = useCallback((sessionId: string) => {
+    let phase = 0;
+    const phases = ['top_left', 'top_right', 'bottom_left', 'bottom_right'];
+    let collectCount = 0;
+    
+    frameStreamInterval.current = setInterval(() => {
+      const currentPhase = phases[phase];
+      const progress = collectCount / 30; // 30개씩 수집한다고 가정
+      
+      // 가상 피드백 생성
+      const feedback = {
+        status: collectCount >= 30 ? 'completed' : 'collecting',
+        phase: currentPhase,
+        eye_detected: true,
+        face_quality: 'good',
+        feedback: `${currentPhase} 단계 ${collectCount}/30 수집 중`,
+        collected_count: collectCount,
+        target_count: 30,
+        collection_progress: Math.min(progress, 1.0)
+      };
+      
+      setRealtimeFeedback(feedback);
+      collectCount++;
+      
+      // 30개 수집 후 다음 단계로
+      if (collectCount >= 30) {
+        collectCount = 0;
+        phase++;
+        
+        // 모든 단계 완료시 종료
+        if (phase >= phases.length) {
+          setIsCompleted(true);
+          if (frameStreamInterval.current) {
+            clearInterval(frameStreamInterval.current);
+            frameStreamInterval.current = null;
+          }
+          onCalibrationComplete(sessionId);
+          return;
+        }
+      }
+    }, 100); // 100ms마다 빠르게 진행
+  }, [onCalibrationComplete]);
 
   // 캘리브레이션 시작
   const startCalibration = async () => {
+    console.log('🔥 [DEBUG] 캘리브레이션 시작 버튼 클릭됨');
+    
     try {
-      console.log('🎯 캘리브레이션 시작 요청');
+      console.log('🎯 [DEBUG] API 요청 시작');
+      console.log('🎯 [DEBUG] API_BASE_URL:', API_BASE_URL);
+      console.log('🎯 [DEBUG] 요청 URL:', `${API_BASE_URL}/test/gaze/calibration/start`);
+      console.log('🎯 [DEBUG] 요청 본문:', { user_id: null });
+      
+      // 요청 시작 시간 기록
+      const startTime = performance.now();
+      console.log('⏰ [DEBUG] 요청 시작 시간:', new Date().toISOString());
       
       const response = await fetch(`${API_BASE_URL}/test/gaze/calibration/start`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: null })
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ user_id: null }),
+        // 타임아웃 설정 (10초)
+        signal: AbortSignal.timeout(10000)
       });
 
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+      console.log('⏰ [DEBUG] 응답 시간:', duration.toFixed(2) + 'ms');
+      console.log('📡 [DEBUG] API 응답 받음. Status:', response.status);
+      console.log('📡 [DEBUG] 응답 헤더:', Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
-        throw new Error(`캘리브레이션 시작 실패: ${response.status}`);
+        let errorText = '';
+        try {
+          errorText = await response.text();
+          console.error('❌ [DEBUG] API 응답 실패 본문:', errorText);
+        } catch (parseError) {
+          console.error('❌ [DEBUG] 응답 파싱 오류:', parseError);
+        }
+        
+        // 상태 코드별 구체적인 오류 메시지
+        let errorMessage = '';
+        switch (response.status) {
+          case 404:
+            errorMessage = '캘리브레이션 API 엔드포인트를 찾을 수 없습니다. 백엔드 서버가 실행 중인지 확인하세요.';
+            break;
+          case 500:
+            errorMessage = '서버 내부 오류가 발생했습니다. 백엔드 로그를 확인하세요.';
+            break;
+          case 502:
+          case 503:
+            errorMessage = '백엔드 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하세요.';
+            break;
+          default:
+            errorMessage = `캘리브레이션 시작 실패 (${response.status}): ${errorText}`;
+        }
+        
+        throw new Error(errorMessage);
       }
 
-      const data = await response.json();
-      console.log('✅ 캘리브레이션 세션 생성:', data);
+      let data;
+      try {
+        const responseText = await response.text();
+        console.log('📡 [DEBUG] 응답 본문 원본:', responseText);
+        data = JSON.parse(responseText);
+        console.log('✅ [DEBUG] 캘리브레이션 세션 생성:', data);
+      } catch (parseError) {
+        console.error('❌ [DEBUG] JSON 파싱 오류:', parseError);
+        throw new Error('서버 응답을 해석할 수 없습니다.');
+      }
+      
+      if (!data.session_id) {
+        console.error('❌ [DEBUG] session_id가 없음:', data);
+        throw new Error('세션 ID를 받지 못했습니다.');
+      }
+      
+      console.log('🔄 [DEBUG] 상태 업데이트 시작');
       
       setSessionId(data.session_id);
+      console.log('✅ [DEBUG] sessionId 설정 완료:', data.session_id);
+      
       setIsStarted(true);
+      console.log('✅ [DEBUG] isStarted=true 설정 완료');
+      
+      // 웹캠 시작 (테스트 모드가 아닌 경우에만)
+      if (!testMode) {
+        console.log('📹 [DEBUG] 웹캠 시작 시도');
+        await startCamera();
+      } else {
+        console.log('🧪 [DEBUG] 테스트 모드 - 웹캠 스킵');
+      }
       
       // 상태 체크 시작
+      console.log('⏱️ [DEBUG] 상태 체크 시작');
       startStatusCheck(data.session_id);
       
       // 프레임 스트리밍 시작
+      console.log('🎬 [DEBUG] 프레임 스트리밍 시작');
       startFrameStreaming(data.session_id);
       
+      console.log('🎉 [DEBUG] 모든 초기화 완료');
+      
     } catch (error) {
-      console.error('❌ 캘리브레이션 시작 오류:', error);
-      onError(error instanceof Error ? error.message : '캘리브레이션을 시작할 수 없습니다.');
+      console.error('❌ [DEBUG] 캘리브레이션 시작 오류:', error);
+      console.error('❌ [DEBUG] 에러 타입:', (error as Error)?.name);
+      console.error('❌ [DEBUG] 에러 스택:', (error as Error)?.stack);
+      
+      // 네트워크 오류 처리
+      let userMessage = '';
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        userMessage = `❌ 백엔드 서버 연결 실패
+
+🔧 해결 방법:
+1. 백엔드 서버를 실행하세요:
+   • 터미널에서 backend 폴더로 이동
+   • "uvicorn main:app --reload --port 8000" 실행
+   
+2. 또는 테스트 모드를 사용하세요:
+   • 아래 "테스트 모드" 체크박스를 선택
+   • 가상으로 캘리브레이션을 진행할 수 있습니다
+
+🌐 서버 URL: http://127.0.0.1:8000`;
+      } else if ((error as Error)?.name === 'TimeoutError') {
+        userMessage = '⏰ 요청 시간 초과: 서버 응답이 너무 느립니다. 서버 상태를 확인하고 다시 시도하세요.';
+      } else if ((error as Error)?.name === 'AbortError') {
+        userMessage = '🔄 요청이 중단되었습니다. 다시 시도해주세요.';
+      } else {
+        userMessage = error instanceof Error ? error.message : '❌ 캘리브레이션을 시작할 수 없습니다.';
+      }
+      
+      console.log('💬 [DEBUG] 사용자 메시지:', userMessage);
+      onError(userMessage);
     }
   };
 
@@ -353,16 +532,26 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
         </div>
       )}
 
-      {/* 비디오 프리뷰 */}
+      {/* 비디오 프리뷰 / 테스트 모드 표시 */}
       <div className="relative">
-        <video
-          ref={videoRef}
-          autoPlay
-          muted
-          playsInline
-          className="w-full max-w-md mx-auto rounded-lg bg-gray-900"
-          style={{ transform: 'scaleX(-1)' }} // 거울 효과
-        />
+        {testMode ? (
+          <div className="w-full max-w-md mx-auto rounded-lg bg-gradient-to-br from-gray-700 to-gray-900 h-64 flex items-center justify-center text-white">
+            <div className="text-center">
+              <div className="text-4xl mb-4">🧪</div>
+              <div className="font-bold text-lg">테스트 모드</div>
+              <div className="text-sm opacity-75">가상 캘리브레이션 진행 중</div>
+            </div>
+          </div>
+        ) : (
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            className="w-full max-w-md mx-auto rounded-lg bg-gray-900"
+            style={{ transform: 'scaleX(-1)' }} // 거울 효과
+          />
+        )}
         
         {/* 숨겨진 캔버스 (프레임 캡처용) */}
         <canvas
@@ -402,14 +591,46 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
         </div>
       )}
 
+      {/* 테스트 모드 토글 */}
+      {!isStarted && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={testMode}
+              onChange={(e) => setTestMode(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm text-yellow-800">
+              🧪 테스트 모드 (웹캠 없이 가상으로 진행)
+            </span>
+          </label>
+        </div>
+      )}
+
       {/* 시작 버튼 */}
       {!isStarted && (
-        <button
-          onClick={startCalibration}
-          className="w-full bg-gradient-to-r from-blue-500 to-purple-500 text-white py-3 rounded-lg font-bold hover:shadow-lg hover:scale-105 transition-all"
-        >
-          🎯 시선 캘리브레이션 시작
-        </button>
+        <div className="space-y-3">
+          <button
+            onClick={startCalibration}
+            className="w-full bg-gradient-to-r from-blue-500 to-purple-500 text-white py-3 rounded-lg font-bold hover:shadow-lg hover:scale-105 transition-all"
+          >
+            🎯 시선 캘리브레이션 시작 {testMode ? '(테스트 모드)' : ''}
+          </button>
+          
+          {/* 백엔드 서버 안내 */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div className="text-sm text-blue-800">
+              <div className="font-medium mb-1">💡 시작하기 전에 확인하세요:</div>
+              <ol className="list-decimal list-inside space-y-1 text-xs">
+                <li>백엔드 서버가 실행 중인지 확인 (포트 8000)</li>
+                <li>웹캠 권한이 허용되어 있는지 확인</li>
+                <li>문제 발생시 브라우저 콘솔(F12)에서 상세 로그 확인</li>
+                <li>서버가 꺼져있다면 테스트 모드로 진행 가능</li>
+              </ol>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 완료 상태 */}
