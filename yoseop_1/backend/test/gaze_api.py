@@ -13,7 +13,6 @@ import os
 import sys
 
 # --- 의존성 주입 ---
-# 경로 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from .gaze_calibration import calibration_manager
@@ -64,6 +63,7 @@ class GazeAnalysisResult(BaseModel):
     in_range_frames: int
     in_range_ratio: float
     jitter_score: int
+    compliance_score: int # 🚀 추가
     stability_rating: str
     feedback: str
     gaze_points: List[Tuple[float, float]]
@@ -103,8 +103,7 @@ async def run_video_analysis(task_id: str, bucket: str, key: str, calibration_po
         
         print(f"✅ [ANALYSIS] Task ID: {task_id} - 분석 완료 ({analysis_duration:.2f}초)")
 
-        # 🚀 FIX: 분석된 프레임 수가 너무 적으면 에러 처리
-        MIN_ANALYZED_FRAMES = 30  # 최소 30프레임 (약 10초 분량)
+        MIN_ANALYZED_FRAMES = 30
         if result.analyzed_frames < MIN_ANALYZED_FRAMES:
             print(f"⚠️ [ANALYSIS] 데이터 부족: 분석된 프레임 {result.analyzed_frames}개 < 최소 기준 {MIN_ANALYZED_FRAMES}개")
             raise ValueError(f"분석에 사용된 데이터가 너무 적습니다({result.analyzed_frames} 프레임). 10초 이상 선명한 영상을 다시 녹화해주세요.")
@@ -121,6 +120,7 @@ async def run_video_analysis(task_id: str, bucket: str, key: str, calibration_po
                 in_range_frames=result.in_range_frames,
                 in_range_ratio=result.in_range_ratio,
                 jitter_score=result.jitter_score,
+                compliance_score=result.compliance_score, # 🚀 추가
                 stability_rating=result.stability_rating,
                 feedback=result.feedback,
                 gaze_points=result.gaze_points,
@@ -135,7 +135,7 @@ async def run_video_analysis(task_id: str, bucket: str, key: str, calibration_po
         
         analysis_tasks[task_id].update({
             'status': 'failed',
-            'error': str(e), # 🚀 ValueError의 명확한 메시지를 전달하기 위해 수정
+            'error': str(e),
             'failed_at': datetime.now()
         })
 
@@ -148,9 +148,6 @@ async def analyze_gaze(
     current_user=Depends(auth_service.get_current_user),
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """
-    동영상 시선 분석 시작 (인증 및 S3 직접 접근)
-    """
     try:
         if not request.video_url.startswith('http://127.0.0.1:8000/video/play/'):
             raise HTTPException(status_code=400, detail="유효하지 않은 video_url 형식입니다.")
