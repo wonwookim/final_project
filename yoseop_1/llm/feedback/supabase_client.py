@@ -420,3 +420,66 @@ class SupabaseManager:
         except Exception as e:
             print(f"ERROR: 사용자 이력서 정보 조회 실패: {str(e)}")
             return None
+    
+    def update_interview_feedback(self, interview_id, feedback_json):
+        """통합 피드백 업데이트 (JSON 문자열 형태)"""
+        try:
+            result = self.supabase.table('interview')\
+                                  .update({'total_feedback': feedback_json})\
+                                  .eq('interview_id', interview_id)\
+                                  .execute()
+            
+            print(f"SUCCESS: 통합 피드백 저장 완료 (Interview ID: {interview_id})")
+            return True
+            
+        except Exception as e:
+            print(f"ERROR: 통합 피드백 저장 실패: {str(e)}")
+            return False
+    
+    def save_improvement_plans(self, interview_id, plans_json):
+        """통합 개선 계획 저장 (JSON 문자열 형태)"""
+        try:
+            insert_data = {
+                'interview_id': interview_id,
+                'shortly_plan': plans_json,
+                'long_plan': plans_json  # 통합 구조로 동일하게 저장
+            }
+            
+            result = self.supabase.table('plans').insert(insert_data).execute()
+            plan_id = result.data[0]['plan_id'] if result.data else None
+            print(f"SUCCESS: 통합 개선 계획 저장 완료 (Plan ID: {plan_id})")
+            return plan_id
+            
+        except Exception as e:
+            print(f"ERROR: 통합 개선 계획 저장 실패: {str(e)}")
+            return None
+            
+    def save_history_detail(self, interview_id, question_result):
+        """히스토리 상세 저장 (통합 버전)"""
+        return self.save_question_answer(interview_id, question_result)
+    
+    def save_question_answer(self, interview_id, question_data):
+        """질문-답변 상세 정보를 history_detail 테이블에 저장"""
+        try:
+            insert_data = {
+                'interview_id': interview_id,
+                'who': question_data.get('who', 'user'),
+                'question_index': question_data.get('question_index', 1),
+                'question_id': None,  # fix_question 테이블 미사용 시
+                'question_content': question_data.get('question', ''),
+                'question_intent': question_data.get('intent', ''),
+                'question_level': question_data.get('question_level', 1),
+                'answer': question_data.get('answer', ''),
+                'feedback': question_data.get('llm_evaluation', ''),
+                'sequence': question_data.get('question_index', 1),
+                'duration': question_data.get('duration', 120)
+            }
+            
+            result = self.supabase.table('history_detail').insert(insert_data).execute()
+            detail_id = result.data[0]['detail_id'] if result.data else None
+            print(f"SUCCESS: Q{question_data.get('question_index')} 저장 완료 (ID: {detail_id})")
+            return detail_id
+            
+        except Exception as e:
+            print(f"ERROR: 질문-답변 저장 실패: {str(e)}")
+            return None

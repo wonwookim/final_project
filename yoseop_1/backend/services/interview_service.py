@@ -316,57 +316,40 @@ class InterviewService:
             evaluation_service = InterviewEvaluationService()
             shared_interview_id = None
 
-            # 사용자 평가 (새로운 interview 세션 생성)
-            if user_qas:
-                interview_logger.info(f"👤 사용자 평가 시작: {len(user_qas)}개 질문")
-                user_pairs = build_pairs(user_qas)
-                user_eval = evaluation_service.evaluate_multiple_questions(
+            # 통합 평가 (사용자와 AI 지원자를 하나의 interview 세션에 저장)
+            if user_qas or ai_qas:
+                interview_logger.info(f"🔄 통합 면접 평가 시작: user={len(user_qas)}개, ai={len(ai_qas)}개 질문")
+                
+                user_pairs = build_pairs(user_qas) if user_qas else []
+                ai_pairs = build_pairs(ai_qas) if ai_qas else []
+                
+                # 새로운 통합 평가 메서드 호출
+                combined_eval = evaluation_service.evaluate_combined_interview(
                     user_id=user_id,
-                    qa_pairs=user_pairs,
-                    ai_resume_id=ai_resume_id,  # AI 이력서 ID도 함께 전달
-                    user_resume_id=user_resume_id,
-                    posting_id=posting_id,
-                    company_id=company_id,
-                    position_id=position_id,
-                    who='user'  # 사용자 데이터임을 명시
-                )
-
-                # 공유할 interview_id 저장
-                if user_eval and user_eval.get('success') and user_eval.get('interview_id'):
-                    shared_interview_id = user_eval['interview_id']
-                    interview_logger.info(f"✅ 사용자 평가 완료: interview_id={shared_interview_id}")
-                    
-                    # 계획 생성
-                    try:
-                        evaluation_service.generate_interview_plans(shared_interview_id)
-                        interview_logger.info(f"✅ 면접 계획 생성 완료: interview_id={shared_interview_id}")
-                    except Exception as e:
-                        interview_logger.error(f"❌ 면접 계획 생성 실패: interview_id={shared_interview_id}, error={str(e)}", exc_info=True)
-                else:
-                    interview_logger.error(f"❌ 사용자 평가 실패: {user_eval}")
-            else:
-                interview_logger.warning(f"⚠️ 사용자 QA가 없어서 평가를 건너뜀")
-
-            # AI 평가 (기존 interview 세션 재사용)
-            if ai_qas and shared_interview_id:
-                interview_logger.info(f"🤖 AI 평가 시작: {len(ai_qas)}개 질문, 기존 interview_id={shared_interview_id}")
-                ai_pairs = build_pairs(ai_qas)
-                ai_eval = evaluation_service.evaluate_multiple_questions(
-                    user_id=user_id,
-                    qa_pairs=ai_pairs,
+                    user_qas=user_pairs,
+                    ai_qas=ai_pairs,
                     ai_resume_id=ai_resume_id,
                     user_resume_id=user_resume_id,
                     posting_id=posting_id,
                     company_id=company_id,
-                    position_id=position_id,
-                    who='candidate',  # AI 지원자 데이터임을 명시
-                    existing_interview_id=shared_interview_id  # 기존 interview_id 재사용
+                    position_id=position_id
                 )
-                interview_logger.info(f"✅ AI 평가 완료: {ai_eval}")
-            elif ai_qas:
-                interview_logger.warning(f"⚠️ AI QA가 있지만 shared_interview_id가 없어서 AI 평가 건너뜀")
+                
+                if combined_eval and combined_eval.get('success'):
+                    shared_interview_id = combined_eval['interview_id']
+                    interview_logger.info(f"✅ 통합 면접 평가 완료: interview_id={shared_interview_id}")
+                    interview_logger.info(f"📊 평가 결과: 사용자 점수={combined_eval.get('user_score', 0):.2f}, AI 점수={combined_eval.get('ai_score', 0):.2f}")
+                    
+                    # 개선 계획 생성
+                    try:
+                        evaluation_service.generate_interview_plans(shared_interview_id)
+                        interview_logger.info(f"✅ 면접 계획 생성 완료: interview_id={shared_interview_id}")
+                    except Exception as e:
+                        interview_logger.error(f"❌ 면접 계획 생성 실패: {str(e)}", exc_info=True)
+                else:
+                    interview_logger.error(f"❌ 통합 면접 평가 실패: {combined_eval}")
             else:
-                interview_logger.info(f"ℹ️ AI QA가 없어서 AI 평가 건너뜀")
+                interview_logger.warning(f"⚠️ 사용자/AI QA 모두 없어서 평가를 건너뜀")
 
         except Exception as e:
             interview_logger.error(f"❌ 피드백 처리 중 예외 발생: {str(e)}", exc_info=True)

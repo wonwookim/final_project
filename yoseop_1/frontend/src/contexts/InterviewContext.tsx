@@ -469,15 +469,29 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       console.log(interviews)
       const processedInterviews: InterviewRecord[] = interviews.map(interview => {
         const date = new Date(interview.date);
-        // total_feedback에서 점수 추출 (예: JSON 파싱 또는 패턴 매칭)
-        let score = 75; // 기본값
+        // total_feedback에서 점수 추출 (통합 구조 지원)
+        let score = 0; // 기본값
         try {
-          // total_feedback이 JSON 형태인 경우 파싱 시도
-          const feedbackData = JSON.parse(interview.total_feedback);
-          score = feedbackData.overall_score || 75;
-        } catch {
+          if (interview.total_feedback) {
+            const feedbackData = JSON.parse(interview.total_feedback);
+            
+            // 통합 구조 {"user": {...}, "ai_interviewer": {...}}인 경우
+            if (feedbackData.user && feedbackData.user.overall_score !== undefined) {
+              score = feedbackData.user.overall_score;
+            } 
+            // 기존 구조 {"overall_score": ...}인 경우  
+            else if (feedbackData.overall_score !== undefined) {
+              score = feedbackData.overall_score;
+            }
+            // AI 경쟁 면접인 경우 AI 점수도 고려 (사용자 점수 우선)
+            else if (feedbackData.ai_interviewer && feedbackData.ai_interviewer.overall_score !== undefined) {
+              score = feedbackData.ai_interviewer.overall_score;
+            }
+          }
+        } catch (e) {
+          console.log('피드백 파싱 실패, 패턴 매칭 시도:', e);
           // 숫자 패턴 매칭으로 점수 추출 시도
-          const scoreMatch = interview.total_feedback.match(/(\d+)점/);
+          const scoreMatch = interview.total_feedback?.match(/(\d+)점/);
           if (scoreMatch) {
             score = parseInt(scoreMatch[1]);
           }

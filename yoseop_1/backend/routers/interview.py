@@ -405,13 +405,31 @@ async def get_turn_based_question(
 @interview_router.get("/history", response_model=List[InterviewResponse])
 async def get_interview_history(current_user: UserResponse = Depends(auth_service.get_current_user)):
     """현재 인증된 사용자의 면접 기록을 Supabase에서 조회합니다."""
+    print(f"🔍 DEBUG: 면접 히스토리 조회 - 사용자 ID: {current_user.user_id} (타입: {type(current_user.user_id)}), 이메일: {current_user.email}")
+    
+    # 전체 interview 테이블 데이터 확인
+    all_interviews = supabase_client.client.from_("interview").select("interview_id, user_id").execute()
+    print(f"🔍 DEBUG: 전체 interview 테이블 레코드 수: {len(all_interviews.data) if all_interviews.data else 0}")
+    if all_interviews.data:
+        user_ids_with_types = [(item['user_id'], type(item['user_id'])) for item in all_interviews.data[:5]]
+        print(f"🔍 DEBUG: 전체 interview 사용자 ID들과 타입: {user_ids_with_types}")
+        
+        # 현재 사용자 ID와 일치하는지 직접 확인
+        matching_interviews = [item for item in all_interviews.data if str(item['user_id']) == str(current_user.user_id)]
+        print(f"🔍 DEBUG: 문자열 변환 후 일치하는 면접 수: {len(matching_interviews)}")
+    
     # 첫 번째 파일의 더 상세한 쿼리 사용 (company, position join 포함)
+    # 타입 불일치 방지를 위해 문자열로 변환하여 조회
     res = supabase_client.client.from_("interview").select(
         "*, company(name), position(position_name)"
-    ).eq("user_id", current_user.user_id).execute()
+    ).eq("user_id", str(current_user.user_id)).execute()
+    
+    print(f"🔍 DEBUG: 사용자별 면접 기록 조회 결과: {len(res.data) if res.data else 0}개")
+    if res.data:
+        print(f"🔍 DEBUG: 첫 번째 면접 기록: {res.data[0]}")
     
     if not res.data:
-        raise HTTPException(status_code=404, detail="No interview history found")
+        return []  # 빈 배열 반환 (404 에러 대신)
     # ai_resume_id/user_resume_id가 None인 경우에도 스키마 검증을 통과하도록 보정
     data = res.data
     for row in data:
@@ -419,6 +437,9 @@ async def get_interview_history(current_user: UserResponse = Depends(auth_servic
             row['ai_resume_id'] = None
         if 'user_resume_id' in row and row['user_resume_id'] is None:
             row['user_resume_id'] = None
+        # total_feedback이 None인 경우 빈 문자열로 변환
+        if 'total_feedback' in row and row['total_feedback'] is None:
+            row['total_feedback'] = ""
     return data
 
 
@@ -435,7 +456,7 @@ async def get_interview_results(
         # .eq("user_id", current_user.user_id) \
     
     if not res.data:
-        raise HTTPException(status_code=404, detail="Interview not found")
+        return []  # 빈 배열 반환 (404 에러 대신)
     
     return res.data
 

@@ -57,7 +57,9 @@ class Orchestrator:
         """메시지를 받아서 상태를 업데이트하고 다음 액션을 결정 (🆕 즉시 TTS 처리 포함)"""
         from_agent = message.get("metadata", {}).get("from_agent", "unknown")
         print(f"[TRACE] {from_agent} -> Orchestrator")
-        print(json.dumps(message, indent=2, ensure_ascii=False))
+        # 오디오 데이터 제외하고 로그 출력
+        message_log = {k: v for k, v in message.items() if not k.endswith('_audio')}
+        print(json.dumps(message_log, indent=2, ensure_ascii=False))
 
         task = message.get("metadata", {}).get("task")
         content = message.get("content", {}).get("content")
@@ -80,7 +82,9 @@ class Orchestrator:
         next_message = self._decide_next_message()
         next_agent = next_message.get("metadata", {}).get("next_agent", "unknown")
         print(f"[TRACE] Orchestrator -> {next_agent}")
-        print(json.dumps(next_message, indent=2, ensure_ascii=False))
+        # 오디오 데이터 제외하고 로그 출력
+        next_message_log = {k: v for k, v in next_message.items() if not k.endswith('_audio')}
+        print(json.dumps(next_message_log, indent=2, ensure_ascii=False))
         return next_message
 
     def _update_state_from_message(self, task: str, content: str, from_agent: str) -> None:
@@ -931,7 +935,9 @@ class Orchestrator:
                     }
                 }
                 print(f"[TRACE] Orchestrator -> Client (complete)")
-                print(json.dumps(result, indent=2, ensure_ascii=False))
+                # 오디오 데이터 제외하고 로그 출력
+                result_log = {k: v for k, v in result.items() if not k.endswith('_audio')}
+                print(json.dumps(result_log, indent=2, ensure_ascii=False))
                 return result
             
             # 사용자 입력 대기 상태인 경우

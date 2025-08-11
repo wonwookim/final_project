@@ -34,7 +34,28 @@ apiClient.interceptors.request.use(
 // 응답 인터셉터 - 토큰 만료 처리
 apiClient.interceptors.response.use(
   (response) => {
-    console.log('API 응답:', response.status, response.data);
+    // 오디오 데이터가 포함된 경우 해당 필드를 제외하고 출력
+    if (response.data && typeof response.data === 'object') {
+      const filteredData: any = { ...response.data };
+      
+      // 오디오 필드들을 간단한 표시로 대체
+      if (filteredData.intro_audio) {
+        filteredData.intro_audio = `[오디오 데이터 ${filteredData.intro_audio.length} chars]`;
+      }
+      if (filteredData.ai_question_audio) {
+        filteredData.ai_question_audio = `[오디오 데이터 ${filteredData.ai_question_audio.length} chars]`;
+      }
+      if (filteredData.ai_answer_audio) {
+        filteredData.ai_answer_audio = `[오디오 데이터 ${filteredData.ai_answer_audio.length} chars]`;
+      }
+      if (filteredData.question_audio) {
+        filteredData.question_audio = `[오디오 데이터 ${filteredData.question_audio.length} chars]`;
+      }
+      
+      console.log('API 응답:', response.status, filteredData);
+    } else {
+      console.log('API 응답:', response.status, response.data);
+    }
     return response;
   },
   (error) => {
@@ -261,6 +282,12 @@ export const interviewApi = {
   async getInterviewHistory(): Promise<InterviewResponse[]> {
     const response = await apiClient.get('/interview/history');
     return response.data as InterviewResponse[];
+  },
+
+  // 면접 상세 결과 조회
+  async getInterviewDetails(interviewId: string): Promise<any> {
+    const response = await apiClient.get(`/interview/history/${interviewId}`);
+    return response.data;
   },
 
   // AI 경쟁 면접 시작 (Orchestrator 기반)

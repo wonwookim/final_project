@@ -7,3 +7,10 @@ requests==2.32.4
 email-validator==2.0.0
 aiohttp
 python-multipart
+numpy
+pandas
+autogluon[all]
+sentence-transformers
+scipy
+scikit-learn
+torch
