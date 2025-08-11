@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { GazeAnalysisProps, AnalysisStatusResponse } from './types';
-
-const API_BASE_URL = 'http://127.0.0.1:8000';
+import apiClient from '../../services/api'; // 🚀 apiClient import
+import { handleApiError } from '../../services/api'; // 🚀 에러 핸들러 import
 
 const VideoGazeAnalysis: React.FC<GazeAnalysisProps> = ({ 
   videoUrl, 
@@ -21,21 +21,13 @@ const VideoGazeAnalysis: React.FC<GazeAnalysisProps> = ({
     try {
       console.log('🔍 시선 분석 시작:', { videoUrl, calibrationSessionId });
       
-      const response = await fetch(`${API_BASE_URL}/test/gaze/analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          video_url: videoUrl,
-          session_id: calibrationSessionId
-        })
+      // 🚀 apiClient를 사용하여 인증 헤더 자동 추가
+      const response = await apiClient.post('/test/gaze/analyze', {
+        video_url: videoUrl,
+        session_id: calibrationSessionId
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `분석 시작 실패: ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = response.data;
       console.log('✅ 분석 작업 시작됨:', data);
       
       setTaskId(data.task_id);
@@ -44,9 +36,10 @@ const VideoGazeAnalysis: React.FC<GazeAnalysisProps> = ({
       // 상태 체크 시작
       startStatusCheck(data.task_id);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ 분석 시작 오류:', error);
-      onError(error instanceof Error ? error.message : '시선 분석을 시작할 수 없습니다.');
+      const errorMessage = handleApiError(error);
+      onError(errorMessage);
     }
   };
 
@@ -58,13 +51,10 @@ const VideoGazeAnalysis: React.FC<GazeAnalysisProps> = ({
 
     statusCheckInterval.current = setInterval(async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/test/gaze/analyze/status/${taskId}`);
-        
-        if (!response.ok) {
-          throw new Error(`상태 체크 실패: ${response.status}`);
-        }
+        // 🚀 apiClient 사용
+        const response = await apiClient.get(`/test/gaze/analyze/status/${taskId}`);
+        const statusData: AnalysisStatusResponse = response.data;
 
-        const statusData: AnalysisStatusResponse = await response.json();
         console.log('📊 분석 상태:', statusData);
         
         setStatus(statusData);
@@ -105,17 +95,21 @@ const VideoGazeAnalysis: React.FC<GazeAnalysisProps> = ({
         
       } catch (error) {
         console.error('❌ 상태 체크 오류:', error);
+        // 네트워크 오류 등으로 상태 체크 실패 시 인터벌 중지
+        if (statusCheckInterval.current) {
+            clearInterval(statusCheckInterval.current);
+            statusCheckInterval.current = null;
+        }
+        onError('분석 상태를 확인하는 중 오류가 발생했습니다.');
       }
     }, 2000); // 2초마다 체크
   };
 
   // 상태별 메시지 업데이트
   const updateMessage = (statusData: AnalysisStatusResponse) => {
-    // 백엔드에서 message가 오면 사용, 없으면 기본 메시지
     if (statusData.message) {
       setCurrentMessage(statusData.message);
     } else {
-      // 기존 로직 유지 (fallback)
       const progress = statusData.progress || 0;
       
       if (progress < 0.2) {
@@ -140,7 +134,6 @@ const VideoGazeAnalysis: React.FC<GazeAnalysisProps> = ({
     }
     
     return () => {
-      // 정리
       if (statusCheckInterval.current) {
         clearInterval(statusCheckInterval.current);
       }
