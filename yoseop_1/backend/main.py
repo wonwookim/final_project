@@ -6,6 +6,7 @@ FastAPI 기반 AI 면접 시스템
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import os
 import sys
 from datetime import datetime
@@ -68,6 +69,29 @@ async def root():
 async def health_check():
     """서버 상태 확인"""
     return {"status": "healthy", "timestamp": datetime.now()}
+
+@app.get("/app")
+async def serve_react_app():
+    """React 메인 앱 페이지"""
+    from fastapi.responses import FileResponse
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    return FileResponse(os.path.join(static_dir, "index.html"))
+
+# 정적 파일 서빙 설정 (React 앱)
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    app.mount("/js", StaticFiles(directory=os.path.join(static_dir, "js")), name="js")
+    app.mount("/css", StaticFiles(directory=os.path.join(static_dir, "css")), name="css")
+    
+    # 이미지 파일 서빙
+    img_dir = os.path.join(static_dir, "img")
+    if os.path.exists(img_dir):
+        app.mount("/img", StaticFiles(directory=img_dir), name="img")
+    
+    print(f"정적 파일 서빙 활성화: {static_dir}")
+else:
+    print("정적 파일 디렉토리가 존재하지 않습니다. API 모드로만 실행됩니다.")
 
 # 데이터베이스 라우터 등록
 if DATABASE_ENABLED:

@@ -14,6 +14,7 @@ interface JobPosting {
 
 interface Resume {
   id: string;
+  user_resume_id?: number; // ✅ user_resume_id 속성 추가
   name: string;
   email: string;
   phone: string;
