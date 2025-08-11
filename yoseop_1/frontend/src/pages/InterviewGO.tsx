@@ -1341,9 +1341,11 @@ const InterviewGO: React.FC = () => {
           </div>
 
           {/* 중앙 컨트롤 */}
-          <div className="bg-gray-800 rounded-lg p-6 flex flex-col justify-center">
-            {/* 🆕 현재 턴 상태 표시 */}
-            <div className="text-center mb-4">
+          <div className="bg-gray-800 rounded-lg p-6 flex flex-col overflow-hidden">
+            {/* 스크롤 가능한 컨텐츠 영역 */}
+            <div className="flex-1 overflow-y-auto">
+              {/* 🆕 현재 턴 상태 표시 */}
+              <div className="text-center mb-4">
               <div className={`text-sm font-bold mb-2 ${
                 isTTSPlaying ? 'text-purple-400' :
                 currentPhase === 'user_turn' ? 'text-yellow-400' : 
@@ -1388,7 +1390,7 @@ const InterviewGO: React.FC = () => {
                 // INTRO 메시지 표시
                 <div className="intro-message">
                   <div className="text-blue-400 text-sm mb-2">🎤 면접관 인사</div>
-                  <div className="text-white text-base leading-relaxed whitespace-pre-line mb-3 bg-blue-900/20 rounded-lg p-4 border border-blue-500/30">
+                  <div className="text-white text-base leading-relaxed whitespace-pre-line mb-3 bg-blue-900/20 rounded-lg p-4 border border-blue-500/30 max-h-32 overflow-y-auto">
                     {introMessage}
                   </div>
                   <div className="text-gray-400 text-xs">잠시 후 면접이 시작됩니다...</div>
@@ -1397,7 +1399,7 @@ const InterviewGO: React.FC = () => {
                 // 일반 질문 표시
                 <div>
                   <div className="text-gray-400 text-sm mb-2">현재 질문</div>
-                  <div className="text-white text-base leading-relaxed line-clamp-2 mb-3">
+                  <div className="text-white text-base leading-relaxed mb-3 max-h-16 overflow-y-auto">
                     {isLoading ? (
                       <div className="flex items-center justify-center gap-2">
                         <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
@@ -1415,7 +1417,7 @@ const InterviewGO: React.FC = () => {
             {currentAIQuestion && (
               <div className="text-center mb-6">
                 <div className="text-orange-400 text-sm mb-2">🎯 AI 지원자용 질문</div>
-                <div className="text-white text-base leading-relaxed whitespace-pre-line mb-3 bg-orange-900/20 rounded-lg p-4 border border-orange-500/30">
+                <div className="text-white text-base leading-relaxed whitespace-pre-line mb-3 bg-orange-900/20 rounded-lg p-4 border border-orange-500/30 max-h-32 overflow-y-auto">
                   {currentAIQuestion}
                 </div>
                 <div className="text-orange-300 text-xs">
@@ -1428,7 +1430,7 @@ const InterviewGO: React.FC = () => {
             {currentAIAnswer && (
               <div className="text-center mb-6">
                 <div className="text-purple-400 text-sm mb-2">🤖 AI 지원자 답변 (춘식이)</div>
-                <div className="text-white text-base leading-relaxed whitespace-pre-line mb-3 bg-purple-900/20 rounded-lg p-4 border border-purple-500/30">
+                <div className="text-white text-base leading-relaxed whitespace-pre-line mb-3 bg-purple-900/20 rounded-lg p-4 border border-purple-500/30 max-h-40 overflow-y-auto">
                   {currentAIAnswer}
                 </div>
                 <div className="text-purple-300 text-xs">
@@ -1436,8 +1438,9 @@ const InterviewGO: React.FC = () => {
                 </div>
               </div>
             )}
+            </div>
 
-                         {/* 컨트롤 버튼 */}
+            {/* 컨트롤 버튼 */}
              <div className="space-y-3">
                {currentPhase === 'interview_completed' ? (
                  // 면접 완료 시 나가기 버튼만 표시
