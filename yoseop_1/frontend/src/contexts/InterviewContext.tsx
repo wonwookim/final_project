@@ -130,6 +130,7 @@ interface InterviewState {
     initialQuestion: any | null;
     aiPersona: any | null;
     progress: { current: number; total: number; percentage: number } | null;
+    extracted_ai_resume_id: number | null;  // AI 응답에서 추출된 AI 이력서 ID
   } | null;
 }
 
@@ -154,7 +155,8 @@ type InterviewAction =
   | { type: 'SET_ERROR'; payload: string | null }
   | { type: 'SET_TIME_LEFT'; payload: number }
   | { type: 'SET_PROGRESS'; payload: number }
-  | { type: 'SET_TEXT_COMPETITION_DATA'; payload: { initialQuestion: any; aiPersona: any; progress: { current: number; total: number; percentage: number } } }
+  | { type: 'SET_TEXT_COMPETITION_DATA'; payload: { initialQuestion: any; aiPersona: any; progress: { current: number; total: number; percentage: number }; extracted_ai_resume_id?: number | null } }
+  | { type: 'SET_EXTRACTED_AI_RESUME_ID'; payload: number }
   | { type: 'RESET_INTERVIEW' }
   | { type: 'SET_INTERVIEW_HISTORY'; payload: InterviewRecord[] }
   | { type: 'ADD_INTERVIEW_RECORD'; payload: InterviewRecord }
@@ -292,7 +294,27 @@ function interviewReducer(state: InterviewState, action: InterviewAction): Inter
       return { ...state, progress: action.payload };
     
     case 'SET_TEXT_COMPETITION_DATA':
-      return { ...state, textCompetitionData: action.payload };
+      return {
+        ...state,
+        textCompetitionData: {
+          ...action.payload,
+          extracted_ai_resume_id: action.payload.extracted_ai_resume_id || null
+        }
+      };
+    
+    case 'SET_EXTRACTED_AI_RESUME_ID':
+      return {
+        ...state,
+        textCompetitionData: state.textCompetitionData ? {
+          ...state.textCompetitionData,
+          extracted_ai_resume_id: action.payload
+        } : {
+          initialQuestion: null,
+          aiPersona: null,
+          progress: null,
+          extracted_ai_resume_id: action.payload
+        }
+      };
     
     case 'RESET_INTERVIEW':
       return initialState;

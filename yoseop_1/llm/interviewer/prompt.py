@@ -597,3 +597,70 @@ class InterviewerPromptBuilder:
             }
             
             return keywords_map.get(position_normalized, [])
+
+    def build_db_template_enhancement_prompt(self, db_template: str, user_resume: Dict, 
+                                           company_info: Dict, interviewer_role: str) -> str:
+        """DB 참조질문을 LLM으로 튜닝/개선하기 위한 고도화된 프롬프트"""
+        
+        company_name = company_info.get('name', '회사')
+        talent_profile = company_info.get('talent_profile', '정의되지 않음')
+        core_competencies = ', '.join(company_info.get('core_competencies', ['정의되지 않음']))
+        tech_focus = ', '.join(company_info.get('tech_focus', ['정의되지 않음']))
+        question_direction = company_info.get('question_direction', '정의되지 않음')
+        
+        # 기업문화 정보 추출
+        company_culture = company_info.get('company_culture', {})
+        core_values = []
+        work_style = ''
+        if isinstance(company_culture, dict):
+            core_values = company_culture.get('core_values', [])
+            work_style = company_culture.get('work_style', '')
+        
+        # 지원자 정보
+        position = user_resume.get('position', '개발자')
+        candidate_name = user_resume.get('name', '지원자')
+        
+        # 면접관별 페르소나 및 관점
+        interviewer_persona = self.interviewer_personas.get(interviewer_role, "")
+        
+        prompt = f"""
+{interviewer_persona}
+
+### [회사 DNA 분석] ###
+- **인재상 (WHO):** 우리는 '{talent_profile}'인 사람을 원합니다.
+- **핵심 역량 (WHAT):** 우리는 '{core_competencies}' 역량을 중요하게 생각합니다.
+- **기술 중점 분야 (WHERE):** 우리의 기술은 '{tech_focus}' 분야에 집중되어 있습니다.
+- **평가 방향 (HOW):** 우리는 '{question_direction}' 방식으로 지원자를 평가합니다.
+{f"- **핵심가치:** {', '.join(core_values[:3])}" if core_values else ""}
+{f"- **업무문화:** {work_style}" if work_style else ""}
+
+### [지원자 컨텍스트] ###
+- **지원자명:** {candidate_name}
+- **지원 직군:** {position}
+
+### [원본 DB 참조질문] ###
+{db_template}
+
+### [질문 개선 임무] ###
+당신은 {interviewer_role} 면접관으로서, 위의 DB 참조질문을 다음과 같이 개선해야 합니다:
+
+1. **회사 DNA 융합**: 회사의 인재상, 핵심 역량, 기술 중점 분야를 반영하여 질문을 개선
+2. **개인화**: 지원자의 이름과 직군에 맞게 질문을 자연스럽게 조정
+3. **면접관 관점**: {interviewer_role} 면접관만의 전문성과 관점을 반영
+4. **자연스러운 표현**: 딱딱한 DB 템플릿을 대화하듯 자연스러운 면접 질문으로 개선
+5. **원본 의도 유지**: 원본 질문의 평가 목적과 핵심 의도는 반드시 보존
+
+### [개선 원칙] ###
+- 질문의 핵심 평가 요소는 그대로 유지
+- 회사와 지원자에 맞는 구체적인 상황으로 맥락화
+- {interviewer_role} 면접관다운 전문적이고 날카로운 시각 반영
+- 면접 상황에서 자연스럽게 물어볼 수 있는 형태로 개선
+
+### [절대 준수사항] ###
+🚨 오직 아래 JSON 형식으로만 응답하세요. 다른 텍스트, 설명, 주석 절대 금지 🚨
+
+{{"question": "개선된 질문 내용", "intent": "질문을 통해 평가하려는 역량"}}
+
+위 형식만 사용하세요. 다른 형태의 응답은 시스템 오류를 발생시킵니다.
+"""
+        return prompt.strip()

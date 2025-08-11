@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = 'http://localhost:8000';
 
 // API 클라이언트 설정
 const apiClient = axios.create({
@@ -219,6 +219,11 @@ export const interviewApi = {
       answer_seq: number;
       current_interviewer: string;
     };
+    // 🆕 TTS 오디오 필드들 추가
+    intro_audio?: string;
+    ai_question_audio?: string;
+    ai_answer_audio?: string;
+    question_audio?: string;
   }> {
     const response = await apiClient.post('/interview/answer', answerData);
     return response.data as {
@@ -238,6 +243,11 @@ export const interviewApi = {
         answer_seq: number;
         current_interviewer: string;
       };
+      // 🆕 TTS 오디오 필드들 추가
+      intro_audio?: string;
+      ai_question_audio?: string;
+      ai_answer_audio?: string;
+      question_audio?: string;
     };
   },
 
@@ -272,6 +282,11 @@ export const interviewApi = {
       answer_seq: number;
       current_interviewer: string;
     };
+    // 🆕 TTS 오디오 필드들 추가
+    intro_audio?: string;
+    ai_question_audio?: string;
+    ai_answer_audio?: string;
+    question_audio?: string;
   }> {
     // 🎯 무조건 InterviewerService 사용하도록 하드코딩
     console.log('🐛 DEBUG: API로 전송하는 원본 설정값:', settings);
@@ -302,6 +317,11 @@ export const interviewApi = {
         answer_seq: number;
         current_interviewer: string;
       };
+      // 🆕 TTS 오디오 필드들 추가
+      intro_audio?: string;
+      ai_question_audio?: string;
+      ai_answer_audio?: string;
+      question_audio?: string;
     };
   },
 
@@ -320,6 +340,11 @@ export const interviewApi = {
       answer_seq: number;
       current_interviewer: string;
     };
+    // 🆕 TTS 오디오 필드들 추가
+    intro_audio?: string;
+    ai_question_audio?: string;
+    ai_answer_audio?: string;
+    question_audio?: string;
   }> {
     const response = await apiClient.post('/interview/answer', {
       session_id: sessionId,
@@ -340,6 +365,11 @@ export const interviewApi = {
         answer_seq: number;
         current_interviewer: string;
       };
+      // 🆕 TTS 오디오 필드들 추가
+      intro_audio?: string;
+      ai_question_audio?: string;
+      ai_answer_audio?: string;
+      question_audio?: string;
     };
   },
 
@@ -618,6 +648,31 @@ export const interviewApi = {
       service_type: string;
       system_status: string;
     };
+  },
+
+  // TTS (Text-to-Speech) 음성 재생
+  async playTTS(text: string): Promise<HTMLAudioElement> {
+    console.log('🔊 TTS 요청:', text.substring(0, 50) + '...');
+    
+    const response = await apiClient.post('/interview/tts', 
+      { 
+        text: text,
+        voice_id: '21m00Tcm4TlvDq8ikWAM' // Rachel 음성 (무료 기본 제공)
+      }, 
+      { 
+        responseType: 'blob' // 오디오 데이터를 blob으로 받음
+      }
+    );
+    
+    // Blob을 오디오 URL로 변환
+    const audioBlob = new Blob([response.data as BlobPart], { type: 'audio/mp3' });
+    const audioUrl = URL.createObjectURL(audioBlob);
+    
+    // Audio 객체 생성 및 반환
+    const audio = new Audio(audioUrl);
+    
+    console.log('✅ TTS 오디오 생성 완료');
+    return audio;
   },
 };
 
