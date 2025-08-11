@@ -13,6 +13,7 @@ class InterviewSettings(BaseModel):
     documents: Optional[List[str]] = None
     resume: Optional[Dict] = None  # 🆕 사용자 이력서 데이터
     posting_id: Optional[int] = None  # 🆕 채용공고 ID - 지정되면 실제 DB 데이터 사용
+    user_resume_id: Optional[int] = None  # 🆕 사용자 이력서 ID
     use_interviewer_service: Optional[bool] = False  # 🎯 InterviewerService 사용 플래그
 
 class QuestionRequest(BaseModel):
@@ -80,8 +81,13 @@ class InterviewResponse(BaseModel):
     """면접 응답 모델"""
     interview_id: int
     user_id: int
+<<<<<<< HEAD
     ai_resume_id: Optional[int] = None  # ✅ AI 면접에서만 사용
     user_resume_id: Optional[int] = None  # ✅ 사용자 면접에서만 사용
+=======
+    ai_resume_id: Optional[int] = None
+    user_resume_id: Optional[int] = None
+>>>>>>> main
     posting_id: int
     company_id: int
     position_id: int

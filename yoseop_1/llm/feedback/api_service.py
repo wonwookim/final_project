@@ -71,7 +71,7 @@ class InterviewEvaluationService:
                 print(f"WARNING: 면접 세션 생성 실패: {str(e)}")
         return None
     
-    def _evaluate_single_question(self, qa_pair, company_info, question_index, position_info=None, posting_info=None, resume_info=None):
+    def _evaluate_single_question(self, qa_pair, company_info, question_index, position_info=None, posting_info=None, resume_info=None, who='user'):
         """단일 질문 평가 (공유 모델 사용)"""
         try:
             print(f"\n--- Q{question_index} 평가 중 ---")
@@ -111,7 +111,8 @@ class InterviewEvaluationService:
                 "llm_evaluation": result.get("llm_evaluation", ""),
                 "intent": result.get("intent", ""),
                 "question_level": qa_pair.question_level if qa_pair.question_level else "unknown",
-                "duration": qa_pair.duration
+                "duration": qa_pair.duration,
+                "who": who  # 사용자/AI 구분값 추가
             }
         except Exception as e:
             print(f"ERROR: Q{question_index} 평가 실패: {str(e)}")
@@ -123,13 +124,59 @@ class InterviewEvaluationService:
                 "llm_evaluation": f"평가 중 오류 발생: {str(e)}",
                 "intent": "",
                 "question_level": "unknown",
-                "duration": qa_pair.duration
+                "duration": qa_pair.duration,
+                "who": who  # 사용자/AI 구분값 추가
             }
     
+    def save_individual_questions_to_db(self, interview_id: int, per_question_results: list, who='user'):
+        """개별 질문 평가 결과를 history_detail에 저장 (총평 생성 없음)"""
+        try:
+            if not self.db_manager:
+                print("WARNING: DB 매니저가 없어서 개별 질문 저장을 건너뜁니다.")
+                return
+            
+            print(f"개별 질문 평가 결과를 DB에 저장 중... ({who} 데이터)")
+            for i, question_result in enumerate(per_question_results, 1):
+                try:
+                    qa_data = {
+                        "question_index": i,
+                        "question_id": i,
+                        "question": question_result.get("question", ""),
+                        "answer": question_result.get("answer", ""),
+                        "intent": question_result.get("intent", ""),
+                        "question_level": question_result.get("question_level", "unknown"),
+                        "who": question_result.get("who", who),
+                        "sequence": i,
+                        "duration": question_result.get("duration")
+                    }
+                    
+                    # 개별 질문 피드백 구성
+                    final_feedback = {
+                        "final_score": int(question_result.get("ml_score", 0) * 10) if question_result.get("ml_score") else 0,
+                        "evaluation": question_result.get("llm_evaluation", ""),
+                        "improvement": "개별 개선사항"
+                    }
+                    
+                    detail_id = self.db_manager.save_qa_detail(
+                        interview_id, qa_data, json.dumps(final_feedback, ensure_ascii=False)
+                    )
+                    
+                    if detail_id:
+                        print(f"SUCCESS: Q{i} 저장 완료 (ID: {detail_id}, who: {who})")
+                    else:
+                        print(f"WARNING: Q{i} 저장 실패 ({who})")
+                        
+                except Exception as detail_error:
+                    print(f"ERROR: Q{i} 저장 중 오류 ({who}): {str(detail_error)}")
+                    
+        except Exception as e:
+            print(f"ERROR: 개별 질문 저장 실패 ({who}): {str(e)}")
+
     def evaluate_multiple_questions(self, user_id: int, qa_pairs: list, 
                                    ai_resume_id: Optional[int] = None, user_resume_id: Optional[int] = None,
                                    posting_id: Optional[int] = None, company_id: Optional[int] = None,
-                                   position_id: Optional[int] = None) -> dict:
+                                   position_id: Optional[int] = None, who: str = 'user',
+                                   existing_interview_id: Optional[int] = None) -> dict:
         """
         여러 질문-답변 일괄 평가 후 자동으로 최종 평가 수행
         
@@ -150,23 +197,28 @@ class InterviewEvaluationService:
                     "total_questions": 0
                 }
             
-            # 1. 새 면접 세션 생성
-            interview_id = self._create_interview_session(
-                user_id=user_id,
-                ai_resume_id=ai_resume_id,
-                user_resume_id=user_resume_id,
-                posting_id=posting_id,
-                company_id=company_id,
-                position_id=position_id
-            )
-            
-            if not interview_id:
-                print("WARNING: 면접 세션 생성 실패, 필수 필드만으로 재시도")
-                try:
-                    interview_id = self._create_interview_session(user_id=user_id)
-                    print(f"재시도 결과: interview_id = {interview_id}")
-                except Exception as e:
-                    print(f"재시도 중 오류: {str(e)}")
+            # 1. 면접 세션 처리 (기존 ID 재사용 또는 새로 생성)
+            if existing_interview_id:
+                interview_id = existing_interview_id
+                print(f"기존 interview_id 재사용: {interview_id}")
+            else:
+                # 새 면접 세션 생성
+                interview_id = self._create_interview_session(
+                    user_id=user_id,
+                    ai_resume_id=ai_resume_id,
+                    user_resume_id=user_resume_id,
+                    posting_id=posting_id,
+                    company_id=company_id,
+                    position_id=position_id
+                )
+                
+                if not interview_id:
+                    print("WARNING: 면접 세션 생성 실패, 필수 필드만으로 재시도")
+                    try:
+                        interview_id = self._create_interview_session(user_id=user_id)
+                        print(f"재시도 결과: interview_id = {interview_id}")
+                    except Exception as e:
+                        print(f"재시도 중 오류: {str(e)}")
             
             if not interview_id:
                 error_msg = f"면접 세션 생성 실패 - user_id: {user_id}"
@@ -231,27 +283,56 @@ class InterviewEvaluationService:
             
             per_question_results = []
             for i, qa_pair in enumerate(qa_pairs, 1):
-                result = self._evaluate_single_question(qa_pair, company_info, i, position_info, posting_info, resume_info)
+                result = self._evaluate_single_question(qa_pair, company_info, i, position_info, posting_info, resume_info, who)
                 per_question_results.append(result)
             
             print(f"SUCCESS: {len(per_question_results)}개 질문 평가 완료")
             
-            # 5. 메모리 데이터 기반 최종 평가 수행
-            print(f"\n--- 최종 평가 시작 ---")
-            final_result = self.run_final_evaluation_from_memory(interview_id, per_question_results, company_info, position_info, posting_info, resume_info)
+            # 5. 메모리 데이터 기반 최종 평가 수행 (사용자 평가일 때만)
+            final_result = None
+            if who == 'user':
+                print(f"\n--- 사용자 최종 평가 시작 ---")
+                final_result = self.run_final_evaluation_from_memory(interview_id, per_question_results, company_info, position_info, posting_info, resume_info, who)
+            else:
+                print(f"\n--- AI 평가: 개별 질문만 저장 (최종 총평 생성 생략) ---")
+                # AI 평가는 개별 질문만 저장
+                self.save_individual_questions_to_db(interview_id, per_question_results, who)
             
             # 최종 평가 결과를 API 응답 형식에 맞게 재구성
-            # final_result가 실패했더라도 해당 내용을 담아서 반환
-            response = {
-                "success": final_result.get("success", False),
-                "interview_id": interview_id,
-                "message": final_result.get("message", f"전체 면접 평가 완료 ({len(qa_pairs)}개 질문)"),
-                "total_questions": len(qa_pairs),
-                "overall_score": final_result.get("overall_score"),
-                "overall_feedback": final_result.get("overall_feedback"),
-                "per_question_results": final_result.get("per_question", []), # 'per_question'을 'per_question_results'로 매핑
-                "interview_plan": None # 계획 생성은 별도 API 호출
-            }
+            if final_result and final_result.get("success", False):
+                # 사용자 평가 성공 시
+                response = {
+                    "success": True,
+                    "interview_id": interview_id,
+                    "message": final_result.get("message", f"전체 면접 평가 완료 ({len(qa_pairs)}개 질문)"),
+                    "total_questions": len(qa_pairs),
+                    "overall_score": final_result.get("overall_score"),
+                    "overall_feedback": final_result.get("overall_feedback"),
+                    "per_question_results": final_result.get("per_question", []),
+                    "interview_plan": None
+                }
+            else:
+                # AI 평가이거나 사용자 평가 실패 시 - 개별 평가 결과만 반환
+                response = {
+                    "success": True,
+                    "interview_id": interview_id,
+                    "message": f"개별 {len(qa_pairs)}개 질문 평가 완료 ({who} 평가)",
+                    "total_questions": len(qa_pairs),
+                    "overall_score": None,
+                    "overall_feedback": None,
+                    "per_question_results": [
+                        {
+                            "question": result["question"],
+                            "answer": result["answer"],
+                            "intent": result["intent"],
+                            "final_score": int(result["ml_score"] * 10) if result["ml_score"] else 0,
+                            "evaluation": result["llm_evaluation"],
+                            "improvement": "개별 개선사항 없음"
+                        }
+                        for result in per_question_results
+                    ],
+                    "interview_plan": None
+                }
             
             return response
             
@@ -285,7 +366,7 @@ class InterviewEvaluationService:
             }
     
 
-    def run_final_evaluation_from_memory(self, interview_id: int, per_question_results: list, company_info: dict, position_info=None, posting_info=None, resume_info=None) -> dict:
+    def run_final_evaluation_from_memory(self, interview_id: int, per_question_results: list, company_info: dict, position_info=None, posting_info=None, resume_info=None, who='user') -> dict:
         """
         메모리 데이터를 기반으로 최종 평가 실행 후 DB에 저장
         
@@ -360,7 +441,7 @@ class InterviewEvaluationService:
                             "answer": question_eval.get("answer", ""),
                             "intent": question_eval.get("intent", ""),
                             "question_level": original_data.get("question_level", "unknown"),
-                            "who": "interviewer",
+                            "who": original_data.get("who", who),  # 전달받은 who 값 사용
                             "sequence": i,
                             "duration": original_data.get("duration")
                         }

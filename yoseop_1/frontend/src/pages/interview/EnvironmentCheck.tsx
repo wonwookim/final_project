@@ -258,133 +258,52 @@ const EnvironmentCheck: React.FC = () => {
       mode: finalSettings.mode
     });
 
-    // AI 경쟁 모드일 때 바로 API 호출
-    if (finalSettings.mode === 'ai_competition') {
-      try {
-        console.log('🤖 AI 경쟁 모드 - 바로 API 호출');
-        
-        const response = await interviewApi.startAICompetition(finalSettings);
-        
-        console.log('✅ AI 경쟁 면접 시작 성공:', response);
-        
-        // 응답에서 세션 ID 설정
-        if (response.session_id) {
-          dispatch({ 
-            type: 'SET_SESSION_ID', 
-            payload: response.session_id
-          });
-        }
-        
-        // 질문이 있으면 추가
-        let questionData = null;
-        if (response.question) {
-          questionData = typeof response.question === 'string' 
-            ? { 
-                id: `q_${Date.now()}`,
-                question: response.question, 
-                category: 'HR', 
-                time_limit: 120,
-                keywords: []
-              }
-            : {
-                id: (response.question as any).id || `q_${Date.now()}`,
-                question: (response.question as any).question || response.question,
-                category: (response.question as any).category || 'HR',
-                time_limit: (response.question as any).time_limit || 120,
-                keywords: (response.question as any).keywords || []
-              };
-            
-          dispatch({ 
-            type: 'ADD_QUESTION', 
-            payload: questionData
-          });
-        }
-        
-        // 면접 상태를 활성으로 설정
-        dispatch({ 
-          type: 'SET_INTERVIEW_STATUS', 
-          payload: 'active'
-        });
-        
-        // 면접 설정을 localStorage에 저장 (복원용)
-        const stateToSave = {
-          jobPosting: state.jobPosting,
-          resume: state.resume,
-          interviewMode: state.interviewMode,
-          aiSettings: state.aiSettings,
-          settings: finalSettings,
-          sessionId: response.session_id,
-          interviewStatus: 'active',
-          questions: questionData ? [questionData] : [],
-          fromEnvironmentCheck: true,
-          apiCallCompleted: true // API 호출 완료됨을 표시
-        };
-        localStorage.setItem('interview_state', JSON.stringify(stateToSave));
-        console.log('💾 AI 경쟁 면접 데이터를 localStorage에 저장 완료');
-        
-        // 카메라 스트림을 Context에 저장
-        if (stream) {
-          dispatch({
-            type: 'SET_CAMERA_STREAM',
-            payload: stream
-          });
-        }
-        
-        // 바로 면접 화면으로 이동
-        navigate('/interview/active');
-        
-      } catch (error) {
-        console.error('❌ AI 경쟁 면접 시작 실패:', error);
-        alert('면접 시작에 실패했습니다. 다시 시도해주세요.');
-        return;
-      }
-    } else {
-      // 일반 모드는 기존대로
-      const sessionId = `session_${Date.now()}`;
-      dispatch({ 
-        type: 'SET_SESSION_ID', 
-        payload: sessionId
+    // 세션 ID 생성 (모든 모드 공통)
+    const sessionId = `session_${Date.now()}`;
+    dispatch({ 
+      type: 'SET_SESSION_ID', 
+      payload: sessionId
+    });
+    
+    // 면접 설정을 localStorage에 저장 (면접 화면에서 API 호출하도록)
+    const stateToSave = {
+      jobPosting: state.jobPosting,
+      resume: state.resume,
+      interviewMode: state.interviewMode,
+      aiSettings: state.aiSettings,
+      settings: finalSettings,
+      sessionId: sessionId,
+      interviewStatus: 'ready',
+      fromEnvironmentCheck: true,
+      needsApiCall: true, // 면접 화면에서 API 호출 필요함을 표시
+      apiCallCompleted: false // API 호출 미완료 상태
+    };
+    localStorage.setItem('interview_state', JSON.stringify(stateToSave));
+    console.log('💾 면접 설정을 localStorage에 저장 완료 - API 호출은 면접 화면에서 수행');
+    
+    // 카메라 스트림을 Context에 저장
+    if (stream) {
+      dispatch({
+        type: 'SET_CAMERA_STREAM',
+        payload: stream
       });
-      
-      // 면접 설정을 localStorage에 저장 (새로고침 시 복원용)
-      const stateToSave = {
-        jobPosting: state.jobPosting,
-        resume: state.resume,
-        interviewMode: state.interviewMode,
-        aiSettings: state.aiSettings,
-        settings: finalSettings,
-        sessionId: sessionId,
-        interviewStatus: 'ready',
-        fromEnvironmentCheck: true,
-        needsApiCall: true
-      };
-      localStorage.setItem('interview_state', JSON.stringify(stateToSave));
-      console.log('💾 일반 면접 설정을 localStorage에 저장 완료');
-      
-      // 카메라 스트림을 Context에 저장
-      if (stream) {
-        dispatch({
-          type: 'SET_CAMERA_STREAM',
-          payload: stream
-        });
-      }
-      
-      dispatch({ 
-        type: 'SET_INTERVIEW_STATUS', 
-        payload: 'ready'
-      });
-      
-      // 기본 모드로 이동
-      setTimeout(() => {
-        if (finalSettings.mode === 'text_competition') {
-          console.log('🎯 텍스트 경쟁 모드 - /interview/active-temp로 이동');
-          navigate('/interview/active-temp');
-        } else {
-          console.log('🎯 기본 모드 - /interview/active로 이동');
-          navigate('/interview/active');
-        }
-      }, 1000);
     }
+    
+    dispatch({ 
+      type: 'SET_INTERVIEW_STATUS', 
+      payload: 'ready'
+    });
+    
+    // 모든 모드에서 바로 면접 화면으로 이동
+    setTimeout(() => {
+      if (finalSettings.mode === 'text_competition') {
+        console.log('🎯 텍스트 경쟁 모드 - /interview/active-temp로 이동');
+        navigate('/interview/active-temp');
+      } else {
+        console.log('🎯 면접 화면으로 즉시 이동 - API 호출은 면접 화면에서 수행');
+        navigate('/interview/active');
+      }
+    }, 500);
   };
 
   // 컴포넌트 언마운트 시 스트림 정리

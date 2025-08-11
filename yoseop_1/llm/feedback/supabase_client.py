@@ -141,7 +141,7 @@ class SupabaseManager:
         try:
             insert_data = {
                 'interview_id': interview_id,
-                'who': question_data.get('who', 'interviewer'),
+                'who': question_data.get('who', 'user'),  # 기본값을 user로 변경
                 'question_index': question_data.get('question_index'),
                 'question_id': question_data.get('question_id'),
                 'question_content': question_data.get('question'),

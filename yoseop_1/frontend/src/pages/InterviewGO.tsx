@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInterview } from '../contexts/InterviewContext';
-import { sessionApi, interviewApi } from '../services/api';
+import { sessionApi, interviewApi, tokenManager } from '../services/api';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import SpeechIndicator from '../components/voice/SpeechIndicator';
 
@@ -85,6 +85,19 @@ const InterviewGO: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(true); // 복원 상태 추가
   
+  // 🆕 INTRO 메시지 관련 상태
+  const [introMessage, setIntroMessage] = useState<string>('');
+  const [hasIntroMessage, setHasIntroMessage] = useState(false);
+  const [showIntroMessage, setShowIntroMessage] = useState(false);
+  
+  // 🆕 TTS 관련 상태
+  const [isTTSPlaying, setIsTTSPlaying] = useState(false);
+  const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
+  
+  // 🆕 AI 질문/답변 관련 상태
+  const [currentAIQuestion, setCurrentAIQuestion] = useState<string>('');
+  const [currentAIAnswer, setCurrentAIAnswer] = useState<string>('');
+  
   // 🆕 턴 관리 상태
   const [currentTurn, setCurrentTurn] = useState<'user' | 'ai' | 'waiting'>('waiting');
   const [timeLeft, setTimeLeft] = useState(120); // 2분 타이머
@@ -99,7 +112,6 @@ const InterviewGO: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [canRecord, setCanRecord] = useState(false);
   const [sttResult, setSttResult] = useState('');
-  const [isTTSPlaying, setIsTTSPlaying] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [hasAudioPermission, setHasAudioPermission] = useState<boolean | null>(null);
   
@@ -149,6 +161,107 @@ const InterviewGO: React.FC = () => {
     submitAnswer();
   };
 
+  // 🆕 백엔드에서 생성된 base64 오디오 재생 함수
+  const playBase64Audio = async (base64Data: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      try {
+        console.log('🔊 Base64 오디오 재생 시작');
+        setIsTTSPlaying(true);
+        
+        // 이전 오디오가 있으면 정지
+        if (currentAudio) {
+          currentAudio.pause();
+          currentAudio.currentTime = 0;
+        }
+        
+        // base64 → blob → Audio 객체 생성
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const audioBlob = new Blob([bytes], { type: 'audio/mp3' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        
+        setCurrentAudio(audio);
+        
+        // 재생 완료 이벤트
+        audio.onended = () => {
+          console.log('✅ Base64 오디오 재생 완료');
+          setIsTTSPlaying(false);
+          setCurrentAudio(null);
+          URL.revokeObjectURL(audioUrl); // 메모리 정리
+          resolve();
+        };
+        
+        // 재생 에러 이벤트
+        audio.onerror = () => {
+          console.error('❌ Base64 오디오 재생 실패');
+          setIsTTSPlaying(false);
+          setCurrentAudio(null);
+          URL.revokeObjectURL(audioUrl); // 메모리 정리
+          reject(new Error('Base64 오디오 재생 실패'));
+        };
+        
+        // 오디오 재생 시작
+        audio.play();
+        
+      } catch (error) {
+        console.error('❌ TTS 호출 실패:', error);
+        setIsTTSPlaying(false);
+        setCurrentAudio(null);
+        reject(error);
+      }
+    });
+  };
+
+  const stopTTS = () => {
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      setCurrentAudio(null);
+    }
+    setIsTTSPlaying(false);
+  };
+
+  // 🆕 백엔드에서 받은 오디오들을 순차적으로 재생하는 함수
+  const playSequentialAudio = async (response: any) => {
+    try {
+      console.log('🎵 순차 오디오 재생 시작');
+      
+      // 1. INTRO 오디오 재생
+      if (response.intro_audio) {
+        console.log('🎤 INTRO 오디오 재생');
+        await playBase64Audio(response.intro_audio);
+      }
+      
+      // 2. AI 질문 오디오 재생
+      if (response.ai_question_audio) {
+        console.log('🤖 AI 질문 오디오 재생');
+        await playBase64Audio(response.ai_question_audio);
+      }
+      
+      // 3. AI 답변 오디오 재생
+      if (response.ai_answer_audio) {
+        console.log('🤖 AI 답변 오디오 재생');
+        await playBase64Audio(response.ai_answer_audio);
+      }
+      
+      // 4. 사용자 질문 오디오 재생
+      if (response.question_audio) {
+        console.log('👤 사용자 질문 오디오 재생');
+        await playBase64Audio(response.question_audio);
+      }
+      
+      console.log('✅ 모든 오디오 재생 완료');
+      
+    } catch (error) {
+      console.error('❌ 순차 오디오 재생 실패:', error);
+      // TTS 실패해도 정상 진행
+    }
+  };
+
   // 🆕 타이머 포맷 함수
   const formatTime = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
@@ -163,9 +276,54 @@ const InterviewGO: React.FC = () => {
     return 'text-red-600';
   };
 
+  // AI 응답에서 resume_id 추출 및 Context 업데이트 함수
+  const extractAndSaveAIResumeId = (response: any) => {
+    try {
+      console.log('🔍 AI resume_id 추출 시도 시작...');
+      
+      // 다양한 경로에서 AI 메타데이터 찾기
+      const sources = [
+        { name: 'ai_answer.metadata', data: response?.ai_answer?.metadata },
+        { name: 'metadata', data: response?.metadata },
+        { name: 'content.metadata', data: response?.content?.metadata },
+        { name: 'turn_info.ai_metadata', data: response?.turn_info?.ai_metadata },
+        { name: 'ai_response.metadata', data: response?.ai_response?.metadata },
+        { name: 'content.ai_answer.metadata', data: response?.content?.ai_answer?.metadata }
+      ];
+
+      console.log('🔍 검색할 메타데이터 경로들:');
+      sources.forEach((source, index) => {
+        console.log(`  ${index + 1}. ${source.name}:`, source.data);
+      });
+
+      for (const source of sources) {
+        if (source.data?.resume_id && typeof source.data.resume_id === 'number') {
+          console.log(`✅ AI resume_id 추출 성공 (${source.name}):`, source.data.resume_id);
+          dispatch({ type: 'SET_EXTRACTED_AI_RESUME_ID', payload: source.data.resume_id });
+          return; // 첫 번째로 찾은 유효한 ID 사용
+        }
+      }
+
+      console.log('⚠️ AI resume_id를 찾을 수 없습니다.');
+    } catch (error) {
+      console.warn('❌ AI resume_id 추출 중 오류:', error);
+    }
+  };
+
   // 🆕 백엔드 응답에 따른 currentPhase 업데이트 함수
   const updatePhaseFromResponse = (response: any) => {
-    console.log('🔄 currentPhase 업데이트 (단순화된 로직):', response);
+    console.log('🔄 === 전체 응답 구조 분석 START ===');
+    console.log('📋 응답 객체 전체:', JSON.stringify(response, null, 2));
+    console.log('🔍 메타데이터 분석:');
+    console.log('  - response.metadata:', response?.metadata);
+    console.log('  - response.ai_answer:', response?.ai_answer);
+    console.log('  - response.ai_answer?.metadata:', response?.ai_answer?.metadata);
+    console.log('  - response.content:', response?.content);
+    console.log('  - response.turn_info:', response?.turn_info);
+    console.log('🔄 === 전체 응답 구조 분석 END ===');
+    
+    // AI 응답에서 resume_id 추출 및 Context 업데이트
+    extractAndSaveAIResumeId(response);
     
     const nextAgent = response?.metadata?.next_agent;
     const task = response?.metadata?.task;
@@ -174,7 +332,7 @@ const InterviewGO: React.FC = () => {
 
     console.log('🔍 Phase 판단:', { nextAgent, task, status, turnInfo });
 
-    if (task === 'end_interview') {
+    if (task === 'end_interview' || status === 'completed') {
         setCurrentPhase('interview_completed');
         setCurrentTurn('waiting');
         setIsTimerActive(false);
@@ -210,17 +368,37 @@ const InterviewGO: React.FC = () => {
         setCanRecord(true);  // 🎤 녹음 활성화
     }
 
-    // 현재 질문 업데이트 (content.content 사용)
+    // AI 질문, 답변 및 사용자 질문 TTS 처리
+    const aiQuestion = response?.ai_question?.content;
+    const aiAnswer = response?.ai_answer?.content || response?.ai_response?.content;
     const question = response?.content?.content;
+    
     if (question) {
         setCurrentQuestion(question);
         console.log('📝 질문 업데이트:', question);
-        
-        // 🆕 질문이 업데이트되면 TTS 자동 재생
-        if (question && question.trim()) {
-            playQuestionTTS(question);
-        }
     }
+    
+    // AI 질문 상태 업데이트
+    if (aiQuestion && aiQuestion.trim()) {
+        setCurrentAIQuestion(aiQuestion);
+        console.log('🤖 AI 질문 상태 업데이트:', aiQuestion);
+    }
+    
+    // AI 답변 상태 업데이트
+    if (aiAnswer && aiAnswer.trim()) {
+        setCurrentAIAnswer(aiAnswer);
+        console.log('🤖 AI 답변 상태 업데이트:', aiAnswer);
+    }
+
+    // 🆕 백엔드에서 생성된 오디오들을 순차 재생
+    console.log('🔍 백엔드 오디오 데이터 분석:');
+    console.log('  - INTRO 오디오 존재:', !!response.intro_audio);
+    console.log('  - AI 질문 오디오 존재:', !!response.ai_question_audio);
+    console.log('  - AI 답변 오디오 존재:', !!response.ai_answer_audio);
+    console.log('  - 사용자 질문 오디오 존재:', !!response.question_audio);
+    
+    // 백엔드에서 생성된 모든 오디오를 순차적으로 재생
+    playSequentialAudio(response);
     
     // 🎤 녹음 권한 및 상태 업데이트
     updateVoicePermissions();
@@ -276,6 +454,18 @@ const InterviewGO: React.FC = () => {
     }
   };
 
+  // 🆕 사용자 턴 상태 설정 헬퍼 함수
+  const setUserTurnState = (question: string, source: string) => {
+    console.log(`✅ 사용자 턴 설정 (${source}):`, question);
+    setCurrentPhase('user_turn');
+    setCurrentTurn('user');
+    setIsTimerActive(true);
+    setTimeLeft(120);
+    setCanSubmit(true);
+    setCanRecord(true);
+    setCurrentQuestion(question);
+  };
+
   // 🆕 초기 턴 상태 설정 (세션 로드 완료 후)
   useEffect(() => {
     if (!isRestoring && state.sessionId) {
@@ -290,40 +480,153 @@ const InterviewGO: React.FC = () => {
             const parsedState = JSON.parse(savedState);
             console.log('📦 localStorage에서 면접 상태 확인:', parsedState);
             
-            // 면접 시작 응답에서 턴 정보 확인
+            // 🆕 API 호출이 필요한 경우 (환경 체크에서 온 경우)
+            if (parsedState.needsApiCall && !parsedState.apiCallCompleted) {
+              console.log('🚀 환경 체크에서 온 새로운 면접 - 첫 질문 로딩 시작');
+              setCurrentQuestion("첫 번째 질문을 준비하고 있습니다...");
+              setCurrentPhase('waiting');
+              setCurrentTurn('waiting');
+              setIsLoading(true);
+              
+              try {
+                let response: any;
+                const finalSettings = parsedState.settings;
+                
+                if (finalSettings.mode === 'ai_competition') {
+                  console.log('🤖 AI 경쟁 모드 - API 호출 시작');
+                  response = await interviewApi.startAICompetition(finalSettings);
+                } else {
+                  console.log('👤 일반 모드 - API 호출 시작');
+                  response = await interviewApi.startInterview(finalSettings);
+                }
+                
+                console.log('✅ 첫 질문 로딩 완료:', response);
+                
+                // 🔧 백엔드에서 받은 실제 세션 ID로 업데이트
+                if (response.session_id) {
+                  console.log('🔄 세션 ID 업데이트:', parsedState.sessionId, '->', response.session_id);
+                  
+                  // Context 업데이트
+                  dispatch({ type: 'SET_SESSION_ID', payload: response.session_id });
+                  
+                  // localStorage도 즉시 업데이트 (나중에 다시 업데이트하지만 일관성을 위해)
+                  parsedState.sessionId = response.session_id;
+                }
+                
+                // 질문 처리 함수 (response를 파라미터로 받음)
+                const processQuestion = (apiResponse: any) => {
+                  const responseContent = apiResponse?.content;
+                  const contentText = responseContent?.content;
+                  const contentType = responseContent?.type;
+                  
+                  if (apiResponse && contentText) {
+                    try {
+                      console.log('📝 컨텐츠 추출 성공:', contentText, '타입:', contentType);
+                      
+                      // 일반 질문 처리 (HR, TECH, COLLABORATION 등)
+                      const questionData = {
+                        id: `q_${Date.now()}`,
+                        question: contentText,
+                        category: contentType || 'HR',
+                        time_limit: 120,
+                        keywords: []
+                      };
+                        
+                      dispatch({ 
+                        type: 'ADD_QUESTION', 
+                        payload: questionData
+                      });
+                      
+                      setCurrentQuestion(questionData.question);
+                      console.log('✅ 질문 설정 완료:', questionData.question);
+                      
+                      // 면접 시작
+                      setUserTurnState(questionData.question, "API 로딩");
+                      
+                      return questionData; // questionData 반환
+                      
+                    } catch (error) {
+                      console.error('❌ 컨텐츠 처리 실패:', error);
+                      setCurrentQuestion("컨텐츠를 처리하는 중 오류가 발생했습니다.");
+                    }
+                  } else {
+                    console.warn('⚠️ API 응답에 컨텐츠가 없습니다:', apiResponse);
+                    setCurrentQuestion("컨텐츠를 받지 못했습니다. 새로고침해주세요.");
+                  }
+                  return null;
+                };
+
+                // 🆕 질문 데이터 먼저 처리 (INTRO 여부와 관계없이)
+                console.log('📝 질문 데이터 처리 시작');
+                const questionData = processQuestion(response);
+                
+                // 🆕 INTRO 메시지 처리 (텍스트 표시용)
+                const introMessageFromResponse = (response as any)?.intro_message;
+                if (introMessageFromResponse) {
+                  console.log('📢 응답에서 INTRO 메시지 감지:', introMessageFromResponse);
+                  setIntroMessage(introMessageFromResponse);
+                  setHasIntroMessage(true);
+                  setShowIntroMessage(true);
+                  
+                  // INTRO 표시 후 잠시 후 숨기기 (TTS는 백엔드에서 자동 처리됨)
+                  setTimeout(() => {
+                    setShowIntroMessage(false);
+                    setHasIntroMessage(false);
+                  }, 3000); // 3초 후 숨김
+                  
+                  console.log('📢 INTRO 메시지 표시 - TTS는 백엔드에서 자동 처리');
+                } else {
+                  console.log('📝 INTRO 메시지 없음 - 바로 질문 진행');
+                }
+                
+                // 🆕 첫 번째 응답에서도 TTS 재생 처리
+                console.log('🎵 첫 번째 응답 TTS 재생 처리 시작');
+                updatePhaseFromResponse(response);
+                
+                setIsLoading(false);
+                
+                // 🆕 즉시 localStorage 업데이트 (재호출 방지)
+                const updatedState = {
+                  ...parsedState,
+                  sessionId: response.session_id || parsedState.sessionId, // 실제 세션 ID 우선 사용
+                  apiCallCompleted: true, // 🆕 즉시 완료 표시로 재호출 방지
+                  interviewStartResponse: response,
+                  questions: questionData ? [questionData] : []
+                };
+                localStorage.setItem('interview_state', JSON.stringify(updatedState));
+                console.log('💾 localStorage 즉시 업데이트 완료 - 재호출 방지');
+                
+                console.log('✅ 첫 질문 로딩 및 면접 시작 완료');
+                return;
+                
+              } catch (error) {
+                console.error('❌ 첫 질문 로딩 실패:', error);
+                setCurrentQuestion("질문 로딩에 실패했습니다. 새로고침해주세요.");
+                setIsLoading(false);
+                setCurrentPhase('unknown');
+                setCurrentTurn('waiting');
+                
+                const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
+                alert(`면접 시작에 실패했습니다: ${errorMessage}\n\n다시 시도해주세요.`);
+                return;
+              }
+            }
+            
+            // 면접 시작 응답에서 턴 정보 확인 (기존 로직)
             if (parsedState.interviewStartResponse && parsedState.interviewStartResponse.status === 'waiting_for_user') {
-              console.log('✅ localStorage에서 사용자 턴 정보 발견');
-              setCurrentPhase('user_turn');
-              setCurrentTurn('user');
-              setIsTimerActive(true);
-              setTimeLeft(120);
-              setCanSubmit(true);
-              setCanRecord(true);  // 🎤 녹음 활성화
-              setCurrentQuestion(parsedState.interviewStartResponse.content?.content || "질문을 불러오는 중...");
-              console.log('✅ 초기 사용자 턴 설정 완료 (localStorage)');
+              const question = parsedState.interviewStartResponse.content?.content || "질문을 불러오는 중...";
+              setUserTurnState(question, "localStorage");
               return;
             }
           }
           
           // 2. localStorage에 없으면 현재 면접 상태만 확인 (API 재호출 없이)
           console.log('🔄 현재 면접 상태 확인');
-          if (state.settings) {
-            try {
-              // 면접 시작 API를 재호출하지 않고, 현재 상태만 확인
-              // AI 경쟁 면접은 보통 사용자 턴으로 시작하므로 기본값 설정
-              console.log('✅ AI 경쟁 면접 기본값으로 사용자 턴 설정');
-              setCurrentPhase('user_turn');
-              setCurrentTurn('user');
-              setIsTimerActive(true);
-              setTimeLeft(120);
-              setCanSubmit(true);
-              setCanRecord(true);  // 🎤 녹음 활성화
-              setCurrentQuestion("면접을 시작합니다. 첫 번째 질문을 기다려주세요.");
-              console.log('✅ 초기 사용자 턴 설정 완료 (기본값)');
-              return;
-            } catch (apiError) {
-              console.log('⚠️ 기본값 설정 실패, 세션 상태로 fallback:', apiError);
-            }
+          const currentSettings = state.settings;
+          if (currentSettings) {
+            console.log('✅ AI 경쟁 면접 기본값으로 사용자 턴 설정');
+            setUserTurnState("면접을 시작합니다. 첫 번째 질문을 기다려주세요.", "기본값");
+            return;
           }
           
           // 3. 세션 상태 확인 (fallback)
@@ -336,14 +639,8 @@ const InterviewGO: React.FC = () => {
             console.log('🔍 초기 세션에서 턴 상태 발견:', status);
             
             if (status === 'waiting_for_user') {
-              setCurrentPhase('user_turn');
-              setCurrentTurn('user');
-              setIsTimerActive(true);
-              setTimeLeft(120);
-              setCanSubmit(true);
-              setCanRecord(true);  // 🎤 녹음 활성화
-              setCurrentQuestion(sessionState.state?.current_question || "질문을 불러오는 중...");
-              console.log('✅ 초기 사용자 턴 설정 완료 (세션 상태)');
+              const question = sessionState.state?.current_question || "질문을 불러오는 중...";
+              setUserTurnState(question, "세션 상태");
               return;
             }
           }
@@ -367,7 +664,7 @@ const InterviewGO: React.FC = () => {
       
       checkInitialTurnStatus();
     }
-  }, [isRestoring, state.sessionId, state.settings]);
+  }, [isRestoring, state.sessionId, dispatch]);
 
   // 🆕 주기적 턴 상태 확인 제거 - 턴 정보는 답변 제출 후 응답에서만 받아옴
 
@@ -601,57 +898,244 @@ const InterviewGO: React.FC = () => {
     }
   };
 
-  // 🔊 TTS 기능 (질문 읽어주기)
-  const playQuestionTTS = async (text: string, voiceId: string = 'default') => {
-    if (!text.trim() || isTTSPlaying) return;
+
+
+  // 🆕 필요한 데이터 추출 함수들
+  const getCurrentUserId = (): number => {
+    // 실제 로그인된 사용자 ID 가져오기
+    const user = tokenManager.getUser();
+    if (user && user.user_id) {
+      return user.user_id;
+    }
     
-    try {
-      setIsTTSPlaying(true);
-      console.log('🔊 TTS 재생 시작:', text.substring(0, 50));
+    // 로그인되지 않은 경우 에러 로그
+    console.error('❌ 로그인된 사용자를 찾을 수 없습니다.');
+    throw new Error('로그인된 사용자 정보가 없습니다.');
+  };
+
+  const getUserResumeId = (): number | null => {
+    console.log('🔍 getUserResumeId 호출 시작...');
+    
+    // 1순위: Context에 저장된 이력서 데이터에서 추출
+    if (state.resume?.id) {
+      const resumeId = parseInt(state.resume.id);
+      console.log('📋 Context에서 찾은 resume ID:', state.resume.id, '-> 파싱 결과:', resumeId);
       
-      const response = await fetch('http://localhost:8000/interview/tts', {
+      if (!isNaN(resumeId)) {
+        // 추가 검증: 로그인된 사용자와 이력서 사용자 정보 매칭 확인
+        const currentUser = tokenManager.getUser();
+        console.log('🔍 이메일 매칭 확인:', {
+          resumeEmail: state.resume.email,
+          currentUserEmail: currentUser?.email,
+          isMatch: state.resume.email === currentUser?.email
+        });
+        
+        if (currentUser && state.resume.email === currentUser.email) {
+          console.log('✅ Context에서 유효한 user_resume_id 반환:', resumeId);
+          return resumeId;
+        } else {
+          console.warn('⚠️ 이력서 소유자와 로그인 사용자가 다릅니다.');
+        }
+      } else {
+        console.warn('⚠️ resume.id 파싱 실패:', state.resume.id);
+      }
+    } else {
+      console.warn('⚠️ Context에 resume 데이터가 없습니다.');
+    }
+    
+    // 2순위: 로그인된 사용자 정보로 추정
+    const currentUser = tokenManager.getUser();
+    if (currentUser?.user_id) {
+      console.log('🔍 로그인된 사용자 정보로 user_resume 추정 시도:', currentUser.user_id);
+      // TODO: API 호출로 user_id에 해당하는 user_resume_id 조회
+      // 지금은 Context 데이터가 없으면 null 반환
+    }
+    
+    console.log('❌ user_resume_id를 찾을 수 없어 null 반환');
+    return null;
+  };
+
+  const getAIResumeId = (): number | null => {
+    // 1순위: AI 응답에서 추출된 resume_id 사용 (가장 정확함)
+    if (state.textCompetitionData?.extracted_ai_resume_id) {
+      console.log('✅ 추출된 AI resume_id 사용:', state.textCompetitionData.extracted_ai_resume_id);
+      return state.textCompetitionData.extracted_ai_resume_id;
+    }
+    
+    // 2순위: 기존 aiPersona에서 resume_id 찾기
+    if (state.textCompetitionData?.aiPersona?.resume_id) {
+      console.log('⚠️ aiPersona에서 resume_id 사용:', state.textCompetitionData.aiPersona.resume_id);
+      return state.textCompetitionData.aiPersona.resume_id;
+    }
+    
+    // 3순위: settings에서 ai_resume_id가 있다면 사용 (create_persona_for_interview에서 전달될 수 있음)
+    if (state.settings && 'ai_resume_id' in state.settings) {
+      const aiResumeId = (state.settings as any).ai_resume_id;
+      if (aiResumeId && aiResumeId !== 0) {
+        console.log('⚠️ settings에서 resume_id 사용:', aiResumeId);
+        return aiResumeId;
+      }
+    }
+    
+    // DB 제약조건 위반 방지를 위해 null 반환 (ai_resume_id=0은 존재하지 않음)
+    console.log('❌ AI resume_id를 찾을 수 없어 null 반환');
+    return null;
+  };
+
+  const getPostingId = (): number | null => {
+    // TODO: 채용공고 ID를 가져오는 로직 구현 필요
+    return state.settings?.posting_id || null;
+  };
+
+  const getCompanyId = (): number | null => {
+    // 1순위: jobPosting에서 company_id 추출 (create_persona_for_interview에서 사용하는 방식)
+    if (state.jobPosting?.company_id) {
+      return state.jobPosting.company_id;
+    }
+    
+    // 2순위: settings에서 posting_id를 통해 company_id 추출하려면 추가 API 호출이 필요
+    // 현재는 posting_id만 있으므로 null 반환
+    return null;
+  };
+
+  const getPositionId = (): number | null => {
+    // 1순위: jobPosting에서 position_id 추출 (create_persona_for_interview에서 사용하는 방식)
+    if (state.jobPosting?.position_id) {
+      return state.jobPosting.position_id;
+    }
+    
+    // 2순위: settings에서 posting_id를 통해 position_id 추출하려면 추가 API 호출이 필요
+    // 현재는 posting_id만 있으므로 null 반환
+    return null;
+  };
+
+  // 🆕 피드백 처리 함수들
+  const triggerBackgroundFeedback = async (qaHistory: any[]) => {
+    try {
+      console.log('🔄 백그라운드 피드백 처리 시작...');
+      
+      // qa_history를 사용자와 AI로 분리
+      const userQAHistory = qaHistory.filter(qa => qa.answerer === "user");
+      const aiQAHistory = qaHistory.filter(qa => qa.answerer === "ai");
+      
+      console.log(`📊 분리된 QA - 사용자: ${userQAHistory.length}개, AI: ${aiQAHistory.length}개`);
+      
+      // 현재 Context 상태 전체 로깅
+      console.log('🔍 === Context 상태 분석 START ===');
+      console.log('state.resume:', state.resume);
+      console.log('state.textCompetitionData:', state.textCompetitionData);
+      console.log('state.settings:', state.settings);
+      console.log('state.jobPosting:', state.jobPosting);
+      const currentUser = tokenManager.getUser();
+      console.log('currentUser:', currentUser);
+      console.log('🔍 === Context 상태 분석 END ===');
+      
+      // 필수 데이터 검증
+      let userId: number;
+      try {
+        userId = getCurrentUserId();
+        console.log(`✅ 사용자 ID 확인: ${userId}`);
+      } catch (error) {
+        console.error('❌ 사용자 ID를 가져올 수 없습니다:', error);
+        throw new Error('로그인이 필요합니다.');
+      }
+      
+      const userResumeId = getUserResumeId();
+      const aiResumeId = getAIResumeId();
+      const postingId = getPostingId();
+      const companyId = getCompanyId();
+      const positionId = getPositionId();
+      
+      console.log('📋 데이터 검증 결과:', {
+        userId,
+        userResumeId,
+        aiResumeId,
+        postingId,
+        companyId,
+        positionId
+      });
+      
+      // 2개의 평가 요청 생성
+      const evaluationRequests = [
+        // 사용자 평가 요청
+        {
+          user_id: userId,
+          user_resume_id: userResumeId,
+          ai_resume_id: null,
+          posting_id: postingId,
+          company_id: companyId,
+          position_id: positionId,
+          qa_pairs: userQAHistory.map(qa => ({
+            question: qa.question,
+            answer: qa.answer,
+            duration: qa.duration || 120,
+            question_level: qa.question_level || 1
+          }))
+        },
+        // AI 지원자 평가 요청
+        {
+          user_id: userId,
+          user_resume_id: null,
+          ai_resume_id: aiResumeId,
+          posting_id: postingId,
+          company_id: companyId,
+          position_id: positionId,
+          qa_pairs: aiQAHistory.map(qa => ({
+            question: qa.question,
+            answer: qa.answer,
+            duration: qa.duration || 120,
+            question_level: qa.question_level || 1
+          }))
+        }
+      ];
+
+      console.log('📤 피드백 평가 API 호출 중...');
+      
+      // 피드백 평가 API 호출
+      const response = await fetch('http://localhost:8000/interview/feedback/evaluate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          text: text,
-          voice_id: voiceId
-        })
+        body: JSON.stringify(evaluationRequests)
       });
-      
-      if (!response.ok) {
-        throw new Error(`TTS API 오류: ${response.status}`);
-      }
-      
-      const audioBlob = await response.blob();
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
-      
-      audio.onended = () => {
-        setIsTTSPlaying(false);
-        URL.revokeObjectURL(audioUrl);
-        console.log('✅ TTS 재생 완료');
-      };
-      
-      audio.onerror = () => {
-        setIsTTSPlaying(false);
-        URL.revokeObjectURL(audioUrl);
-        console.error('❌ TTS 재생 오류');
-      };
-      
-      await audio.play();
-      
-    } catch (error) {
-      console.error('❌ TTS 실패:', error);
-      setIsTTSPlaying(false);
-    }
-  };
 
-  // 🔇 TTS 중지
-  const stopTTS = () => {
-    setIsTTSPlaying(false);
-    // 현재 재생 중인 TTS를 중지하는 로직은 여기에 추가 가능
+      if (!response.ok) {
+        throw new Error(`피드백 API 오류: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ 피드백 평가 완료:', result);
+
+      // 계획 생성 API 호출 (옵션)
+      if (result.success && result.results) {
+        for (const evalResult of result.results) {
+          if (evalResult.interview_id) {
+            try {
+              const planResponse = await fetch('http://localhost:8000/interview/feedback/plans', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ interview_id: evalResult.interview_id })
+              });
+              
+              if (planResponse.ok) {
+                const planResult = await planResponse.json();
+                console.log(`✅ 면접 계획 생성 완료 (ID: ${evalResult.interview_id}):`, planResult);
+              }
+            } catch (planError) {
+              console.error(`❌ 면접 계획 생성 실패 (ID: ${evalResult.interview_id}):`, planError);
+            }
+          }
+        }
+      }
+
+      console.log('🎉 모든 백그라운드 피드백 처리 완료');
+
+    } catch (error) {
+      console.error('❌ 백그라운드 피드백 처리 실패:', error);
+    }
   };
 
   // 🎤 음성 답변 제출 (녹음 후 자동 제출)
@@ -830,24 +1314,18 @@ const InterviewGO: React.FC = () => {
                   </span>
                 </button>
                 
-                {/* TTS 버튼 */}
-                <button
-                  onClick={() => currentQuestion ? playQuestionTTS(currentQuestion) : null}
-                  disabled={!currentQuestion || isTTSPlaying}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium transition-all ${
-                    !currentQuestion ? 'bg-gray-600 text-gray-400 cursor-not-allowed' :
-                    isTTSPlaying ? 'bg-orange-500 text-white animate-pulse' :
-                    'bg-green-500 text-white hover:bg-green-600'
-                  }`}
-                  title="질문 다시 듣기"
-                >
+                {/* TTS 상태 표시 */}
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium ${
+                  isTTSPlaying ? 'bg-green-500 text-white animate-pulse' :
+                  'bg-green-600 text-white'
+                }`}>
                   <span className="text-lg">
-                    {isTTSPlaying ? '🔇' : '🔊'}
+                    {isTTSPlaying ? '🔊' : '🎵'}
                   </span>
                   <span className="text-xs">
-                    {isTTSPlaying ? '재생중' : '다시듣기'}
+                    {isTTSPlaying ? '음성 재생 중...' : '자동 음성 재생'}
                   </span>
-                </button>
+                </div>
               </div>
               
               <div className="flex items-center justify-between mt-2">
@@ -867,12 +1345,14 @@ const InterviewGO: React.FC = () => {
             {/* 🆕 현재 턴 상태 표시 */}
             <div className="text-center mb-4">
               <div className={`text-sm font-bold mb-2 ${
+                isTTSPlaying ? 'text-purple-400' :
                 currentPhase === 'user_turn' ? 'text-yellow-400' : 
                 currentPhase === 'ai_processing' ? 'text-green-400' : 
                 currentPhase === 'interview_completed' ? 'text-blue-400' :
                 'text-gray-400'
               }`}>
-                {currentPhase === 'user_turn' ? '🎯 사용자 답변 차례' :
+                {isTTSPlaying ? '🔊 음성 재생 중...' :
+                 currentPhase === 'user_turn' ? '🎯 사용자 답변 차례' :
                  currentPhase === 'ai_processing' ? '🤖 AI 답변 중' :
                  currentPhase === 'interview_completed' ? '✅ 면접 완료' :
                  '⏳ 대기 중'}
@@ -902,109 +1382,109 @@ const InterviewGO: React.FC = () => {
               )}
             </div>
 
-            {/* 현재 질문 표시 */}
+            {/* INTRO 메시지 및 현재 질문 표시 */}
             <div className="text-center mb-6">
-              <div className="text-gray-400 text-sm mb-2">현재 질문</div>
-              <div className="text-white text-base leading-relaxed line-clamp-2 mb-3">
-                {currentQuestion || "질문을 불러오는 중..."}
-              </div>
+              {showIntroMessage && hasIntroMessage ? (
+                // INTRO 메시지 표시
+                <div className="intro-message">
+                  <div className="text-blue-400 text-sm mb-2">🎤 면접관 인사</div>
+                  <div className="text-white text-base leading-relaxed whitespace-pre-line mb-3 bg-blue-900/20 rounded-lg p-4 border border-blue-500/30">
+                    {introMessage}
+                  </div>
+                  <div className="text-gray-400 text-xs">잠시 후 면접이 시작됩니다...</div>
+                </div>
+              ) : (
+                // 일반 질문 표시
+                <div>
+                  <div className="text-gray-400 text-sm mb-2">현재 질문</div>
+                  <div className="text-white text-base leading-relaxed line-clamp-2 mb-3">
+                    {isLoading ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                        <span className="text-blue-400">첫 번째 질문을 준비하고 있습니다...</span>
+                      </div>
+                    ) : (
+                      currentQuestion || "질문을 불러오는 중..."
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
+
+            {/* AI 지원자 질문 표시 */}
+            {currentAIQuestion && (
+              <div className="text-center mb-6">
+                <div className="text-orange-400 text-sm mb-2">🎯 AI 지원자용 질문</div>
+                <div className="text-white text-base leading-relaxed whitespace-pre-line mb-3 bg-orange-900/20 rounded-lg p-4 border border-orange-500/30">
+                  {currentAIQuestion}
+                </div>
+                <div className="text-orange-300 text-xs">
+                  🔊 음성은 자동으로 재생됩니다
+                </div>
+              </div>
+            )}
+
+            {/* AI 지원자 답변 표시 */}
+            {currentAIAnswer && (
+              <div className="text-center mb-6">
+                <div className="text-purple-400 text-sm mb-2">🤖 AI 지원자 답변 (춘식이)</div>
+                <div className="text-white text-base leading-relaxed whitespace-pre-line mb-3 bg-purple-900/20 rounded-lg p-4 border border-purple-500/30">
+                  {currentAIAnswer}
+                </div>
+                <div className="text-purple-300 text-xs">
+                  🔊 음성은 자동으로 재생됩니다
+                </div>
+              </div>
+            )}
 
                          {/* 컨트롤 버튼 */}
              <div className="space-y-3">
-               {(() => {
-                 const hasAnswer = !!currentAnswer.trim();
-                 const hasSessionId = !!state.sessionId || !isRestoring;
-                 const isUserTurn = currentPhase === 'user_turn';
-                 const isButtonDisabled = !hasAnswer || isLoading || isRestoring || !isUserTurn || !canSubmit;
-                 
-                 return (
-                   <button 
-                     className={`w-full py-3 text-white rounded-lg font-semibold transition-colors ${
-                       isButtonDisabled 
-                         ? 'bg-gray-600 cursor-not-allowed' 
-                         : 'bg-green-600 hover:bg-green-500'
-                     }`}
-                     onClick={submitAnswer}
-                     disabled={isButtonDisabled}
-                   >
-                     {isLoading 
-                       ? '제출 중...' 
-                       : isRestoring
-                       ? '세션 로드 중...'
-                       : !hasSessionId 
-                       ? '세션 없음' 
-                       : !isUserTurn
-                       ? '대기 중...'
-                       : !canSubmit
-                       ? '준비 중...'
-                       : !hasAnswer
-                       ? '답변을 입력해주세요'
-                       : '🚀 답변 제출'
-                     }
-                   </button>
-                 );
-               })()}
+               {currentPhase === 'interview_completed' ? (
+                 // 면접 완료 시 나가기 버튼만 표시
+                 <button 
+                   onClick={() => navigate('/mypage')}
+                   className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold transition-colors"
+                 >
+                   🏠 면접 나가기
+                 </button>
+               ) : (
+                 // 면접 진행 중일 때 답변 제출 버튼 표시
+                 (() => {
+                   const hasAnswer = !!currentAnswer.trim();
+                   const hasSessionId = !!state.sessionId || !isRestoring;
+                   const isUserTurn = currentPhase === 'user_turn';
+                   const isButtonDisabled = !hasAnswer || isLoading || isRestoring || !isUserTurn || !canSubmit;
+                   
+                   return (
+                     <button 
+                       className={`w-full py-3 text-white rounded-lg font-semibold transition-colors ${
+                         isButtonDisabled 
+                           ? 'bg-gray-600 cursor-not-allowed' 
+                           : 'bg-green-600 hover:bg-green-500'
+                       }`}
+                       onClick={submitAnswer}
+                       disabled={isButtonDisabled}
+                     >
+                       {isLoading 
+                         ? '제출 중...' 
+                         : isRestoring
+                         ? '세션 로드 중...'
+                         : !hasSessionId 
+                         ? '세션 없음' 
+                         : !isUserTurn
+                         ? '대기 중...'
+                         : !canSubmit
+                         ? '준비 중...'
+                         : !hasAnswer
+                         ? '답변을 입력해주세요'
+                         : '🚀 답변 제출'
+                       }
+                     </button>
+                   );
+                 })()
+               )}
              </div>
 
-            {/* 🆕 진행 상황 표시 */}
-            <div className="mt-4 text-center">
-              <div className="text-white text-sm mb-2">
-                상태: {currentPhase === 'user_turn' ? '사용자 턴' : 
-                       currentPhase === 'ai_processing' ? 'AI 처리 중' : 
-                       currentPhase === 'interview_completed' ? '면접 완료' : 
-                       '대기'}
-              </div>
-              
-              {/* 🆕 디버깅 정보 */}
-              <div className="text-gray-400 text-xs space-y-1">
-                <div>세션: {state.sessionId ? '✅' : '❌'}</div>
-                <div>복원: {isRestoring ? '🔄' : '✅'}</div>
-                <div>타이머: {isTimerActive ? '⏰' : '⏸️'}</div>
-                <div>제출: {canSubmit ? '✅' : '❌'}</div>
-              </div>
-              
-              {/* 🆕 테스트 버튼들 */}
-              <div className="mt-2 space-y-1">
-                <button
-                  onClick={() => {
-                    setCurrentPhase('user_turn');
-                    setCurrentTurn('user');
-                    setIsTimerActive(true);
-                    setTimeLeft(120);
-                    setCanSubmit(true);
-                    console.log('🧪 수동으로 사용자 턴 설정');
-                  }}
-                  className="w-full py-1 px-2 bg-yellow-600 hover:bg-yellow-500 text-white text-xs rounded"
-                >
-                  🧪 사용자 턴 테스트
-                </button>
-                <button
-                  onClick={() => {
-                    setCurrentPhase('ai_processing');
-                    setCurrentTurn('ai');
-                    setIsTimerActive(false);
-                    setCanSubmit(false);
-                    console.log('🧪 수동으로 AI 턴 설정');
-                  }}
-                  className="w-full py-1 px-2 bg-green-600 hover:bg-green-500 text-white text-xs rounded"
-                >
-                  🧪 AI 턴 테스트
-                </button>
-                <button
-                  onClick={() => {
-                    setCurrentPhase('interview_completed');
-                    setCurrentTurn('waiting');
-                    setIsTimerActive(false);
-                    setCanSubmit(false);
-                    console.log('🧪 수동으로 면접 완료 설정');
-                  }}
-                  className="w-full py-1 px-2 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded"
-                >
-                  🧪 면접 완료 테스트
-                </button>
-              </div>
-            </div>
           </div>
 
           {/* AI 지원자 춘식이 */}
