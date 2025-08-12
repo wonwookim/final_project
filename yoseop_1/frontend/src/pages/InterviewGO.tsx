@@ -139,6 +139,24 @@ const InterviewGO: React.FC = () => {
     };
   }, [currentTurn, isTimerActive, timeLeft]);
 
+  // 🔊 currentQuestion 변경 시 자동 TTS 재생
+  useEffect(() => {
+    console.log('🔍 currentQuestion 변경 감지:', currentQuestion);
+    
+    if (currentQuestion && 
+        currentQuestion.trim() && 
+        currentQuestion !== "면접을 시작합니다. 첫 번째 질문을 기다려주세요.") {
+      console.log('🔊 자동 TTS 실행 조건 만족:', currentQuestion.substring(0, 50));
+      playQuestionTTS(currentQuestion);
+    } else {
+      console.log('🔇 TTS 실행 조건 불만족:', {
+        hasQuestion: !!currentQuestion,
+        isNotEmpty: !!currentQuestion?.trim(),
+        isNotDefaultMessage: currentQuestion !== "면접을 시작합니다. 첫 번째 질문을 기다려주세요."
+      });
+    }
+  }, [currentQuestion]);
+
   // 🆕 시간 만료 핸들러
   const handleTimeUp = () => {
     console.log('⏰ 시간 만료!');
@@ -665,7 +683,7 @@ const InterviewGO: React.FC = () => {
   };
 
   // 🔊 TTS 기능 (질문 읽어주기)
-  const playQuestionTTS = async (text: string, voiceId: string = 'default') => {
+  const playQuestionTTS = async (text: string, voiceId: string = '21m00Tcm4TlvDq8ikWAM') => {
     if (!text.trim() || isTTSPlaying) return;
     
     try {
