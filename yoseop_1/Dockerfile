@@ -11,8 +11,13 @@ COPY frontend/package*.json ./
 # Install dependencies
 RUN npm ci
 
-# Copy source code and build
+# Copy source code first
 COPY frontend/ ./
+
+# Copy .env file to the correct location (React project root)
+COPY .env ./
+
+# Build with environment variables (React reads .env from project root)
 RUN npm run build
 
 # Stage 2: Python backend with React static files

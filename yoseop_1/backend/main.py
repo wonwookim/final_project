@@ -70,12 +70,33 @@ async def health_check():
     """서버 상태 확인"""
     return {"status": "healthy", "timestamp": datetime.now()}
 
-@app.get("/app")
-async def serve_react_app():
-    """React 메인 앱 페이지"""
-    from fastapi.responses import FileResponse
-    static_dir = os.path.join(os.path.dirname(__file__), "static")
-    return FileResponse(os.path.join(static_dir, "index.html"))
+from fastapi.responses import FileResponse
+from fastapi import Request
+import mimetypes
+
+# SPA 라우팅 처리를 위한 catch-all 핸들러
+@app.middleware("http")
+async def spa_handler(request: Request, call_next):
+    response = await call_next(request)
+    
+    # API 경로와 정적 파일 경로 제외 목록
+    api_prefixes = [
+        '/docs', '/redoc', '/openapi.json',
+        '/health', '/static', '/js', '/css', '/img',
+        '/auth', '/user', '/resume', '/company', 
+        '/posting', '/position', '/interview'
+    ]
+    
+    # API 경로가 아니고, 404 에러인 경우 React 앱 반환
+    is_api_path = any(request.url.path.startswith(prefix) for prefix in api_prefixes)
+    
+    if not is_api_path and response.status_code == 404:
+        static_dir = os.path.join(os.path.dirname(__file__), "static")
+        index_path = os.path.join(static_dir, "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+    
+    return response
 
 # 정적 파일 서빙 설정 (React 앱)
 static_dir = os.path.join(os.path.dirname(__file__), "static")
