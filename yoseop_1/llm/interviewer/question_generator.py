@@ -154,6 +154,7 @@ class QuestionGenerator:
             'interviewer_type': 'INTRO'
         }
     
+    ################# 원우 작업 #################
     def generate_question_by_role(self, interviewer_role: str, company_id: str, 
                                  user_resume: Dict, user_answer: str = None, 
                                  chun_sik_answer: str = None, previous_qa_pairs: List[Dict] = None) -> Dict:
@@ -187,6 +188,7 @@ class QuestionGenerator:
             'is_individual_questions': True
         }
     
+    ################# 원우 작업 #################
     def generate_question_with_orchestrator_state(self, state: Dict[str, Any]) -> Dict:
         """
         Orchestrator의 state 딕셔너리를 받아서 질문을 생성하는 메서드
@@ -507,6 +509,7 @@ class QuestionGenerator:
             print(f"[ERROR] LLM 메인 질문 생성 실패: {e}")
             raise
     
+    ################# 원우 작업 #################
     def _generate_from_llm_for_ai_with_topic(self, user_resume: Dict, company_info: Dict, 
                                      interviewer_role: str, topic: str) -> Dict:
         """AI 지원자에게 적합한 LLM 기반 메인 질문 생성"""
@@ -570,6 +573,7 @@ AI 지원자 특성을 고려한 질문 생성 가이드라인:
             print(f"[ERROR] AI 중심 메인 질문 생성 실패: {e}")
             raise
 
+    ################# 원우 작업 #################
     def _generate_from_db_template_for_ai_with_topic(self, user_resume: Dict, company_info: Dict, 
                                             interviewer_role: str, topic: str) -> Dict:
         """AI 지원자에게 적합한 주제 특화 DB 템플릿 기반 질문 생성"""
@@ -601,6 +605,7 @@ AI 지원자 특성을 고려한 질문 생성 가이드라인:
             'question_source': 'db_template_for_ai'
         }
 
+    ################# 원우 작업 #################
     def _try_generate_main_question_for_user(self, user_resume: Dict, company_info: Dict, 
                                             interviewer_role: str, topic: str) -> Dict:
         """사용자에게 적합한 메인 질문 생성 시도 (DB/LLM 폴백 포함)"""
@@ -641,6 +646,7 @@ AI 지원자 특성을 고려한 질문 생성 가이드라인:
         return self._get_generic_question(interviewer_role, topic, 
                                         user_resume.get('name', '지원자') if user_resume else '지원자')
 
+    ################# 원우 작업 #################
     def _try_generate_main_question_for_ai(self, user_resume: Dict, company_info: Dict, 
                                           interviewer_role: str, topic: str) -> Dict:
         """AI 지원자에게 적합한 메인 질문 생성 시도 (DB/LLM 폴백 포함)"""
