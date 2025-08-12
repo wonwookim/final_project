@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import { interviewApi } from '../services/api';
 
 interface FeedbackData {
   question: string;
@@ -41,12 +42,18 @@ const InterviewResults: React.FC = () => {
   const navigate = useNavigate();
   const { sessionId } = useParams<{ sessionId: string }>();
   const location = useLocation();
+  
+  // 디버깅: URL 파라미터 확인
+  console.log('🔍 DEBUG - URL params:', useParams());
+  console.log('🔍 DEBUG - sessionId:', sessionId);
+  console.log('🔍 DEBUG - location pathname:', location.pathname);
   const [activeTab, setActiveTab] = useState<'user' | 'ai' | 'longterm'>('user');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [feedbackData, setFeedbackData] = useState<FeedbackData[]>([]);
   const [userSummary, setUserSummary] = useState<SummaryData | null>(null);
   const [aiSummary, setAiSummary] = useState<SummaryData | null>(null);
   const [longTermFeedback, setLongTermFeedback] = useState<LongTermFeedback | null>(null);
+  const [interviewData, setInterviewData] = useState<any>(null);
 
   // 가라 데이터
   const mockFeedbackData: FeedbackData[] = [
@@ -195,6 +202,122 @@ const InterviewResults: React.FC = () => {
       loadInterviewResults(sessionId);
     }
   }, [sessionId, loadInterviewResults, mockAiSummary, mockFeedbackData, mockLongTermFeedback, mockUserSummary]);
+
+  // 면접 데이터 로드
+  const loadInterviewData = useCallback(async () => {
+    if (!sessionId) {
+      console.error('Session ID가 없습니다');
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      console.log('면접 상세 데이터 로딩:', sessionId);
+      
+      // /interview/history/{interview_id} API 호출
+      const details = await interviewApi.getInterviewDetails(sessionId);
+      console.log('받은 면접 데이터:', details);
+      
+      setInterviewData(details);
+      
+      // DB 데이터를 UI 형식으로 변환 (question_index 별로 그룹핑)
+      const groupedData: { [key: number]: any } = {};
+      
+      details.forEach((item: any) => {
+        const questionIndex = item.question_index || item.sequence || 1;
+        
+        if (!groupedData[questionIndex]) {
+          groupedData[questionIndex] = {
+            question: item.question_content || '질문이 없습니다',
+            userAnswer: '',
+            aiAnswer: '',
+            userFeedback: '',
+            aiFeedback: '',
+            userScore: 0,
+            aiScore: 0,
+            userMemo: '',
+            aiMemo: ''
+          };
+        }
+        
+        if (item.who === 'user') {
+          groupedData[questionIndex].userAnswer = item.answer || '';
+          const userFeedbackData = JSON.parse(item.feedback || '{}');
+          groupedData[questionIndex].userFeedback = userFeedbackData.evaluation || '';
+          groupedData[questionIndex].userScore = userFeedbackData.final_score || 0;
+        } else if (item.who === 'ai_interviewer') {
+          groupedData[questionIndex].aiAnswer = item.answer || '';
+          const aiFeedbackData = JSON.parse(item.feedback || '{}');
+          groupedData[questionIndex].aiFeedback = aiFeedbackData.evaluation || '';
+          groupedData[questionIndex].aiScore = aiFeedbackData.final_score || 0;
+        }
+      });
+      
+      const processedData = Object.values(groupedData);
+      
+      setFeedbackData(processedData);
+      
+      // 사용자/AI 요약 데이터 생성
+      if (details.length > 0) {
+        const userItems = details.filter((item: any) => item.who === 'user');
+        const aiItems = details.filter((item: any) => item.who === 'ai_interviewer');
+        
+        if (userItems.length > 0) {
+          const avgScore = userItems.reduce((acc: number, item: any) => {
+            const feedback = JSON.parse(item.feedback || '{}');
+            return acc + (feedback.final_score || 0);
+          }, 0) / userItems.length;
+          
+          setUserSummary({
+            clarity: Math.round(avgScore * 0.9),
+            structure: Math.round(avgScore * 0.85),
+            confidence: Math.round(avgScore * 0.8),
+            overallScore: Math.round(avgScore),
+            strengths: ['구체적인 경험 언급', '논리적 구조', '성실한 답변'],
+            weaknesses: ['자신감 부족', '구체성 개선 필요', '시간 관리']
+          });
+        }
+        
+        if (aiItems.length > 0) {
+          const avgScore = aiItems.reduce((acc: number, item: any) => {
+            const feedback = JSON.parse(item.feedback || '{}');
+            return acc + (feedback.final_score || 0);
+          }, 0) / aiItems.length;
+          
+          setAiSummary({
+            clarity: Math.round(avgScore * 0.95),
+            structure: Math.round(avgScore * 0.9),
+            confidence: Math.round(avgScore * 0.92),
+            overallScore: Math.round(avgScore),
+            strengths: ['전문적 지식', '명확한 표현', '자신감 있는 태도'],
+            weaknesses: ['감정적 연결 부족', '형식적 답변', '개인적 특색 부족']
+          });
+        }
+      } else {
+        // 데이터가 없는 경우 빈 상태로 설정
+        console.log('면접 상세 데이터가 없습니다');
+        setFeedbackData([]);
+        setUserSummary(null);
+        setAiSummary(null);
+      }
+      
+    } catch (error) {
+      console.error('면접 데이터 로딩 실패:', error);
+      // 에러 시 목 데이터 사용
+      setFeedbackData(mockFeedbackData);
+      setUserSummary(mockUserSummary);
+      setAiSummary(mockAiSummary);
+      setLongTermFeedback(mockLongTermFeedback);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [sessionId]);
+
+  // 컴포넌트 마운트 시 데이터 로드
+  useEffect(() => {
+    loadInterviewData();
+  }, [loadInterviewData]);
 
   // location state에서 탭 설정 확인
   useEffect(() => {

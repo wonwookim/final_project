@@ -81,12 +81,12 @@ class InterviewResponse(BaseModel):
     """면접 응답 모델"""
     interview_id: int
     user_id: int
-    ai_resume_id: Optional[int] = None
-    user_resume_id: Optional[int] = None
+    ai_resume_id: Optional[int] = None  # ✅ AI 면접에서만 사용
+    user_resume_id: Optional[int] = None  # ✅ 사용자 면접에서만 사용
     posting_id: int
     company_id: int
     position_id: int
-    total_feedback: str
+    total_feedback: str  # ✅ 필수 필드로 복원
     date: datetime
     company: Optional[Dict[str, str]] = None  # 회사 정보
     position: Optional[Dict[str, str]] = None  # 직무 정보

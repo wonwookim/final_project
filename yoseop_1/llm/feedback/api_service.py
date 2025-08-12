@@ -107,7 +107,7 @@ class InterviewEvaluationService:
                 "question_index": question_index,
                 "question": qa_pair.question,
                 "answer": qa_pair.answer,
-                "ml_score": result.get("ml_score", 0.0),
+                "ml_score": result.get("ml_score"),  # None일 수 있음, 하지만 이후 검증에서 처리
                 "llm_evaluation": result.get("llm_evaluation", ""),
                 "intent": result.get("intent", ""),
                 "question_level": qa_pair.question_level if qa_pair.question_level else "unknown",
@@ -150,9 +150,9 @@ class InterviewEvaluationService:
                         "duration": question_result.get("duration")
                     }
                     
-                    # 개별 질문 피드백 구성
+                    # 개별 질문 피드백 구성 (여기서는 임시 저장용이므로 기본값 허용)
                     final_feedback = {
-                        "final_score": int(question_result.get("ml_score", 0) * 10) if question_result.get("ml_score") else 0,
+                        "final_score": 0,  # 임시값, 실제로는 final_eval에서 덮어씀
                         "evaluation": question_result.get("llm_evaluation", ""),
                         "improvement": "개별 개선사항"
                     }
@@ -171,6 +171,237 @@ class InterviewEvaluationService:
                     
         except Exception as e:
             print(f"ERROR: 개별 질문 저장 실패 ({who}): {str(e)}")
+
+    def evaluate_combined_interview(self, user_id: int, user_qas: list, ai_qas: list,
+                                  ai_resume_id=None, user_resume_id=None, posting_id=None, 
+                                  company_id=None, position_id=None, existing_interview_id=None):
+        """통합 면접 평가: 사용자와 AI 지원자 답변을 하나의 면접 레코드에 저장"""
+        try:
+            print(f"🔄 통합 면접 평가 시작: user_qas={len(user_qas)}개, ai_qas={len(ai_qas)}개")
+            
+            # 1. 면접 세션 생성 또는 기존 세션 사용
+            if existing_interview_id:
+                interview_id = existing_interview_id
+                print(f"기존 interview_id 재사용: {interview_id}")
+            else:
+                interview_id = self._create_interview_session(
+                    user_id=user_id, ai_resume_id=ai_resume_id, user_resume_id=user_resume_id,
+                    posting_id=posting_id, company_id=company_id, position_id=position_id
+                )
+            
+            if not interview_id:
+                return {"success": False, "message": "면접 세션 생성 실패", "interview_id": None}
+            
+            # 2. 컨텍스트 정보 수집
+            company_info = self.db_manager.get_company_info(company_id) if company_id else {}
+            position_info = self.db_manager.get_position_info(position_id) if position_id else {}
+            posting_info = self.db_manager.get_posting_info(posting_id) if posting_id else {}
+            user_resume_info = self.db_manager.get_user_resume_info(user_resume_id) if user_resume_id else {}
+            ai_resume_info = self.db_manager.get_ai_resume_info(ai_resume_id) if ai_resume_id else {}
+            
+            # 3. 사용자 답변 평가
+            user_results = []
+            for idx, qa in enumerate(user_qas):
+                result = self._evaluate_single_question(
+                    qa, company_info, idx+1, position_info, posting_info, user_resume_info, who='user'
+                )
+                user_results.append(result)
+            
+            # 4. AI 답변 평가  
+            ai_results = []
+            for idx, qa in enumerate(ai_qas):
+                result = self._evaluate_single_question(
+                    qa, company_info, idx+1, position_info, posting_info, ai_resume_info, who='ai_interviewer'
+                )
+                ai_results.append(result)
+            
+            # 5. 사용자 상세 평가 실행 (기존 상세 형식 유지)
+            user_detailed_eval = None
+            if user_results:
+                print("🔄 사용자 상세 평가 실행...")
+                user_detailed_eval = self.run_final_evaluation_from_memory(
+                    interview_id, user_results, company_info, position_info, posting_info, user_resume_info, 'user', save_to_db=False
+                )
+            
+            # 6. AI 지원자 상세 평가 실행 (기존 상세 형식 유지)
+            ai_detailed_eval = None  
+            if ai_results:
+                print("🔄 AI 지원자 상세 평가 실행...")
+                ai_detailed_eval = self.run_final_evaluation_from_memory(
+                    interview_id, ai_results, company_info, position_info, posting_info, ai_resume_info, 'ai_interviewer', save_to_db=False
+                )
+            
+            # 7. 통합 상세 피드백 구조 생성 (기존 형식 유지하면서 user/ai로 분리)
+            combined_feedback = {}
+            
+            if user_detailed_eval and user_detailed_eval.get('success'):
+                user_score = user_detailed_eval.get('overall_score')
+                if user_score is None:
+                    raise ValueError("사용자 평가에서 overall_score가 누락되었습니다.")
+                combined_feedback["user"] = {
+                    "overall_score": int(user_score),
+                    "overall_feedback": user_detailed_eval.get('overall_feedback'),
+                    "summary": user_detailed_eval.get('summary')
+                }
+            
+            if ai_detailed_eval and ai_detailed_eval.get('success'):
+                ai_score = ai_detailed_eval.get('overall_score')
+                if ai_score is None:
+                    raise ValueError("AI 지원자 평가에서 overall_score가 누락되었습니다.")
+                combined_feedback["ai_interviewer"] = {
+                    "overall_score": int(ai_score),
+                    "overall_feedback": ai_detailed_eval.get('overall_feedback'), 
+                    "summary": ai_detailed_eval.get('summary')
+                }
+            
+            # 8. 개별 질문들을 history_detail에 저장 (상세 평가 결과 포함)
+            if user_detailed_eval and user_detailed_eval.get('success'):
+                per_question_data = user_detailed_eval.get("per_question", [])
+                for i, question_eval in enumerate(per_question_data, 1):
+                    try:
+                        original_data = user_results[i-1]
+                        qa_data = {
+                            "question_index": i,
+                            "question_id": i,
+                            "question": question_eval.get("question", ""),
+                            "answer": question_eval.get("answer", ""),
+                            "intent": question_eval.get("intent", ""),
+                            "question_level": original_data.get("question_level", "unknown"),
+                            "who": "user",
+                            "sequence": i,
+                            "duration": original_data.get("duration")
+                        }
+                        question_score = question_eval.get("final_score")
+                        if question_score is None:
+                            raise ValueError(f"사용자 Q{i} 평가에서 final_score가 누락되었습니다.")
+                        final_feedback = {
+                            "final_score": int(question_score),
+                            "evaluation": question_eval.get("evaluation", ""),
+                            "improvement": question_eval.get("improvement", "")
+                        }
+                        self.db_manager.save_qa_detail(interview_id, qa_data, json.dumps(final_feedback, ensure_ascii=False))
+                        print(f"✅ 사용자 Q{i} 상세 평가 저장 완료")
+                    except Exception as e:
+                        print(f"WARNING: 사용자 Q{i} 저장 실패: {str(e)}")
+                        
+            if ai_detailed_eval and ai_detailed_eval.get('success'):
+                per_question_data = ai_detailed_eval.get("per_question", [])
+                for i, question_eval in enumerate(per_question_data, 1):
+                    try:
+                        original_data = ai_results[i-1]
+                        qa_data = {
+                            "question_index": i,
+                            "question_id": i,
+                            "question": question_eval.get("question", ""),
+                            "answer": question_eval.get("answer", ""),
+                            "intent": question_eval.get("intent", ""),
+                            "question_level": original_data.get("question_level", "unknown"),
+                            "who": "ai_interviewer",
+                            "sequence": i,
+                            "duration": original_data.get("duration")
+                        }
+                        question_score = question_eval.get("final_score")
+                        if question_score is None:
+                            raise ValueError(f"AI 지원자 Q{i} 평가에서 final_score가 누락되었습니다.")
+                        final_feedback = {
+                            "final_score": int(question_score),
+                            "evaluation": question_eval.get("evaluation", ""),
+                            "improvement": question_eval.get("improvement", "")
+                        }
+                        self.db_manager.save_qa_detail(interview_id, qa_data, json.dumps(final_feedback, ensure_ascii=False))
+                        print(f"✅ AI 지원자 Q{i} 상세 평가 저장 완료")
+                    except Exception as e:
+                        print(f"WARNING: AI 지원자 Q{i} 저장 실패: {str(e)}")
+            
+            # 9. 통합 피드백을 interview 테이블에 저장
+            if combined_feedback:
+                self.db_manager.update_interview_feedback(interview_id, json.dumps(combined_feedback, ensure_ascii=False))
+                print("✅ 통합 상세 피드백 저장 완료")
+            
+            # 10. 통합 개선 계획 생성 및 저장
+            combined_plans = {}
+            
+            # 사용자 계획 생성 (기존 방식 활용)
+            if user_detailed_eval and user_detailed_eval.get('success'):
+                try:
+                    # 임시로 사용자 피드백만으로 계획 생성
+                    user_feedback_only = {
+                        "overall_score": user_detailed_eval.get('overall_score'),
+                        "overall_feedback": user_detailed_eval.get('overall_feedback'),
+                        "summary": user_detailed_eval.get('summary')
+                    }
+                    # 임시 interview 레코드로 계획 생성 로직 호출
+                    from .plan_eval import generate_interview_plan
+                    user_plan_result = generate_interview_plan(user_feedback_only)
+                    if user_plan_result.get("success"):
+                        combined_plans["user"] = {
+                            "shortly_plan": user_plan_result.get("shortly_plan"),
+                            "long_plan": user_plan_result.get("long_plan")
+                        }
+                    else:
+                        combined_plans["user"] = {
+                            "답변_스킬_개선": ["구체적인 예시와 STAR 기법을 활용한 답변 연습"],
+                            "의사소통_능력_향상": ["면접 상황에서의 명확한 의사전달 연습"],
+                            "기술_지식_보강": ["관련 분야 최신 기술 트렌드 학습"],
+                            "면접_태도_개선": ["자신감 있는 태도와 적극적인 면접 참여"]
+                        }
+                except Exception as e:
+                    print(f"WARNING: 사용자 계획 생성 실패: {str(e)}")
+                    combined_plans["user"] = {
+                        "답변_스킬_개선": ["구체적인 예시와 STAR 기법을 활용한 답변 연습"],
+                        "의사소통_능력_향상": ["면접 상황에서의 명확한 의사전달 연습"],
+                        "기술_지식_보강": ["관련 분야 최신 기술 트렌드 학습"],
+                        "면접_태도_개선": ["자신감 있는 태도와 적극적인 면접 참여"]
+                    }
+            
+            # AI 지원자 계획 생성 (기존 방식 활용)
+            if ai_detailed_eval and ai_detailed_eval.get('success'):
+                try:
+                    ai_feedback_only = {
+                        "overall_score": ai_detailed_eval.get('overall_score'),
+                        "overall_feedback": ai_detailed_eval.get('overall_feedback'),
+                        "summary": ai_detailed_eval.get('summary')
+                    }
+                    from .plan_eval import generate_interview_plan
+                    ai_plan_result = generate_interview_plan(ai_feedback_only)
+                    if ai_plan_result.get("success"):
+                        combined_plans["ai_interviewer"] = {
+                            "shortly_plan": ai_plan_result.get("shortly_plan"),
+                            "long_plan": ai_plan_result.get("long_plan")
+                        }
+                    else:
+                        combined_plans["ai_interviewer"] = {
+                            "답변_스킬_개선": ["더 구체적인 기술적 경험과 프로젝트 사례 준비"],
+                            "의사소통_능력_향상": ["기술적 내용을 비전문가도 이해할 수 있게 설명하는 연습"],
+                            "기술_지식_보강": ["해당 회사 기술 스택과 관련된 심화 학습"],
+                            "면접_태도_개선": ["AI 지원자로서 차별화된 강점 어필 방법 연구"]
+                        }
+                except Exception as e:
+                    print(f"WARNING: AI 계획 생성 실패: {str(e)}")
+                    combined_plans["ai_interviewer"] = {
+                        "답변_스킬_개선": ["더 구체적인 기술적 경험과 프로젝트 사례 준비"],
+                        "의사소통_능력_향상": ["기술적 내용을 비전문가도 이해할 수 있게 설명하는 연습"],
+                        "기술_지식_보강": ["해당 회사 기술 스택과 관련된 심화 학습"],
+                        "면접_태도_개선": ["AI 지원자로서 차별화된 강점 어필 방법 연구"]
+                    }
+            
+            # plans 테이블에 통합 계획 저장
+            if combined_plans:
+                self.db_manager.save_improvement_plans(interview_id, json.dumps(combined_plans, ensure_ascii=False))
+                print("✅ 통합 개선 계획 저장 완료")
+            
+            return {
+                "success": True,
+                "message": "통합 면접 평가 완료",
+                "interview_id": interview_id,
+                "total_questions": len(user_results) + len(ai_results),
+                "user_score": combined_feedback.get("user", {}).get("overall_score"),  # 위에서 이미 검증됨
+                "ai_score": combined_feedback.get("ai_interviewer", {}).get("overall_score")  # 위에서 이미 검증됨
+            }
+            
+        except Exception as e:
+            print(f"❌ 통합 면접 평가 실패: {str(e)}")
+            return {"success": False, "message": f"평가 실패: {str(e)}", "interview_id": None}
 
     def evaluate_multiple_questions(self, user_id: int, qa_pairs: list, 
                                    ai_resume_id: Optional[int] = None, user_resume_id: Optional[int] = None,
@@ -306,7 +537,7 @@ class InterviewEvaluationService:
                     "interview_id": interview_id,
                     "message": final_result.get("message", f"전체 면접 평가 완료 ({len(qa_pairs)}개 질문)"),
                     "total_questions": len(qa_pairs),
-                    "overall_score": final_result.get("overall_score"),
+                    "overall_score": final_result.get("overall_score"),  # final_result에서 이미 검증됨
                     "overall_feedback": final_result.get("overall_feedback"),
                     "per_question_results": final_result.get("per_question", []),
                     "interview_plan": None
@@ -325,7 +556,7 @@ class InterviewEvaluationService:
                             "question": result["question"],
                             "answer": result["answer"],
                             "intent": result["intent"],
-                            "final_score": int(result["ml_score"] * 10) if result["ml_score"] else 0,
+                            "final_score": 0,  # 임시값, 실제 평가는 별도로 수행됨
                             "evaluation": result["llm_evaluation"],
                             "improvement": "개별 개선사항 없음"
                         }
@@ -366,7 +597,7 @@ class InterviewEvaluationService:
             }
     
 
-    def run_final_evaluation_from_memory(self, interview_id: int, per_question_results: list, company_info: dict, position_info=None, posting_info=None, resume_info=None, who='user') -> dict:
+    def run_final_evaluation_from_memory(self, interview_id: int, per_question_results: list, company_info: dict, position_info=None, posting_info=None, resume_info=None, who='user', save_to_db=True) -> dict:
         """
         메모리 데이터를 기반으로 최종 평가 실행 후 DB에 저장
         
@@ -425,9 +656,9 @@ class InterviewEvaluationService:
                     "overall_feedback": None
                 }
             
-            # 3. 각 질문별 최종 평가 결과를 history_detail에 저장
+            # 3. 각 질문별 최종 평가 결과를 history_detail에 저장 (옵션)
             per_question_data = final_results.get("per_question", [])
-            if per_question_data:
+            if per_question_data and save_to_db:
                 print("개별 질문 최종 평가 결과를 DB에 저장 중...")
                 for i, question_eval in enumerate(per_question_data, 1):
                     try:
@@ -446,11 +677,14 @@ class InterviewEvaluationService:
                             "duration": original_data.get("duration")
                         }
                         
-                        # 최종 정제된 피드백 저장
+                        # 최종 정제된 피드백 저장 (final_eval.py에서 계산된 정수 점수 사용)
+                        question_score = question_eval.get("final_score")
+                        if question_score is None:
+                            raise ValueError(f"Q{i} 최종 평가에서 final_score가 누락되었습니다.")
                         final_feedback = {
-                            "final_score": question_eval.get("final_score"),
-                            "evaluation": question_eval.get("evaluation"),
-                            "improvement": question_eval.get("improvement")
+                            "final_score": int(question_score),
+                            "evaluation": question_eval.get("evaluation", ""),
+                            "improvement": question_eval.get("improvement", "")
                         }
                         
                         detail_id = self.db_manager.save_qa_detail(
@@ -463,22 +697,27 @@ class InterviewEvaluationService:
                     except Exception as e:
                         print(f"WARNING: Q{i} 최종 평가 저장 실패: {str(e)}")
             
-            # 4. 전체 평가 결과를 interview 테이블에 저장
-            try:
-                overall_data = {
-                    "overall_score": final_results.get("overall_score"),
-                    "overall_feedback": final_results.get("overall_feedback"),
-                    "summary": final_results.get("summary")
-                }
-                self.db_manager.update_total_feedback(interview_id, overall_data)
-                print("SUCCESS: 전체 평가 결과 DB 저장 완료")
-                
-            except Exception as e:
-                print(f"WARNING: 전체 평가 결과 저장 실패: {str(e)}")
+            # 4. 전체 평가 결과를 interview 테이블에 저장 (통합 평가에서는 건너뜀)
+            if save_to_db:
+                try:
+                    overall_data = {
+                        "overall_score": final_results.get("overall_score"),
+                        "overall_feedback": final_results.get("overall_feedback"),
+                        "summary": final_results.get("summary")
+                    }
+                    self.db_manager.update_total_feedback(interview_id, overall_data)
+                    print("SUCCESS: 전체 평가 결과 DB 저장 완료")
+                    
+                except Exception as e:
+                    print(f"WARNING: 전체 평가 결과 저장 실패: {str(e)}")
             
+            final_score = final_results.get("overall_score")
+            if final_score is None:
+                raise ValueError("최종 평가에서 overall_score가 누락되었습니다.")
+                
             return {
                 "success": True,
-                "overall_score": final_results.get("overall_score"),
+                "overall_score": int(final_score),
                 "overall_feedback": final_results.get("overall_feedback"),
                 "summary": final_results.get("summary"),
                 "per_question": final_results.get("per_question"),
