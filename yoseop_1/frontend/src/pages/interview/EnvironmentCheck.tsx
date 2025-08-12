@@ -22,6 +22,8 @@ const EnvironmentCheck: React.FC = () => {
   const [allChecksComplete, setAllChecksComplete] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [loadingMessage, setLoadingMessage] = useState('면접 준비 중...');
+  const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
 
   const [checkItems, setCheckItems] = useState<CheckItem[]>([
     {
@@ -223,6 +225,8 @@ const EnvironmentCheck: React.FC = () => {
 
   const handleStartInterview = async () => {
     setIsLoading(true);
+    
+    try {
 
     const getDifficultyFromLevel = (level: number | undefined): string => {
       if (level === undefined) return '중간'; // 기본값
@@ -257,39 +261,88 @@ const EnvironmentCheck: React.FC = () => {
 
     // AI 경쟁 모드일 때 바로 API 호출
     if (finalSettings.mode === 'ai_competition') {
+      let messageInterval: NodeJS.Timeout | null = null; // 상위 스코프에 선언
+      
       try {
         console.log('🤖 AI 경쟁 모드 - 바로 API 호출');
         
+        // 로딩 메시지 순차 표시 시작
+        const messages = [
+          '회사 정보 분석 중...',
+          'AI 페르소나 생성 중...',
+          '첫 번째 질문 생성 중...',
+          '면접 환경 설정 중...'
+        ];
+        
+        setLoadingMessage(messages[0]);
+        setCurrentMessageIndex(0);
+        
+        messageInterval = setInterval(() => {
+          setCurrentMessageIndex(prev => {
+            const nextIndex = prev < messages.length - 1 ? prev + 1 : prev;
+            setLoadingMessage(messages[nextIndex]);
+            return nextIndex;
+          });
+        }, 3000); // 3초마다 다음 메시지
+        
         const response = await interviewApi.startAICompetition(finalSettings);
+        const typedResponse = response as any; // TypeScript 타입 에러 해결을 위한 캐스팅
+        
+        // API 완료 시 interval 정리
+        if (messageInterval) {
+          clearInterval(messageInterval);
+          messageInterval = null;
+        }
+        setLoadingMessage('면접 환경 설정 완료!');
         
         console.log('✅ AI 경쟁 면접 시작 성공:', response);
+        console.log('🔍 DEBUG: 응답 구조 분석');
+        console.log('🔍 DEBUG: typedResponse.question =', typedResponse.question);
+        console.log('🔍 DEBUG: typedResponse.content =', typedResponse.content);
+        console.log('🔍 DEBUG: typedResponse.data =', typedResponse.data);
+        console.log('🔍 DEBUG: 전체 응답 키들 =', Object.keys(typedResponse));
         
         // 응답에서 세션 ID 설정
-        if (response.session_id) {
+        if (typedResponse.session_id) {
           dispatch({ 
             type: 'SET_SESSION_ID', 
-            payload: response.session_id
+            payload: typedResponse.session_id
           });
         }
         
         // 질문이 있으면 추가
         let questionData = null;
-        if (response.question) {
-          questionData = typeof response.question === 'string' 
-            ? { 
-                id: `q_${Date.now()}`,
-                question: response.question, 
-                category: 'HR', 
-                time_limit: 120,
-                keywords: []
-              }
-            : {
-                id: (response.question as any).id || `q_${Date.now()}`,
-                question: (response.question as any).question || response.question,
-                category: (response.question as any).category || 'HR',
-                time_limit: (response.question as any).time_limit || 120,
-                keywords: (response.question as any).keywords || []
-              };
+        
+        // 백엔드 응답에서 질문 추출 (여러 경로 시도)
+        let questionText = null;
+        let questionType = 'HR';
+        
+        if (typedResponse.content?.content) {
+          // 백엔드 로그 기준: response.content.content에 실제 질문
+          questionText = typedResponse.content.content;
+          questionType = typedResponse.content.type || 'HR';
+          console.log('🎯 질문 추출 성공 (content.content):', questionText);
+        } else if (typedResponse.question) {
+          // 기존 방식도 유지
+          questionText = typeof typedResponse.question === 'string' 
+            ? typedResponse.question 
+            : typedResponse.question?.question;
+          questionType = typeof typedResponse.question === 'object' 
+            ? typedResponse.question?.category || 'HR' 
+            : 'HR';
+          console.log('🎯 질문 추출 성공 (question):', questionText);
+        } else {
+          console.log('❌ 질문을 찾을 수 없음');
+        }
+        
+        if (questionText) {
+          questionData = {
+            id: `q_${Date.now()}`,
+            question: questionText,
+            category: questionType,
+            time_limit: 120,
+            keywords: []
+          };
             
           dispatch({ 
             type: 'ADD_QUESTION', 
@@ -332,6 +385,12 @@ const EnvironmentCheck: React.FC = () => {
         
       } catch (error) {
         console.error('❌ AI 경쟁 면접 시작 실패:', error);
+        // 에러 발생 시 interval 정리
+        if (messageInterval) {
+          clearInterval(messageInterval);
+          messageInterval = null;
+        }
+        setLoadingMessage('면접 준비 중 오류가 발생했습니다.');
         alert('면접 시작에 실패했습니다. 다시 시도해주세요.');
         return;
       }
@@ -381,6 +440,13 @@ const EnvironmentCheck: React.FC = () => {
           navigate('/interview/active');
         }
       }, 1000);
+    }
+    
+    } catch (error) {
+      console.error('❌ 면접 시작 중 예상치 못한 오류:', error);
+      alert('면접 시작에 실패했습니다. 다시 시도해주세요.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -451,7 +517,14 @@ const EnvironmentCheck: React.FC = () => {
                 disabled={isLoading}
                 className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-full text-lg font-bold hover:shadow-lg hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isLoading ? '체크 중...' : '환경 체크 시작'}
+                {isLoading ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    {loadingMessage}
+                  </div>
+                ) : (
+                  '환경 체크 시작'
+                )}
               </button>
             </div>
           )}
@@ -560,6 +633,7 @@ const EnvironmentCheck: React.FC = () => {
               nextLabel="면접 시작하기"
               canGoNext={allChecksPassed}
               isLoading={isLoading}
+              loadingMessage={loadingMessage}
             />
           </div>
         </div>

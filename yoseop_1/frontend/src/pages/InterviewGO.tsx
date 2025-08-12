@@ -357,14 +357,32 @@ const InterviewGO: React.FC = () => {
               // 면접 시작 API를 재호출하지 않고, 현재 상태만 확인
               // AI 경쟁 면접은 보통 사용자 턴으로 시작하므로 기본값 설정
               console.log('✅ AI 경쟁 면접 기본값으로 사용자 턴 설정');
+              // 🔍 localStorage에서 실제 질문 데이터 확인
+              const savedState = localStorage.getItem('interview_state');
+              let actualQuestion = "면접을 시작합니다. 첫 번째 질문을 기다려주세요.";
+              
+              if (savedState) {
+                try {
+                  const parsed = JSON.parse(savedState);
+                  if (parsed.questions && parsed.questions.length > 0) {
+                    actualQuestion = parsed.questions[0].question;
+                    console.log('🎯 localStorage에서 실제 질문 발견:', actualQuestion);
+                  } else {
+                    console.log('⚠️ localStorage에 질문 데이터 없음');
+                  }
+                } catch (e) {
+                  console.log('⚠️ localStorage 파싱 실패:', e);
+                }
+              }
+              
               setCurrentPhase('user_turn');
               setCurrentTurn('user');
               setIsTimerActive(true);
               setTimeLeft(120);
               setCanSubmit(true);
               setCanRecord(true);  // 🎤 녹음 활성화
-              setCurrentQuestion("면접을 시작합니다. 첫 번째 질문을 기다려주세요.");
-              console.log('✅ 초기 사용자 턴 설정 완료 (기본값)');
+              setCurrentQuestion(actualQuestion);
+              console.log('✅ 초기 사용자 턴 설정 완료 (질문:', actualQuestion, ')');
               return;
             } catch (apiError) {
               console.log('⚠️ 기본값 설정 실패, 세션 상태로 fallback:', apiError);

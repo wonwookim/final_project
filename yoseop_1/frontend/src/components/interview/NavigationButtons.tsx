@@ -9,6 +9,7 @@ interface NavigationButtonsProps {
   canGoNext: boolean;
   isLoading?: boolean;
   showPrevious?: boolean;
+  loadingMessage?: string;
 }
 
 const NavigationButtons: React.FC<NavigationButtonsProps> = ({
@@ -18,7 +19,8 @@ const NavigationButtons: React.FC<NavigationButtonsProps> = ({
   nextLabel = "다음",
   canGoNext,
   isLoading = false,
-  showPrevious = true
+  showPrevious = true,
+  loadingMessage
 }) => {
   return (
     <div className="flex justify-between items-center pt-8 border-t border-slate-200">
@@ -50,7 +52,7 @@ const NavigationButtons: React.FC<NavigationButtonsProps> = ({
           {isLoading ? (
             <>
               <LoadingSpinner size="sm" color="white" />
-              처리 중...
+              {loadingMessage || '처리 중...'}
             </>
           ) : (
             <>
