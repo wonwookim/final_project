@@ -134,6 +134,23 @@ if DATABASE_ENABLED:
     app.include_router(get_gaze_router())  # 시선 분석 API 라우터 추가
     # app.include_router(migration_router)
     # app.include_router(database_router)
+    
+    # === 김원우 작성 시작 ===
+    # 새로운 표준 구조 라우터 등록
+    try:
+        from routers.media import media_router
+        from routers.gaze import gaze_router
+        
+        app.include_router(media_router)
+        app.include_router(gaze_router)
+        
+        print("✅ 새로운 미디어 및 시선 분석 라우터 등록 완료")
+        print("   - /media/* : S3 미디어 파일 관리 API")  
+        print("   - /gaze/* : 시선 분석 및 캘리브레이션 API")
+    except ImportError as e:
+        print(f"⚠️ 새로운 라우터 로드 실패: {e}")
+        print("   기존 test 라우터를 계속 사용합니다.")
+    # === 김원우 작성 끝 ===
 
     print("="*100)
     print("API 라우터 등록 완료")
