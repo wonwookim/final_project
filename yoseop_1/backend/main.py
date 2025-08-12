@@ -6,6 +6,7 @@ FastAPI 기반 AI 면접 시스템
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import os
 import sys
 from datetime import datetime
@@ -68,6 +69,50 @@ async def root():
 async def health_check():
     """서버 상태 확인"""
     return {"status": "healthy", "timestamp": datetime.now()}
+
+from fastapi.responses import FileResponse
+from fastapi import Request
+import mimetypes
+
+# SPA 라우팅 처리를 위한 catch-all 핸들러
+@app.middleware("http")
+async def spa_handler(request: Request, call_next):
+    response = await call_next(request)
+    
+    # API 경로와 정적 파일 경로 제외 목록
+    api_prefixes = [
+        '/docs', '/redoc', '/openapi.json',
+        '/health', '/static', '/js', '/css', '/img',
+        '/auth', '/user', '/resume', '/company', 
+        '/posting', '/position', '/interview'
+    ]
+    
+    # API 경로가 아니고, 404 에러인 경우 React 앱 반환
+    is_api_path = any(request.url.path.startswith(prefix) for prefix in api_prefixes)
+    
+    if not is_api_path and response.status_code == 404:
+        static_dir = os.path.join(os.path.dirname(__file__), "static")
+        index_path = os.path.join(static_dir, "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+    
+    return response
+
+# 정적 파일 서빙 설정 (React 앱)
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    app.mount("/js", StaticFiles(directory=os.path.join(static_dir, "js")), name="js")
+    app.mount("/css", StaticFiles(directory=os.path.join(static_dir, "css")), name="css")
+    
+    # 이미지 파일 서빙
+    img_dir = os.path.join(static_dir, "img")
+    if os.path.exists(img_dir):
+        app.mount("/img", StaticFiles(directory=img_dir), name="img")
+    
+    print(f"정적 파일 서빙 활성화: {static_dir}")
+else:
+    print("정적 파일 디렉토리가 존재하지 않습니다. API 모드로만 실행됩니다.")
 
 # 데이터베이스 라우터 등록
 if DATABASE_ENABLED:

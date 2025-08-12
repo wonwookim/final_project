@@ -74,11 +74,15 @@ const InterviewHistory: React.FC = () => {
 
   const handleViewDetails = (sessionId: string) => {
     // 세션 ID를 사용하여 결과 페이지로 이동
+    console.log('🔍 DEBUG - handleViewDetails 호출됨, sessionId:', sessionId);
+    console.log('🔍 DEBUG - 이동할 URL:', `/interview/results/${sessionId}`);
     navigate(`/interview/results/${sessionId}`);
   };
 
   const handleViewFeedback = (sessionId: string) => {
     // 피드백 상세 페이지로 이동
+    console.log('🔍 DEBUG - handleViewFeedback 호출됨, sessionId:', sessionId);
+    console.log('🔍 DEBUG - 이동할 URL:', `/interview/results/${sessionId}`);
     navigate(`/interview/results/${sessionId}`, { state: { tab: 'longterm' } });
   };
 
@@ -228,13 +232,19 @@ const InterviewHistory: React.FC = () => {
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex gap-3">
                             <button 
-                              onClick={() => handleViewDetails(interview.session_id)}
+                              onClick={() => {
+                                console.log('🔴 상세보기 버튼 클릭됨! interview.session_id:', interview.session_id);
+                                handleViewDetails(interview.session_id);
+                              }}
                               className="text-blue-600 hover:text-blue-700 transition-colors"
                             >
                               상세보기
                             </button>
                             <button 
-                              onClick={() => handleViewFeedback(interview.session_id)}
+                              onClick={() => {
+                                console.log('🔴 피드백 버튼 클릭됨! interview.session_id:', interview.session_id);
+                                handleViewFeedback(interview.session_id);
+                              }}
                               className="text-green-600 hover:text-green-700 transition-colors"
                             >
                               피드백
