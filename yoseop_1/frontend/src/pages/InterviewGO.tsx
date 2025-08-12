@@ -82,6 +82,7 @@ const InterviewGO: React.FC = () => {
   
   // 🆕 새로운 상태들 추가
   const [currentAnswer, setCurrentAnswer] = useState('');
+  const [aiCurrentQuestion, setAiCurrentQuestion] = useState<string>(''); // AI에게 주어진 질문
   const [isLoading, setIsLoading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(true); // 복원 상태 추가
   
@@ -279,6 +280,19 @@ const InterviewGO: React.FC = () => {
         setCurrentQuestion(question);
         console.log('📝 질문 업데이트:', question);
         
+        // 🆕 개별 질문인 경우 AI 질문도 업데이트
+        if (turnInfo?.is_individual_question) {
+            const aiQ = turnInfo?.ai_question_text; // Orchestrator에서 turn_info에 ai_question_text를 담아 보냄
+            if (aiQ) {
+                setAiCurrentQuestion(aiQ);
+                console.log('📝 AI 질문 업데이트:', aiQ);
+            } else {
+                setAiCurrentQuestion(''); // AI 질문이 없으면 초기화
+            }
+        } else {
+            setAiCurrentQuestion(''); // 개별 질문이 아니면 AI 질문 초기화
+        }
+
         // 🆕 질문이 업데이트되면 TTS 자동 재생
         if (question && question.trim()) {
             playQuestionTTS(question);
@@ -1327,6 +1341,13 @@ const InterviewGO: React.FC = () => {
               <div className="absolute top-4 right-4 bg-green-500 text-white px-2 py-1 rounded text-xs font-medium z-10">
                 AI
               </div>
+            {/* 🆕 AI 질문 표시 (사용자 턴일 때 AI가 받은 질문) */}
+            {currentPhase === 'user_turn' && aiCurrentQuestion && (
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center bg-black/70 rounded-lg p-4 text-white text-sm">
+                    <div className="font-semibold mb-1">AI에게 주어진 질문:</div>
+                    <div className="line-clamp-3">{aiCurrentQuestion}</div>
+                </div>
+            )}
             </div>
           </div>
         </div>

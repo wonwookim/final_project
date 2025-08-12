@@ -354,10 +354,7 @@ class Orchestrator:
             if main_asked and follow_up_count < 2:
                 # 최근에 두 답변이 모두 완료되었는지 확인
                 qa_history = self.session_state.get('qa_history', [])
-                if len(qa_history) >= 2:
-                    # 마지막 2개가 같은 질문에 대한 답변인지 확인
-                    recent_questions = [qa['question'] for qa in qa_history[-2:]]
-                    if len(set(recent_questions)) == 1:  # 같은 질문
+                if self.session_state.get('current_questions') is None:
                         print(f"[DEBUG] 개별 꼬리질문 조건 만족: {current_interviewer}, follow_up={follow_up_count}/2")
                         return True
         
@@ -856,6 +853,13 @@ class Orchestrator:
                 'resume_id': ai_resume_id
             }
         }
+        # 🆕 AI 질문 텍스트 추가
+        if is_individual_question:
+            response['turn_info']['user_question_text'] = current_questions.get('user_question', {}).get('question', '')
+            response['turn_info']['ai_question_text'] = current_questions.get('ai_question', {}).get('question', '')
+        else:
+            response['turn_info']['user_question_text'] = self.session_state.get('current_question', '')
+            response['turn_info']['ai_question_text'] = self._format_question_for_ai(self.session_state.get('current_question', ''))
         
         return response
 
