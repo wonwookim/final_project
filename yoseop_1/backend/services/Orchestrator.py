@@ -7,8 +7,7 @@ import base64
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List, Tuple
 
-# TTS 동시 요청 제한을 위한 세마포어 추가
-_tts_semaphore = asyncio.Semaphore(1)  # 한 번에 하나의 TTS 요청만 허용
+# TTS는 이제 프론트엔드에서 처리하므로 세마포어 제거
 
 @dataclass
 class Metadata:
@@ -50,8 +49,7 @@ class Orchestrator:
         self.question_generator = question_generator
         self.ai_candidate_model = ai_candidate_model
         
-        # 🆕 TTS 재생 이력 추적 (중복 방지용)
-        self.played_tts_contents = set()  # 이미 재생된 content들을 추적
+        # TTS는 프론트엔드에서 처리하므로 이력 추적 불필요
 
     async def handle_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """메시지를 받아서 상태를 업데이트하고 다음 액션을 결정 (🆕 즉시 TTS 처리 포함)"""
@@ -64,16 +62,7 @@ class Orchestrator:
         task = message.get("metadata", {}).get("task")
         content = message.get("content", {}).get("content")
 
-        # 🆕 각 content를 받는 즉시 TTS 생성 (재생 대기 없이 즉시 진행)
-        if content and content.strip() and self._should_play_tts_for_task(task):
-            if task == "individual_questions_generated":
-                # 개별 질문의 경우 JSON에서 각 질문을 추출하여 TTS 생성
-                await self._handle_individual_questions_tts_generation(content)
-            else:
-                agent_type = self._get_agent_type_for_tts(from_agent, task)
-                print(f"[⚡ FAST_TTS] {from_agent} content 즉시 TTS 생성: {content[:50]}...")
-                # TTS 생성만 하고 재생 대기 없이 즉시 진행
-                await self._generate_tts_for_realtime(content, agent_type, task)
+        # TTS 생성 로직 제거 - 텍스트만 처리하고 프론트엔드에서 TTS 처리
 
         # 상태 업데이트
         self._update_state_from_message(task, content, from_agent)
@@ -602,246 +591,21 @@ class Orchestrator:
             interview_logger.error(f"AI 지원자 답변 요청 오류: {e}", exc_info=True)
             return "죄송합니다, 답변을 생성하는 데 문제가 발생했습니다."
 
-    async def _generate_tts(self, text: str) -> Optional[str]:
-        """텍스트를 TTS로 변환하여 base64 인코딩된 MP3 데이터 반환"""
-        async with _tts_semaphore:  # TTS 동시 요청 제한
-            try:
-                print(f"[🔍 TTS_DEBUG] _generate_tts 함수 시작 (세마포어 획득)")
-                print(f"[🔍 TTS_DEBUG] 입력 text: '{text[:100] if text else 'None'}'")
-                print(f"[🔍 TTS_DEBUG] text 타입: {type(text)}")
-                print(f"[🔍 TTS_DEBUG] text 길이: {len(text) if text else 0}")
-                
-                if not text or not text.strip():
-                    print(f"[🔍 TTS_DEBUG] ❌ text가 비어있음 - 반환 None")
-                    return None
-                    
-                from backend.services.voice_service import elevenlabs_tts_stream
-                print(f"[🔍 TTS_DEBUG] voice_service import 성공")
-                print(f"[🔍 TTS_DEBUG] TTS 생성 시작: {text[:50]}...")
-                print(f"[🔍 TTS_DEBUG] 정제된 text: '{text.strip()[:50]}...'")
-                
-                # ElevenLabs API 호출
-                print(f"[🔍 TTS_DEBUG] elevenlabs_tts_stream 호출 시작")
-                audio_bytes = await elevenlabs_tts_stream(
-                    text=text.strip(), 
-                    voice_id="21m00Tcm4TlvDq8ikWAM"  # Rachel 음성
-                )
-                print(f"[🔍 TTS_DEBUG] elevenlabs_tts_stream 호출 완료")
-                print(f"[🔍 TTS_DEBUG] audio_bytes 타입: {type(audio_bytes)}")
-                print(f"[🔍 TTS_DEBUG] audio_bytes 길이: {len(audio_bytes) if audio_bytes else 0}")
-                
-                if not audio_bytes:
-                    print(f"[🔍 TTS_DEBUG] ❌ audio_bytes가 비어있음")
-                    return None
-                
-                # base64 인코딩
-                print(f"[🔍 TTS_DEBUG] base64 인코딩 시작")
-                audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
-                print(f"[🔍 TTS_DEBUG] base64 인코딩 완료")
-                print(f"[🔍 TTS_DEBUG] ✅ TTS 생성 완료: {len(audio_base64)} chars (세마포어 해제)")
-                
-                return audio_base64
-                
-            except Exception as e:
-                print(f"[🔍 TTS_DEBUG] ❌ TTS 생성 실패: {e}")
-                import traceback
-                print(f"[🔍 TTS_DEBUG] 스택 트레이스: {traceback.format_exc()}")
-                return None
+    # TTS 생성 메서드 제거 - 프론트엔드에서 TTS 처리
 
-    # 🗑️ _handle_missing_tts_for_first_response 제거됨
-    # TTS는 이제 handle_message에서 즉시 처리되므로 더 이상 필요하지 않음
+    # TTS 처리 메서드들 제거 - 프론트엔드에서 처리
 
-    async def _generate_and_play_tts(self, text: str, agent_type: str = "interviewer") -> None:
-        """텍스트를 TTS로 변환하고 재생한 후 다음 작업으로 넘어감"""
-        try:
-            if not text or not text.strip():
-                print(f"[🔊 TTS_PLAY] {agent_type} 텍스트가 비어있음 - TTS 건너뜀")
-                return
-            
-            print(f"[🔊 TTS_PLAY] {agent_type} TTS 생성 및 재생 시작: {text[:50]}...")
-            
-            # TTS 생성
-            audio_base64 = await self._generate_tts(text)
-            if not audio_base64:
-                print(f"[🔊 TTS_PLAY] ❌ {agent_type} TTS 생성 실패")
-                return
-            
-            # TTS 재생 시작
-            print(f"[🔊 TTS_PLAY] ✅ {agent_type} TTS 생성 완료, 재생 시작")
-            
-            # 재생 완료까지 대기
-            # 방법 1: 텍스트 길이 기반 대략적 재생 시간 계산 (초당 약 3-4음절)
-            estimated_duration = len(text) / 3.5  # 초당 약 3.5음절로 계산
-            min_duration = 1.0  # 최소 1초
-            max_duration = 10.0  # 최대 10초
-            wait_time = max(min_duration, min(estimated_duration, max_duration))
-            
-            print(f"[🔊 TTS_PLAY] 📊 예상 재생 시간: {wait_time:.1f}초 (텍스트 길이: {len(text)}자)")
-            await asyncio.sleep(wait_time)
-            
-            print(f"[🔊 TTS_PLAY] ✅ {agent_type} TTS 재생 완료, 다음 작업 진행")
-            
-        except Exception as e:
-            print(f"[🔊 TTS_PLAY] ❌ {agent_type} TTS 처리 실패: {e}")
-            import traceback
-            print(f"[🔊 TTS_PLAY] 스택 트레이스: {traceback.format_exc()}")
+    # TTS 재생 메서드들 제거 - 프론트엔드에서 TTS 처리
 
-    async def _generate_and_play_tts_with_callback(self, text: str, agent_type: str = "interviewer", 
-                                                 on_complete: callable = None) -> None:
-        """텍스트를 TTS로 변환하고 재생한 후 콜백 함수 실행"""
-        try:
-            if not text or not text.strip():
-                print(f"[🔊 TTS_PLAY] {agent_type} 텍스트가 비어있음 - TTS 건너뜀")
-                if on_complete:
-                    await on_complete()
-                return
-            
-            print(f"[🔊 TTS_PLAY] {agent_type} TTS 생성 및 재생 시작: {text[:50]}...")
-            
-            # TTS 생성
-            audio_base64 = await self._generate_tts(text)
-            if not audio_base64:
-                print(f"[🔊 TTS_PLAY] ❌ {agent_type} TTS 생성 실패")
-                if on_complete:
-                    await on_complete()
-                return
-            
-            # TTS 재생 시작
-            print(f"[🔊 TTS_PLAY] ✅ {agent_type} TTS 생성 완료, 재생 시작")
-            
-            # 재생 완료까지 대기
-            estimated_duration = len(text) / 3.5
-            min_duration = 1.0
-            max_duration = 10.0
-            wait_time = max(min_duration, min(estimated_duration, max_duration))
-            
-            print(f"[🔊 TTS_PLAY] 📊 예상 재생 시간: {wait_time:.1f}초 (텍스트 길이: {len(text)}자)")
-            await asyncio.sleep(wait_time)
-            
-            print(f"[🔊 TTS_PLAY] ✅ {agent_type} TTS 재생 완료")
-            
-            # 콜백 함수 실행
-            if on_complete:
-                await on_complete()
-            
-        except Exception as e:
-            print(f"[🔊 TTS_PLAY] ❌ {agent_type} TTS 처리 실패: {e}")
-            import traceback
-            print(f"[🔊 TTS_PLAY] 스택 트레이스: {traceback.format_exc()}")
-            if on_complete:
-                await on_complete()
-
-    async def _generate_tts_for_realtime(self, text: str, agent_type: str, task: str) -> None:
-        """
-        ⚡ 실시간 TTS 처리: TTS 생성만 하고 session_state에 저장, 재생 대기 없이 즉시 진행
-        """
-        try:
-            if not text or not text.strip():
-                print(f"[⚡ REALTIME_TTS] {agent_type} 텍스트가 비어있음 - TTS 건너뜀")
-                return
-            
-            # 🆕 중복 생성 방지 체크
-            text_hash = hash(text.strip())
-            if text_hash in self.played_tts_contents:
-                print(f"[⚡ REALTIME_TTS] ⏭️ {agent_type} 이미 처리된 content - 중복 생성 건너뜀: {text[:50]}...")
-                return
-            
-            print(f"[⚡ REALTIME_TTS] {agent_type} 실시간 TTS 생성 시작: {text[:50]}...")
-            
-            # TTS 생성
-            audio_base64 = await self._generate_tts(text)
-            if not audio_base64:
-                print(f"[⚡ REALTIME_TTS] ❌ {agent_type} TTS 생성 실패")
-                return
-            
-            print(f"[⚡ REALTIME_TTS] ✅ {agent_type} TTS 생성 완료, session_state에 저장")
-            
-            # 🆕 생성된 TTS를 session_state에 저장 (클라이언트 전달용)
-            self._store_tts_in_session(task, text, audio_base64)
-            
-            # 🆕 처리 완료된 content 기록
-            self.played_tts_contents.add(text_hash)
-            
-            print(f"[⚡ REALTIME_TTS] ✅ {agent_type} TTS 저장 완료 → 즉시 다음 작업 진행")
-            
-        except Exception as e:
-            print(f"[⚡ REALTIME_TTS] ❌ {agent_type} 실시간 TTS 처리 실패: {e}")
-            import traceback
-            print(f"[⚡ REALTIME_TTS] 스택 트레이스: {traceback.format_exc()}")
+    # 실시간 TTS 메서드 제거 - 프론트엔드에서 TTS 처리
     
-    def _store_tts_in_session(self, task: str, text: str, audio_base64: str) -> None:
-        """생성된 TTS를 session_state에 저장"""
-        if task == "intro_generated":
-            self.session_state['intro_audio'] = audio_base64
-        elif task == "question_generated":
-            self.session_state['question_audio'] = audio_base64
-        elif task == "answer_generated":
-            self.session_state['latest_ai_answer_audio'] = audio_base64
-        elif task == "individual_answer_generated":
-            self.session_state['latest_ai_answer_audio'] = audio_base64
+    # TTS 저장 메서드 제거 - 프론트엔드에서 TTS 처리
 
-    def _should_play_tts_for_task(self, task: str) -> bool:
-        """🆕 해당 task에서 TTS를 재생해야 하는지 판단"""
-        # TTS를 재생해야 하는 task들
-        tts_tasks = [
-            "intro_generated",           # 인트로 메시지
-            "question_generated",        # 일반 질문
-            "individual_questions_generated",  # 개별 질문 (JSON 형태)
-            "answer_generated",          # AI 답변
-            "individual_answer_generated"  # AI 개별 답변
-        ]
-        return task in tts_tasks
+    # TTS 판단 메서드 제거 - 프론트엔드에서 TTS 처리
 
-    def _get_agent_type_for_tts(self, from_agent: str, task: str) -> str:
-        """🆕 TTS를 위한 agent type 결정"""
-        if from_agent == "interviewer":
-            if task == "intro_generated":
-                return "면접관(인트로)"
-            elif "individual" in task:
-                return "면접관(개별질문)"
-            else:
-                return "면접관"
-        elif from_agent == "ai":
-            if "individual" in task:
-                return "AI지원자(개별답변)"
-            else:
-                return "AI지원자"
-        else:
-            return from_agent
+    # TTS 에이전트 타입 결정 메서드 제거 - 프론트엔드에서 TTS 처리
 
-    async def _handle_individual_questions_tts_generation(self, json_content: str) -> None:
-        """⚡ 개별 질문 JSON에서 각 질문을 추출하여 실시간 TTS 생성"""
-        try:
-            print(f"[⚡ INDIVIDUAL_TTS] 개별 질문 TTS 생성 시작")
-            
-            # JSON 파싱
-            if isinstance(json_content, str):
-                questions_data = json.loads(json_content)
-            else:
-                questions_data = json_content
-            
-            # 사용자용 질문 TTS 생성
-            user_question = questions_data.get('user_question', {}).get('question', '')
-            if user_question and user_question.strip():
-                print(f"[⚡ INDIVIDUAL_TTS] 사용자용 질문 TTS 생성: {user_question[:50]}...")
-                audio_base64 = await self._generate_tts(user_question)
-                if audio_base64:
-                    self.session_state['individual_user_question_audio'] = audio_base64
-            
-            # AI용 질문 TTS 생성 
-            ai_question = questions_data.get('ai_question', {}).get('question', '')
-            if ai_question and ai_question.strip():
-                print(f"[⚡ INDIVIDUAL_TTS] AI용 질문 TTS 생성: {ai_question[:50]}...")
-                audio_base64 = await self._generate_tts(ai_question)
-                if audio_base64:
-                    self.session_state['individual_ai_question_audio'] = audio_base64
-            
-            print(f"[⚡ INDIVIDUAL_TTS] 개별 질문 TTS 생성 완료 → 즉시 진행")
-            
-        except Exception as e:
-            print(f"[⚡ INDIVIDUAL_TTS] ❌ 개별 질문 TTS 생성 실패: {e}")
-            import traceback
-            print(f"[⚡ INDIVIDUAL_TTS] 스택 트레이스: {traceback.format_exc()}")
+    # 개별 질문 TTS 생성 메서드 제거 - 프론트엔드에서 TTS 처리
 
     @staticmethod
     def create_agent_message(session_id: str, task: str, from_agent: str, content_text: str, 
@@ -1041,7 +805,6 @@ class Orchestrator:
                 
             # 4. INTRO + 첫 번째 질문 응답 즉시 반환 (클라이언트 호환성 보장)
             first_question = self.session_state.get('current_question')
-            first_question_audio = self.session_state.get('question_audio')
             ai_resume_id = self.session_state.get('ai_resume_id')
             
             result = {
@@ -1049,17 +812,11 @@ class Orchestrator:
                 "message": "면접이 시작되었습니다. INTRO와 첫 번째 질문을 확인해주세요.",
                 "session_id": self.session_id,
                 "intro_message": self.session_state.get('intro_message'),
-                "intro_audio": self.session_state.get('intro_audio'),
                 "first_question": first_question,
-                "first_question_audio": first_question_audio,
-                # 🆕 클라이언트가 기대할 수 있는 모든 오디오 필드명 추가
-                "ai_question_audio": first_question_audio,      # AI 질문 오디오
-                "question_audio": first_question_audio,         # 질문 오디오
-                "latest_ai_question_audio": first_question_audio, # 최신 AI 질문 오디오
+                # 오디오 필드들 제거
                 # 🆕 클라이언트가 기대하는 content 구조 추가
                 "content": {
                     "question": first_question,
-                    "audio": first_question_audio,
                     "content": first_question,  # 호환성을 위한 중복
                     "metadata": {
                         "ai_resume_id": ai_resume_id,
@@ -1077,7 +834,6 @@ class Orchestrator:
                 },
                 # 🆕 ai_answer 구조도 추가 (클라이언트 호환성)
                 "ai_answer": {
-                    "audio": first_question_audio,  # ai_answer에도 오디오 포함
                     "metadata": {
                         "ai_resume_id": ai_resume_id
                     }
@@ -1094,20 +850,14 @@ class Orchestrator:
             
             print(f"[⚡ INITIAL_FLOW] === 면접 시작 응답 준비 완료 ===")
             print(f"[⚡ INITIAL_FLOW] INTRO 메시지: {bool(result.get('intro_message'))}")
-            print(f"[⚡ INITIAL_FLOW] INTRO 오디오: {bool(result.get('intro_audio'))}")
             print(f"[⚡ INITIAL_FLOW] 첫 번째 질문: {bool(result.get('first_question'))}")
-            print(f"[⚡ INITIAL_FLOW] 첫 번째 질문 오디오: {bool(result.get('first_question_audio'))}")
-            print(f"[⚡ INITIAL_FLOW] 🎵 ai_question_audio: {bool(result.get('ai_question_audio'))}")
-            print(f"[⚡ INITIAL_FLOW] 🎵 question_audio: {bool(result.get('question_audio'))}")
-            print(f"[⚡ INITIAL_FLOW] 🎵 latest_ai_question_audio: {bool(result.get('latest_ai_question_audio'))}")
-            print(f"[⚡ INITIAL_FLOW] 🎵 ai_answer.audio: {bool(result.get('ai_answer', {}).get('audio'))}")
             print(f"[⚡ INITIAL_FLOW] 🆕 content 필드: {bool(result.get('content'))}")
             print(f"[⚡ INITIAL_FLOW] 🆕 ai_resume_id (최상위): {result.get('ai_resume_id')}")
             print(f"[⚡ INITIAL_FLOW] 🆕 ai_answer.metadata: {bool(result.get('ai_answer', {}).get('metadata'))}")
             print(f"[⚡ INITIAL_FLOW] 🆕 content.metadata.ai_resume_id: {result.get('content', {}).get('metadata', {}).get('ai_resume_id')}")
             if result.get('first_question'):
                 print(f"[⚡ INITIAL_FLOW] 첫 번째 질문 내용: {result.get('first_question')[:50]}...")
-            print(f"[⚡ INITIAL_FLOW] ✅ API 즉시 응답 (다중 오디오 필드 포함)!")
+            print(f"[⚡ INITIAL_FLOW] ✅ API 즉시 응답 (텍스트 전용)!")
             
             return result
             
@@ -1332,49 +1082,32 @@ class Orchestrator:
         response['message'] = '답변을 입력해주세요.'
         response['session_id'] = self.session_id
         
-        # 🆕 INTRO 메시지 및 오디오 포함 (첫 번째 응답에서만)
+        # 🆕 INTRO 메시지 포함 (첫 번째 응답에서만) - 오디오 제거
         current_turn = self.session_state.get('turn_count', 0)
         intro_message = self.session_state.get('intro_message')
-        intro_audio = self.session_state.get('intro_audio')
         
         # INTRO는 턴 1에서만 전달 (턴 2 이후에는 불필요)
         if current_turn <= 1 and intro_message:
             response['intro_message'] = intro_message
-            print(f"[🎵 AUDIO] INTRO 메시지 전달 (턴 {current_turn}): {intro_message[:50]}...")
-            
-            if intro_audio:
-                response['intro_audio'] = intro_audio
-                print(f"[🎵 AUDIO] ✅ INTRO 오디오 전달 완료: {len(intro_audio)} chars")
-            else:
-                print(f"[🎵 AUDIO] ⚠️ INTRO 오디오 누락")
+            print(f"[📝 TEXT] INTRO 메시지 전달 (턴 {current_turn}): {intro_message[:50]}...")
             
             # 한 번 전달 후 삭제
             if 'intro_message' in self.session_state:
                 del self.session_state['intro_message']
-            if 'intro_audio' in self.session_state:
-                del self.session_state['intro_audio']
                 
-            print(f"[🎵 AUDIO] 🗑️ INTRO 데이터 삭제 완료 - 다음 턴부터는 전송 안함")
+            print(f"[📝 TEXT] 🗑️ INTRO 데이터 삭제 완료 - 다음 턴부터는 전송 안함")
         else:
-            print(f"[🎵 AUDIO] INTRO 전송 건너뜀 (턴 {current_turn}, intro_message 존재: {bool(intro_message)})")
+            print(f"[📝 TEXT] INTRO 전송 건너뜀 (턴 {current_turn}, intro_message 존재: {bool(intro_message)})")
         
-        # 🆕 AI 질문 오디오 필드들 추가 (클라이언트 호환성)
-        current_question_audio = self.session_state.get('question_audio')
+        # AI 질문 텍스트만 처리 - 오디오 제거
         current_question = question_text
         ai_resume_id = self.session_state.get('ai_resume_id')
         
-        if current_question_audio:
-            # 클라이언트가 기대하는 모든 오디오 필드명 추가
-            response['ai_question_audio'] = current_question_audio
-            response['question_audio'] = current_question_audio  
-            response['latest_ai_question_audio'] = current_question_audio
-            response['first_question_audio'] = current_question_audio  # 호환성
-            print(f"[🎵 AUDIO] ✅ AI 질문 오디오 전달 완료: {len(current_question_audio)} chars")
+        print(f"[📝 TEXT] AI 질문 텍스트 전달: {current_question[:50] if current_question else 'N/A'}...")
         
-        # 🆕 표준화된 응답 구조 추가
+        # 표준화된 응답 구조 추가 - 오디오 제거
         response['content'] = {
             'question': current_question,
-            'audio': current_question_audio,
             'content': current_question,
             'metadata': {
                 'ai_resume_id': ai_resume_id,
@@ -1384,11 +1117,11 @@ class Orchestrator:
             }
         }
         
-        # 🆕 ai_answer 구조 추가
+        # ai_answer 구조 추가 - 오디오 제거, 프론트엔드 호환을 위해 resume_id도 추가
         response['ai_answer'] = {
-            'audio': current_question_audio,
             'metadata': {
-                'ai_resume_id': ai_resume_id
+                'ai_resume_id': ai_resume_id,
+                'resume_id': ai_resume_id  # 프론트엔드 호환성을 위한 필드
             }
         }
         
@@ -1396,6 +1129,7 @@ class Orchestrator:
         response['ai_resume_id'] = ai_resume_id
         response['metadata'] = {
             'ai_resume_id': ai_resume_id,
+            'resume_id': ai_resume_id,  # 프론트엔드 호환성을 위한 필드
             'session_id': self.session_id,
             'interviewer_type': content_type
         }
@@ -1416,22 +1150,17 @@ class Orchestrator:
         latest_ai_answer = self.session_state.get('latest_ai_answer')
         latest_ai_answer_audio = self.session_state.get('latest_ai_answer_audio')
         
-        print(f"[🎵 AUDIO] AI 데이터 전달 체크:")
+        print(f"[📝 TEXT] AI 데이터 전달 체크:")
         print(f"  - latest_ai_question 존재: {bool(latest_ai_question)}")
         print(f"  - latest_ai_answer 존재: {bool(latest_ai_answer)}")
-        print(f"  - latest_ai_answer_audio 존재: {bool(latest_ai_answer_audio)}")
         
         if latest_ai_question:
             response['ai_question'] = {
                 'content': latest_ai_question
             }
-            print(f"[🎵 AUDIO] AI 질문 전달: {latest_ai_question[:50]}...")
+            print(f"[📝 TEXT] AI 질문 전달: {latest_ai_question[:50]}...")
             
-            # AI 질문용 TTS 생성 (즉시 생성)
-            ai_question_audio = await self._generate_tts(latest_ai_question)
-            if ai_question_audio:
-                response['ai_question_audio'] = ai_question_audio
-                print(f"[🎵 AUDIO] ✅ AI 질문 오디오 생성 완료: {len(ai_question_audio)} chars")
+            # TTS 생성 제거 - 프론트엔드에서 처리
             
             # 한번 전달 후 삭제
             del self.session_state['latest_ai_question']
@@ -1440,58 +1169,24 @@ class Orchestrator:
             response['ai_answer'] = {
                 'content': latest_ai_answer
             }
-            print(f"[🎵 AUDIO] AI 답변 전달: {latest_ai_answer[:50]}...")
-            
-            if latest_ai_answer_audio:
-                response['ai_answer_audio'] = latest_ai_answer_audio
-                print(f"[🎵 AUDIO] ✅ AI 답변 오디오 전달 완료: {len(latest_ai_answer_audio)} chars")
-            else:
-                print(f"[🎵 AUDIO] ⚠️ AI 답변 오디오 누락")
+            print(f"[📝 TEXT] AI 답변 전달: {latest_ai_answer[:50]}...")
             
             # 한번 전달 후 삭제
             del self.session_state['latest_ai_answer']
-            if 'latest_ai_answer_audio' in self.session_state:
-                del self.session_state['latest_ai_answer_audio']
         
-        # 🆕 사용자 질문 오디오 포함
-        question_audio = self.session_state.get('question_audio')
-        
+        # 사용자 질문 텍스트 확인 - 오디오 제거
         if question_text and question_text.strip():
-            print(f"[🎵 AUDIO] 사용자 질문 확인: {question_text[:50]}...")
-            
-            if question_audio:
-                response['question_audio'] = question_audio
-                print(f"[🎵 AUDIO] ✅ 사용자 질문 오디오 전달 완료: {len(question_audio)} chars")
-                # 한번 사용 후 삭제
-                del self.session_state['question_audio']
-            else:
-                print(f"[🎵 AUDIO] ⚠️ 사용자 질문 오디오 누락")
+            print(f"[📝 TEXT] 사용자 질문 확인: {question_text[:50]}...")
         else:
-            print(f"[🎵 AUDIO] 사용자 질문이 비어있음")
+            print(f"[📝 TEXT] 사용자 질문이 비어있음")
         
-        # 🆕 최종 응답 상태 로그
-        audio_fields = ['intro_audio', 'ai_question_audio', 'ai_answer_audio', 'question_audio']
-        audio_status = {}
-        for field in audio_fields:
-            if field in response:
-                audio_status[field] = f"✅ {len(response[field])} chars"
-            else:
-                audio_status[field] = "❌ 없음"
+        # 최종 응답 상태 로그 - 오디오 제거
+        print(f"[📝 REALTIME] === 텍스트 전용 처리 완료 ===")
+        print(f"[📝 REALTIME] TTS 생성: 프론트엔드에서 처리")
+        print(f"[📝 REALTIME] ✅ API 즉시 응답 준비 완료!")
         
-        print(f"[🎵 REALTIME] === 실시간 TTS 처리 완료 ===")
-        print(f"[🎵 REALTIME] TTS 생성: 즉시 완료, 재생 대기 없음")
-        print(f"[🎵 REALTIME] 오디오 데이터 상태:")
-        for field, status in audio_status.items():
-            print(f"[🎵 REALTIME]   - {field}: {status}")
-        print(f"[🎵 REALTIME] ✅ API 즉시 응답 준비 완료!")
-        
-        # 응답 JSON 출력 (오디오 데이터는 길이만 표시)
-        response_log = response.copy()
-        for field in audio_fields:
-            if field in response_log and response_log[field]:
-                response_log[field] = f"[AUDIO:{len(response_log[field])} chars]"
-        
-        print(json.dumps(response_log, indent=2, ensure_ascii=False))
+        # 응답 JSON 출력
+        print(json.dumps(response, indent=2, ensure_ascii=False))
         
         return response
 

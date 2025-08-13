@@ -4,6 +4,7 @@ import { useInterview } from '../contexts/InterviewContext';
 import { sessionApi, interviewApi, tokenManager } from '../services/api';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import SpeechIndicator from '../components/voice/SpeechIndicator';
+import { getInterviewState, markApiCallCompleted, debugInterviewState, setApiCallInProgress, isApiCallInProgress } from '../utils/interviewStateManager';
 
 const InterviewGO: React.FC = () => {
   const navigate = useNavigate();
@@ -94,6 +95,12 @@ const InterviewGO: React.FC = () => {
   const [isTTSPlaying, setIsTTSPlaying] = useState(false);
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
   
+  // 🔊 TTS 확인용 주석입니다 - TTS 실행 이력 추적
+  const [ttsList, setTtsList] = useState<{type: string, text: string, timestamp: string}[]>([]);
+  
+  // 🔊 TTS 확인용 주석입니다 - TTS 큐 시스템
+  const [ttsQueue, setTtsQueue] = useState<string[]>([]);
+  
   // 🆕 AI 질문/답변 관련 상태
   const [currentAIQuestion, setCurrentAIQuestion] = useState<string>('');
   const [currentAIAnswer, setCurrentAIAnswer] = useState<string>('');
@@ -121,6 +128,10 @@ const InterviewGO: React.FC = () => {
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // 🆕 API 호출 중복 방지를 위한 useRef
+  const apiCallCancelRef = useRef<AbortController | null>(null);
+  const isApiCallInProgressRef = useRef(false);
 
   // 🆕 타이머 관리
   useEffect(() => {
@@ -310,8 +321,179 @@ const InterviewGO: React.FC = () => {
     }
   };
 
-  // 🆕 백엔드 응답에 따른 currentPhase 업데이트 함수
-  const updatePhaseFromResponse = (response: any) => {
+  // 🆕 텍스트를 TTS로 변환하여 재생하는 함수
+  const generateAndPlayTTS = async (text: string, label: string = ""): Promise<void> => {
+    if (!text || !text.trim()) {
+      console.log(`[🔊 TTS] ${label} 텍스트가 비어있음 - TTS 건너뜀`);
+      return;
+    }
+
+    // 🔊 TTS 확인용 주석입니다 - 실행된 TTS를 리스트에 추가
+    const ttsEntry = {
+      type: label,
+      text: text.trim(),
+      timestamp: new Date().toLocaleTimeString()
+    };
+    setTtsList(prev => [...prev, ttsEntry]);
+
+    try {
+      console.log(`[🔊 TTS] ${label} TTS 생성 시작: ${text.slice(0, 50)}...`);
+      
+      // 백엔드 TTS API 호출
+      const response = await fetch('http://localhost:8000/interview/tts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: text.trim(),
+          voice_id: "21m00Tcm4TlvDq8ikWAM" // Rachel 음성
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`TTS API 오류: ${response.status}`);
+      }
+
+      const audioData = await response.arrayBuffer();
+      console.log(`[🔊 TTS] ${label} TTS 생성 완료, 재생 시작`);
+
+      // 오디오 재생
+      const audioBlob = new Blob([audioData], { type: 'audio/mp3' });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+
+      // 재생 완료 대기
+      await new Promise<void>((resolve, reject) => {
+        audio.onended = () => {
+          console.log(`[🔊 TTS] ${label} TTS 재생 완료`);
+          URL.revokeObjectURL(audioUrl);
+          resolve();
+        };
+        audio.onerror = () => {
+          console.error(`[🔊 TTS] ${label} TTS 재생 실패`);
+          URL.revokeObjectURL(audioUrl);
+          reject(new Error('TTS 재생 실패'));
+        };
+        audio.play().catch(reject);
+      });
+
+    } catch (error) {
+      console.error(`[🔊 TTS] ${label} TTS 처리 실패:`, error);
+    }
+  };
+
+  // 🔊 TTS 확인용 주석입니다 - 큐에 텍스트 추가 함수 (더 이상 사용하지 않음 - 동기적 수집 방식으로 변경)
+  // const addToTTSQueue = (text: string, label: string = "") => {
+  //   if (text && text.trim()) {
+  //     setTtsQueue(prev => [...prev, text.trim()]);
+  //     console.log(`🔊 [큐 추가] ${label}: ${text.substring(0, 50)}...`);
+  //   }
+  // };
+
+  // 🔊 TTS 확인용 주석입니다 - 전달받은 항목들을 순차 처리
+  const processTTSQueue = async (ttsItems: string[] = []) => {
+    console.log(`🔊 [큐 처리] 함수 호출됨 - 처리할 항목 수: ${ttsItems.length}`);
+    console.log(`🔊 [큐 처리] 처리 항목들:`, ttsItems.map(item => item.substring(0, 50) + '...'));
+    
+    if (ttsItems.length === 0) {
+      console.log('🔊 [큐 처리] 처리할 TTS 없음 - 종료');
+      return;
+    }
+    
+    console.log(`🔊 [큐 처리] ${ttsItems.length}개 항목 순차 처리 시작`);
+    
+    for (let i = 0; i < ttsItems.length; i++) {
+      const text = ttsItems[i];
+      console.log(`🔊 [큐 처리] ${i + 1}/${ttsItems.length} 처리 중: ${text.substring(0, 50)}...`);
+      
+      try {
+        await generateAndPlayTTS(text, `큐 처리 ${i + 1}`);
+        console.log(`🔊 [큐 처리] ${i + 1}/${ttsItems.length} 완료`);
+      } catch (error) {
+        console.error(`🔊 [큐 처리] ${i + 1}/${ttsItems.length} 실패:`, error);
+      }
+    }
+    
+    console.log('🔊 [큐 처리] 모든 TTS 처리 완료');
+  };
+
+  // 🆕 백엔드 응답에서 TTS 처리 (동기적 수집 방식)
+  const handleTTSFromResponse = async (response: any, task?: string, status?: string): Promise<string[]> => {
+    try {
+      console.log('[🔊 TTS] 응답에서 TTS 처리 시작');
+      
+      // 즉시 TTS: 인트로 메시지
+      if (response.intro_message) {
+        await generateAndPlayTTS(response.intro_message, "INTRO");
+      }
+
+      // 첫 질문은 즉시 TTS (사용자가 들어야 하니까)
+      const isFirstQuestion = !state.questions || state.questions.length === 0;
+      if (isFirstQuestion && response.content?.content) {
+        await generateAndPlayTTS(response.content.content, "첫 질문");
+        return []; // 첫 질문은 즉시 처리했으므로 빈 배열 반환
+      } else {
+        // 🔊 TTS 처리를 위한 항목들을 동기적으로 수집
+        const ttsItems: string[] = [];
+        
+        // 🔊 백엔드에서 제공한 순서대로 수집
+        if (response.tts_queue && Array.isArray(response.tts_queue)) {
+          console.log(`🔊 [백엔드 큐] ${response.tts_queue.length}개 항목을 순서대로 수집`);
+          response.tts_queue.forEach((item: any, index: number) => {
+            if (item.content) {
+              console.log(`🔊 [백엔드 큐] ${index + 1}. ${item.type}: ${item.content.substring(0, 50)}...`);
+              ttsItems.push(item.content);
+            }
+          });
+        } else {
+          // 🔊 기존 방식 fallback - 생성 순서대로 수집
+          console.log('🔊 [백엔드 큐] tts_queue 없음 - 기존 방식으로 수집');
+          
+          if (response.ai_question?.content) {
+            console.log(`🔊 [수집] AI 질문: ${response.ai_question.content.substring(0, 50)}...`);
+            ttsItems.push(response.ai_question.content);
+          }
+          if (response.ai_answer?.content) {
+            console.log(`🔊 [수집] AI 답변: ${response.ai_answer.content.substring(0, 50)}...`);
+            ttsItems.push(response.ai_answer.content);
+          }
+          if (response.content?.content || response.content?.question) {
+            const questionText = response.content.content || response.content.question;
+            console.log(`🔊 [수집] 사용자 질문: ${questionText.substring(0, 50)}...`);
+            ttsItems.push(questionText);
+          }
+          
+          // 🔊 면접 종료 시 종료 메시지 처리 (백엔드 message 필드 사용)
+          if (response.message && (task === 'end_interview' || status === 'completed')) {
+            console.log(`🔊 [수집] 면접 종료 메시지: ${response.message.substring(0, 50)}...`);
+            ttsItems.push(response.message);
+          }
+        }
+        
+        console.log(`[🔊 TTS] 응답 TTS 처리 완료 - ${ttsItems.length}개 항목 수집됨`);
+        return ttsItems;
+      }
+      
+    } catch (error) {
+      console.error('[🔊 TTS] 응답 TTS 처리 중 오류:', error);
+      return [];
+    }
+  };
+
+  // 🔊 TTS 확인용 주석입니다 - TTS 이력 출력 함수
+  const showTTSHistory = () => {
+    console.log('🔊 === TTS 실행 이력 전체 목록 ===');
+    ttsList.forEach((entry, index) => {
+      console.log(`${index + 1}. [${entry.timestamp}] ${entry.type}: ${entry.text.substring(0, 50)}${entry.text.length > 50 ? '...' : ''}`);
+    });
+    console.log(`🔊 총 ${ttsList.length}개의 TTS가 실행되었습니다.`);
+    console.log('🔊 === TTS 이력 종료 ===');
+  };
+
+
+  // 🆕 백엔드 응답에 따른 currentPhase 업데이트 함수 + TTS 처리
+  const updatePhaseFromResponse = async (response: any): Promise<{ ttsItems: string[], isEndInterview: boolean }> => {
     console.log('🔄 === 전체 응답 구조 분석 START ===');
     console.log('📋 응답 객체 전체:', JSON.stringify(response, null, 2));
     console.log('🔍 메타데이터 분석:');
@@ -325,19 +507,25 @@ const InterviewGO: React.FC = () => {
     // AI 응답에서 resume_id 추출 및 Context 업데이트
     extractAndSaveAIResumeId(response);
     
+    // 변수들을 먼저 추출
     const nextAgent = response?.metadata?.next_agent;
     const task = response?.metadata?.task;
     const status = response?.status;
+    
+    // 🆕 TTS 처리 - 하이브리드 방식 (즉시 + 수집)
+    const collectedTTSItems = await handleTTSFromResponse(response, task, status);
     const turnInfo = response?.turn_info;
 
     console.log('🔍 Phase 판단:', { nextAgent, task, status, turnInfo });
 
     if (task === 'end_interview' || status === 'completed') {
-        setCurrentPhase('interview_completed');
-        setCurrentTurn('waiting');
+        // 🔊 end_interview 시에는 TTS 처리 후 면접 완료 처리를 submitAnswer에서 수행
+        console.log('🔍 면접 종료 응답 감지 - TTS 처리 후 완료 처리 예정');
+        // 임시로 사용자 턴으로 설정 (TTS 처리 후 변경될 예정)
+        setCurrentPhase('user_turn');
+        setCurrentTurn('user');
         setIsTimerActive(false);
         setCanSubmit(false);
-        console.log('✅ 면접 완료로 설정됨');
     } else if (nextAgent === 'user' || status === 'waiting_for_user' || turnInfo?.is_user_turn) {
         setCurrentPhase('user_turn');
         setCurrentTurn('user');
@@ -390,18 +578,21 @@ const InterviewGO: React.FC = () => {
         console.log('🤖 AI 답변 상태 업데이트:', aiAnswer);
     }
 
-    // 🆕 백엔드에서 생성된 오디오들을 순차 재생
-    console.log('🔍 백엔드 오디오 데이터 분석:');
-    console.log('  - INTRO 오디오 존재:', !!response.intro_audio);
-    console.log('  - AI 질문 오디오 존재:', !!response.ai_question_audio);
-    console.log('  - AI 답변 오디오 존재:', !!response.ai_answer_audio);
-    console.log('  - 사용자 질문 오디오 존재:', !!response.question_audio);
+    // 🆕 백엔드에서 전달된 텍스트 데이터들을 확인하고 순차 TTS 재생
+    console.log('🔍 백엔드 텍스트 데이터 분석:');
+    console.log('  - INTRO 메시지 존재:', !!response.intro_message, response.intro_message ? `(${response.intro_message.length}자)` : '');
+    console.log('  - AI 질문 텍스트 존재:', !!response.ai_question?.content, response.ai_question?.content ? `(${response.ai_question.content.length}자)` : '');
+    console.log('  - AI 답변 텍스트 존재:', !!response.ai_answer?.content, response.ai_answer?.content ? `(${response.ai_answer.content.length}자)` : '');
+    console.log('  - 사용자 질문 텍스트 존재:', !!response.content?.content, response.content?.content ? `(${response.content.content.length}자)` : '');
     
-    // 백엔드에서 생성된 모든 오디오를 순차적으로 재생
-    playSequentialAudio(response);
+    // 🔊 TTS 확인용 주석입니다 - 큐 시스템으로 대체됨 (중복 방지)
     
     // 🎤 녹음 권한 및 상태 업데이트
     updateVoicePermissions();
+    
+    // 🔊 수집된 TTS 항목들 반환 (end_interview 플래그 포함)
+    const isEndInterview = task === 'end_interview' || status === 'completed';
+    return { ttsItems: collectedTTSItems, isEndInterview };
   };
 
   // 🆕 턴 상태 업데이트 함수 (JSON 응답 기반) - 기존 함수 유지
@@ -474,21 +665,37 @@ const InterviewGO: React.FC = () => {
       // 면접 시작 시 받은 응답에서 턴 정보 확인
       const checkInitialTurnStatus = async () => {
         try {
-          // 1. 먼저 localStorage에서 면접 시작 응답 확인
-          const savedState = localStorage.getItem('interview_state');
-          if (savedState) {
-            const parsedState = JSON.parse(savedState);
+          // 1. 먼저 localStorage에서 면접 시작 응답 확인 (유틸리티 함수 사용)
+          debugInterviewState(); // 디버그 정보 출력
+          const parsedState = getInterviewState();
+          if (parsedState) {
             console.log('📦 localStorage에서 면접 상태 확인:', parsedState);
             
-            // 🆕 API 호출이 필요한 경우 (환경 체크에서 온 경우)
+            // 🆕 API 호출이 필요한 경우 (환경 체크에서 온 경우) + 중복 방지 강화
             if (parsedState.needsApiCall && !parsedState.apiCallCompleted) {
+              console.log('🎯 API 호출 조건 충족: needsApiCall=true, apiCallCompleted=false');
+              
+              // 🚦 메모리 기반 중복 호출 체크 (React Strict Mode 대응)
+              if (isApiCallInProgress(parsedState.sessionId) || isApiCallInProgressRef.current) {
+                console.log('⚠️ API 이미 진행 중 - 중복 호출 방지 (메모리 기반)');
+                return;
+              }
+              
               console.log('🚀 환경 체크에서 온 새로운 면접 - 첫 질문 로딩 시작');
               setCurrentQuestion("첫 번째 질문을 준비하고 있습니다...");
               setCurrentPhase('waiting');
               setCurrentTurn('waiting');
               setIsLoading(true);
               
+              // 🚦 호출 진행 상태 설정 (메모리 + 전역)
+              isApiCallInProgressRef.current = true;
+              setApiCallInProgress(parsedState.sessionId, true);
+              
               try {
+                // 🆕 AbortController 설정 (cleanup을 위한)
+                const abortController = new AbortController();
+                apiCallCancelRef.current = abortController;
+                
                 let response: any;
                 const finalSettings = parsedState.settings;
                 
@@ -498,6 +705,12 @@ const InterviewGO: React.FC = () => {
                 } else {
                   console.log('👤 일반 모드 - API 호출 시작');
                   response = await interviewApi.startInterview(finalSettings);
+                }
+                
+                // AbortController 확인 (호출이 취소되었으면 중단)
+                if (abortController.signal.aborted) {
+                  console.log('⚠️ API 호출이 취소됨 - 처리 중단');
+                  return;
                 }
                 
                 console.log('✅ 첫 질문 로딩 완료:', response);
@@ -581,33 +794,81 @@ const InterviewGO: React.FC = () => {
                 
                 // 🆕 첫 번째 응답에서도 TTS 재생 처리
                 console.log('🎵 첫 번째 응답 TTS 재생 처리 시작');
-                updatePhaseFromResponse(response);
+                const { ttsItems: firstResponseTTSItems, isEndInterview: firstEndInterview } = await updatePhaseFromResponse(response);
+                await processTTSQueue(firstResponseTTSItems);
+                
+                // 첫 응답에서는 일반적으로 end_interview가 아니지만 혹시 모르니 처리
+                if (firstEndInterview) {
+                  showTTSHistory();
+                  setCurrentPhase('interview_completed');
+                  setCurrentTurn('waiting');
+                  setIsTimerActive(false);
+                  setCanSubmit(false);
+                }
                 
                 setIsLoading(false);
                 
-                // 🆕 즉시 localStorage 업데이트 (재호출 방지)
-                const updatedState = {
-                  ...parsedState,
-                  sessionId: response.session_id || parsedState.sessionId, // 실제 세션 ID 우선 사용
-                  apiCallCompleted: true, // 🆕 즉시 완료 표시로 재호출 방지
-                  interviewStartResponse: response,
-                  questions: questionData ? [questionData] : []
-                };
-                localStorage.setItem('interview_state', JSON.stringify(updatedState));
-                console.log('💾 localStorage 즉시 업데이트 완료 - 재호출 방지');
+                // 🆕 즉시 API 호출 완료 상태로 업데이트 (재호출 방지)
+                markApiCallCompleted(response);
                 
+                // 🚦 로컬 호출 상태 리셋
+                isApiCallInProgressRef.current = false;
+                apiCallCancelRef.current = null;
+                
+                console.log('💾 localStorage 즉시 업데이트 완료 - 재호출 방지');
                 console.log('✅ 첫 질문 로딩 및 면접 시작 완료');
                 return;
                 
               } catch (error) {
                 console.error('❌ 첫 질문 로딩 실패:', error);
+                
+                // AbortError인 경우 (cleanup에 의한 취소) 별도 처리
+                if (error instanceof Error && error.name === 'AbortError') {
+                  console.log('⚠️ API 호출이 cleanup에 의해 취소됨');
+                  return;
+                }
+                
                 setCurrentQuestion("질문 로딩에 실패했습니다. 새로고침해주세요.");
                 setIsLoading(false);
                 setCurrentPhase('unknown');
                 setCurrentTurn('waiting');
                 
+                // 🆕 에러 상황에서도 재호출 방지 플래그 설정 (유틸리티 사용)
                 const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
+                markApiCallCompleted(undefined, errorMessage);
+                
+                // 🚦 로컬 호출 상태 리셋
+                isApiCallInProgressRef.current = false;
+                apiCallCancelRef.current = null;
+                
+                console.log('💾 API 에러 상태로 localStorage 업데이트 (재호출 방지)');
+                
                 alert(`면접 시작에 실패했습니다: ${errorMessage}\n\n다시 시도해주세요.`);
+                return;
+              }
+            }
+            
+            // 🆕 API 호출이 이미 완료된 경우 (중복 호출 방지)
+            if (parsedState.needsApiCall && parsedState.apiCallCompleted) {
+              console.log('⚠️ API 이미 호출 완료됨 - 재호출 건너뛰기');
+              console.log('📄 저장된 응답 사용:', parsedState.interviewStartResponse);
+              
+              // 저장된 응답이 있으면 그것을 사용
+              if (parsedState.interviewStartResponse) {
+                const { ttsItems: savedResponseTTSItems, isEndInterview: savedEndInterview } = await updatePhaseFromResponse(parsedState.interviewStartResponse);
+                await processTTSQueue(savedResponseTTSItems);
+                
+                // 저장된 응답이 end_interview인 경우 처리
+                if (savedEndInterview) {
+                  showTTSHistory();
+                  setCurrentPhase('interview_completed');
+                  setCurrentTurn('waiting');
+                  setIsTimerActive(false);
+                  setCanSubmit(false);
+                  return;
+                }
+                const question = parsedState.interviewStartResponse.content?.content || "질문을 불러오는 중...";
+                setUserTurnState(question, "저장된 응답");
                 return;
               }
             }
@@ -664,6 +925,17 @@ const InterviewGO: React.FC = () => {
       
       checkInitialTurnStatus();
     }
+    
+    // 🧹 Cleanup 함수 - 컴포넌트 언마운트 또는 의존성 변경 시 API 호출 취소
+    return () => {
+      if (apiCallCancelRef.current) {
+        console.log('🧹 useEffect cleanup - API 호출 취소');
+        apiCallCancelRef.current.abort();
+        apiCallCancelRef.current = null;
+      }
+      // 로컬 호출 상태 리셋
+      isApiCallInProgressRef.current = false;
+    };
   }, [isRestoring, state.sessionId, dispatch]);
 
   // 🆕 주기적 턴 상태 확인 제거 - 턴 정보는 답변 제출 후 응답에서만 받아옴
@@ -730,8 +1002,26 @@ const InterviewGO: React.FC = () => {
       console.log('✅ 답변 제출 성공:', result);
       setCurrentAnswer(''); // 답변 초기화
       
-      // 백엔드 응답에 따른 턴 상태 업데이트
-      updatePhaseFromResponse(result);
+      // 백엔드 응답에 따른 턴 상태 업데이트 + TTS 수집
+      const { ttsItems, isEndInterview } = await updatePhaseFromResponse(result);
+      
+      // 🔊 TTS 확인용 주석입니다 - 수집된 TTS 항목들을 순차 처리
+      await processTTSQueue(ttsItems);
+      
+      // 🔊 면접 종료 시 완료 처리
+      if (isEndInterview) {
+        console.log('🔊 면접 종료 TTS 처리 완료 - 면접 완료 상태로 변경');
+        
+        // TTS 이력 출력
+        showTTSHistory();
+        
+        // 면접 완료 상태로 변경
+        setCurrentPhase('interview_completed');
+        setCurrentTurn('waiting');
+        setIsTimerActive(false);
+        setCanSubmit(false);
+        console.log('✅ 면접 완료로 설정됨');
+      }
       
     } catch (error: any) {
       console.error('❌ 답변 제출 오류:', error);
@@ -1012,6 +1302,14 @@ const InterviewGO: React.FC = () => {
   // 🆕 피드백 처리 함수들
   const triggerBackgroundFeedback = async (qaHistory: any[]) => {
     try {
+      // 🔊 TTS 확인용 주석입니다 - 전체 TTS 실행 이력 출력
+      console.log('🔊 === TTS 실행 이력 전체 목록 ===');
+      ttsList.forEach((entry, index) => {
+        console.log(`${index + 1}. [${entry.timestamp}] ${entry.type}: ${entry.text.substring(0, 50)}${entry.text.length > 50 ? '...' : ''}`);
+      });
+      console.log(`🔊 총 ${ttsList.length}개의 TTS가 실행되었습니다.`);
+      console.log('🔊 === TTS 이력 종료 ===');
+      
       console.log('🔄 백그라운드 피드백 처리 시작...');
       
       // qa_history를 사용자와 AI로 분리
