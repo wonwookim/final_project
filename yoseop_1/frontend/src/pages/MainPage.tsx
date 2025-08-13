@@ -12,9 +12,9 @@ const MainPage: React.FC = () => {
   const { totalInterviews, averageScore, lastInterviewDate, isLoading: statsLoading } = useInterviewStats();
   
   const stats = {
-    totalInterviews: totalInterviews || 1,
-    averageScore: averageScore || 87,
-    lastInterviewDate: lastInterviewDate || '2025-07-25'
+    totalInterviews: statsLoading ? 0 : (totalInterviews || 0),
+    averageScore: statsLoading ? 0 : (averageScore || 0),
+    lastInterviewDate: statsLoading ? null : (lastInterviewDate || null)
   };
 
   const handleStartInterview = () => {
@@ -106,7 +106,7 @@ const MainPage: React.FC = () => {
           </div>
           
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200 text-center">
-            <div className="text-3xl font-bold text-purple-600 mb-2">1</div>
+            <div className="text-3xl font-bold text-purple-600 mb-2">{stats.totalInterviews}</div>
             <div className="text-slate-600">면접 기록</div>
           </div>
         </div>

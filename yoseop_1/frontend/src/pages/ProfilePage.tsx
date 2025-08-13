@@ -809,12 +809,15 @@ const ProfilePage: React.FC = () => {
                         </div>
                         {getStatusBadge(interview.status)}
                         <button 
-                          onClick={() => navigate('/interview/results', { 
-                            state: { 
-                              interviewId: interview.session_id,
-                              skipApiCall: true 
+                          onClick={() => {
+                            console.log('🔍 ProfilePage 결과 보기 클릭:', interview.session_id);
+                            if (!interview.session_id) {
+                              console.error('❌ session_id가 없습니다:', interview);
+                              alert('면접 결과를 불러올 수 없습니다. 데이터가 손상되었을 수 있습니다.');
+                              return;
                             }
-                          })}
+                            navigate(`/interview/results/${interview.session_id}`);
+                          }}
                           className="text-blue-600 hover:text-blue-700 px-3 py-1 rounded text-sm"
                         >
                           결과 보기

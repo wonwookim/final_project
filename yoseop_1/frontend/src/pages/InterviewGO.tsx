@@ -5,6 +5,9 @@ import { sessionApi, interviewApi, tokenManager } from '../services/api';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import SpeechIndicator from '../components/voice/SpeechIndicator';
 
+// API Base URL 설정
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
 const InterviewGO: React.FC = () => {
   const navigate = useNavigate();
   const { state, dispatch } = useInterview();
@@ -480,9 +483,16 @@ const InterviewGO: React.FC = () => {
             const parsedState = JSON.parse(savedState);
             console.log('📦 localStorage에서 면접 상태 확인:', parsedState);
             
-            // 🆕 API 호출이 필요한 경우 (환경 체크에서 온 경우)
-            if (parsedState.needsApiCall && !parsedState.apiCallCompleted) {
-              console.log('🚀 환경 체크에서 온 새로운 면접 - 첫 질문 로딩 시작');
+            // 🆕 API 호출이 필요한 경우 (환경 체크에서 온 경우) - 조건 완화
+            if ((parsedState.needsApiCall && !parsedState.apiCallCompleted) || 
+                (!parsedState.questions || parsedState.questions.length === 0)) {
+              console.log('🚀 환경 체크에서 온 새로운 면접 또는 질문이 없는 경우 - 첫 질문 로딩 시작');
+              console.log('🔍 상태 확인:', {
+                needsApiCall: parsedState.needsApiCall,
+                apiCallCompleted: parsedState.apiCallCompleted,
+                questionsLength: parsedState.questions?.length || 0,
+                hasSettings: !!parsedState.settings
+              });
               setCurrentQuestion("첫 번째 질문을 준비하고 있습니다...");
               setCurrentPhase('waiting');
               setCurrentTurn('waiting');
@@ -867,7 +877,7 @@ const InterviewGO: React.FC = () => {
       
       console.log('🗣️ STT 요청 전송 중...');
       
-      const response = await fetch('http://localhost:8000/interview/stt', {
+      const response = await fetch(`${API_BASE_URL}/interview/stt`, {
         method: 'POST',
         body: formData
       });
@@ -1092,7 +1102,7 @@ const InterviewGO: React.FC = () => {
       console.log('📤 피드백 평가 API 호출 중...');
       
       // 피드백 평가 API 호출
-      const response = await fetch('http://localhost:8000/interview/feedback/evaluate', {
+      const response = await fetch(`${API_BASE_URL}/interview/feedback/evaluate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1112,7 +1122,7 @@ const InterviewGO: React.FC = () => {
         for (const evalResult of result.results) {
           if (evalResult.interview_id) {
             try {
-              const planResponse = await fetch('http://localhost:8000/interview/feedback/plans', {
+              const planResponse = await fetch(`${API_BASE_URL}/interview/feedback/plans`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json'

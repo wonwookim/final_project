@@ -23,30 +23,59 @@ interface SummaryData {
   overallScore: number;
   strengths: string[];
   weaknesses: string[];
+  feedback: string;
+  summary: string;
 }
 
 interface LongTermFeedback {
   shortTerm: {
-    immediateActions: string[];
-    nextInterviewPrep: string[];
-    specificImprovements: string[];
+    title: string;
+    improvements: {
+      category: string;
+      items: any[];
+    }[];
   };
   longTerm: {
-    skillDevelopment: string[];
-    experienceAreas: string[];
-    careerPath: string[];
+    title: string;
+    improvements: {
+      category: string;
+      items: any[];
+    }[];
   };
 }
 
 const InterviewResults: React.FC = () => {
   const navigate = useNavigate();
-  const { sessionId } = useParams<{ sessionId: string }>();
+  const { interviewId } = useParams<{ interviewId: string }>();
   const location = useLocation();
   
-  // 디버깅: URL 파라미터 확인
-  console.log('🔍 DEBUG - URL params:', useParams());
-  console.log('🔍 DEBUG - sessionId:', sessionId);
-  console.log('🔍 DEBUG - location pathname:', location.pathname);
+  // 강화된 디버깅 - 백엔드 로그로도 출력
+  useEffect(() => {
+    const debugInfo = {
+      componentMounted: 'InterviewResults',
+      currentURL: window.location.href,
+      interviewId: interviewId,
+      interviewIdType: typeof interviewId,
+      locationPathname: location.pathname,
+      interviewIdExists: !!interviewId,
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log('🚀 =====InterviewResults 컴포넌트 마운트=====');
+    console.log('🔍 디버깅 정보:', debugInfo);
+    
+    // API 호출해서 백엔드 로그에도 출력
+    fetch('/api', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        log: 'FRONTEND_DEBUG',
+        component: 'InterviewResults', 
+        data: debugInfo 
+      })
+    }).catch(e => console.log('백엔드 로그 전송 실패:', e));
+    
+  }, [interviewId, location.pathname]);
   const [activeTab, setActiveTab] = useState<'user' | 'ai' | 'longterm'>('user');
   const [isLoading, setIsLoading] = useState(true);
   const [feedbackData, setFeedbackData] = useState<FeedbackData[]>([]);
@@ -106,7 +135,9 @@ const InterviewResults: React.FC = () => {
       "구체적인 성과 수치 부족",
       "회사에 대한 이해도 개선 필요",
       "자신감 있는 어조 연습 필요"
-    ]
+    ],
+    feedback: "전반적으로 좋은 답변이었습니다.",
+    summary: "면접 준비가 잘 되어 있습니다."
   };
 
   const mockAiSummary: SummaryData = {
@@ -123,109 +154,103 @@ const InterviewResults: React.FC = () => {
       "너무 형식적인 답변",
       "개인적 특색 부족",
       "감정적 연결 부족"
-    ]
+    ],
+    feedback: "기술적 전문성이 우수합니다.",
+    summary: "매우 인상적인 답변이었습니다."
   };
 
   const mockLongTermFeedback: LongTermFeedback = {
     shortTerm: {
-      immediateActions: [
-        "구체적인 성과 수치를 포함한 답변 준비",
-        "지원 회사에 대한 더 깊은 조사",
-        "자신감 있는 어조로 연습"
-      ],
-      nextInterviewPrep: [
-        "STAR 방법론을 활용한 답변 구조화",
-        "회사별 맞춤 답변 준비",
-        "모의 면접 연습 강화"
-      ],
-      specificImprovements: [
-        "답변 시간 관리 연습",
-        "비언어적 커뮤니케이션 개선",
-        "질문 예상 및 준비"
+      title: "단기 개선 계획 (1-3개월)",
+      improvements: [
+        {
+          category: "immediate actions",
+          items: [
+            "구체적인 성과 수치를 포함한 답변 준비",
+            "지원 회사에 대한 더 깊은 조사",
+            "자신감 있는 어조로 연습"
+          ]
+        },
+        {
+          category: "next interview prep",
+          items: [
+            "STAR 방법론을 활용한 답변 구조화",
+            "회사별 맞춤 답변 준비",
+            "모의 면접 연습 강화"
+          ]
+        }
       ]
     },
     longTerm: {
-      skillDevelopment: [
-        "프로젝트 관리 및 리더십 경험 축적",
-        "기술적 전문성 심화",
-        "비즈니스 이해도 향상"
-      ],
-      experienceAreas: [
-        "다양한 프로젝트 유형 경험",
-        "팀 리딩 및 멘토링 경험",
-        "업계 트렌드 및 최신 기술 습득"
-      ],
-      careerPath: [
-        "시니어 개발자 역할 준비",
-        "기술 리더십 역량 개발",
-        "전문 분야 특화 및 브랜딩"
+      title: "장기 개선 계획 (6-12개월)",
+      improvements: [
+        {
+          category: "skill development",
+          items: [
+            "프로젝트 관리 및 리더십 경험 축적",
+            "기술적 전문성 심화",
+            "비즈니스 이해도 향상"
+          ]
+        },
+        {
+          category: "career path",
+          items: [
+            "시니어 개발자 역할 준비",
+            "기술 리더십 역량 개발",
+            "전문 분야 특화 및 브랜딩"
+          ]
+        }
       ]
     }
   };
 
-  // 면접 결과 데이터 로드 함수
-  const loadInterviewResults = useCallback(async (sessionId: string) => {
-    setIsLoading(true);
-    try {
-      // TODO: 실제 API 호출로 대체
-      // const response = await interviewApi.getInterviewResults(sessionId);
-      // setFeedbackData(response.feedbackData);
-      // setUserSummary(response.userSummary);
-      // setAiSummary(response.aiSummary);
-      // setLongTermFeedback(response.longTermFeedback);
-      
-      // 임시로 가라 데이터 사용
-      setTimeout(() => {
-        setFeedbackData(mockFeedbackData);
-        setUserSummary(mockUserSummary);
-        setAiSummary(mockAiSummary);
-        setLongTermFeedback(mockLongTermFeedback);
-        setIsLoading(false);
-      }, 1000);
-    } catch (error) {
-      console.error('면접 결과 로드 실패:', error);
-      setIsLoading(false);
-    }
-  }, [mockFeedbackData, mockUserSummary, mockAiSummary, mockLongTermFeedback]);
-
-  // 세션 ID가 없으면 기본 결과 페이지로 리다이렉트
-  useEffect(() => {
-    if (!sessionId) {
-      // 세션 ID가 없는 경우 (직접 접근) - 가라 데이터 사용
-      setFeedbackData(mockFeedbackData);
-      setUserSummary(mockUserSummary);
-      setAiSummary(mockAiSummary);
-      setLongTermFeedback(mockLongTermFeedback);
-      setIsLoading(false);
-    } else {
-      // 세션 ID가 있는 경우 - 실제 데이터 로드
-      loadInterviewResults(sessionId);
-    }
-  }, [sessionId, loadInterviewResults, mockAiSummary, mockFeedbackData, mockLongTermFeedback, mockUserSummary]);
-
-  // 면접 데이터 로드
+  // 면접 데이터 로드 함수 (먼저 선언)
   const loadInterviewData = useCallback(async () => {
-    if (!sessionId) {
-      console.error('Session ID가 없습니다');
+    if (!interviewId) {
+      console.error('Interview ID가 없습니다');
+      setIsLoading(false);
+      return;
+    }
+
+    // string을 int로 변환 및 유효성 검사
+    const interviewIdInt = parseInt(interviewId, 10);
+    if (isNaN(interviewIdInt) || interviewIdInt <= 0) {
+      console.error('유효하지 않은 Interview ID:', interviewId);
       setIsLoading(false);
       return;
     }
 
     try {
       setIsLoading(true);
-      console.log('면접 상세 데이터 로딩:', sessionId);
+      console.log('🔄 면접 상세 데이터 로딩 시작');
+      console.log('🔄 interviewId (string):', interviewId, typeof interviewId);
+      console.log('🔄 interviewId (int):', interviewIdInt, typeof interviewIdInt);
+      console.log('🔄 호출할 API URL:', `/interview/history/${interviewIdInt}`);
       
-      // /interview/history/{interview_id} API 호출
-      const details = await interviewApi.getInterviewDetails(sessionId);
-      console.log('받은 면접 데이터:', details);
+      // /interview/history/{interview_id} API 호출 (유효성 검증 후 원래 string으로 전달)
+      const response = await interviewApi.getInterviewDetails(interviewId!);
+      console.log('✅ 받은 면접 응답:', response);
+      console.log('✅ 응답 구조:', {
+        hasDetails: !!response.details,
+        detailsLength: response.details?.length || 0,
+        hasTotalFeedback: !!response.total_feedback,
+        hasPlans: !!response.plans
+      });
       
+      const details = response.details || response; // 이전 API 호환성을 위한 fallback
       setInterviewData(details);
       
       // DB 데이터를 UI 형식으로 변환 (question_index 별로 그룹핑)
       const groupedData: { [key: number]: any } = {};
       
-      details.forEach((item: any) => {
-        const questionIndex = item.question_index || item.sequence || 1;
+      console.log('🔧 details 원본 데이터:', details);
+      console.log('🔧 details 길이:', details.length);
+      
+      details.forEach((item: any, index: number) => {
+        console.log(`🔧 처리 중인 item ${index}:`, item);
+        console.log(`🔧 item.who: ${item.who}`);
+        
+        const questionIndex = item.question_index || item.sequence || index + 1;
         
         if (!groupedData[questionIndex]) {
           groupedData[questionIndex] = {
@@ -241,58 +266,221 @@ const InterviewResults: React.FC = () => {
           };
         }
         
+        // who 컬럼으로 역할별 데이터 분류
         if (item.who === 'user') {
           groupedData[questionIndex].userAnswer = item.answer || '';
-          const userFeedbackData = JSON.parse(item.feedback || '{}');
-          groupedData[questionIndex].userFeedback = userFeedbackData.evaluation || '';
-          groupedData[questionIndex].userScore = userFeedbackData.final_score || 0;
+          try {
+            const userFeedback = JSON.parse(item.feedback || '{}');
+            console.log(`🔧 question ${questionIndex} user feedback:`, userFeedback);
+            
+            groupedData[questionIndex].userFeedback = userFeedback.detailed_feedback || userFeedback.feedback || '';
+            groupedData[questionIndex].userScore = userFeedback.final_score || userFeedback.score || 0;
+            groupedData[questionIndex].userMemo = userFeedback.improvement_suggestions || userFeedback.memo || '';
+          } catch (error) {
+            console.log(`🔧 question ${questionIndex} user feedback 파싱 실패:`, error);
+            groupedData[questionIndex].userFeedback = item.feedback || '';
+          }
         } else if (item.who === 'ai_interviewer') {
           groupedData[questionIndex].aiAnswer = item.answer || '';
-          const aiFeedbackData = JSON.parse(item.feedback || '{}');
-          groupedData[questionIndex].aiFeedback = aiFeedbackData.evaluation || '';
-          groupedData[questionIndex].aiScore = aiFeedbackData.final_score || 0;
+          try {
+            const aiFeedback = JSON.parse(item.feedback || '{}');
+            console.log(`🔧 question ${questionIndex} ai feedback:`, aiFeedback);
+            
+            groupedData[questionIndex].aiFeedback = aiFeedback.detailed_feedback || aiFeedback.feedback || '';
+            groupedData[questionIndex].aiScore = aiFeedback.final_score || aiFeedback.score || 0;
+            groupedData[questionIndex].aiMemo = aiFeedback.improvement_suggestions || aiFeedback.memo || '';
+          } catch (error) {
+            console.log(`🔧 question ${questionIndex} ai feedback 파싱 실패:`, error);
+            groupedData[questionIndex].aiFeedback = item.feedback || '';
+          }
         }
       });
       
-      const processedData = Object.values(groupedData);
-      
-      setFeedbackData(processedData);
-      
-      // 사용자/AI 요약 데이터 생성
-      if (details.length > 0) {
-        const userItems = details.filter((item: any) => item.who === 'user');
-        const aiItems = details.filter((item: any) => item.who === 'ai_interviewer');
+      // UI 상태 업데이트
+      if (Object.keys(groupedData).length > 0) {
+        const feedbackArray = Object.values(groupedData).map((item, index) => ({
+          ...item,
+          questionIndex: index + 1
+        }));
         
-        if (userItems.length > 0) {
-          const avgScore = userItems.reduce((acc: number, item: any) => {
-            const feedback = JSON.parse(item.feedback || '{}');
-            return acc + (feedback.final_score || 0);
-          }, 0) / userItems.length;
+        console.log('🔧 feedbackArray 생성됨:', feedbackArray);
+        console.log('🔧 feedbackArray 길이:', feedbackArray.length);
+        setFeedbackData(feedbackArray);
+        console.log('🔧 setFeedbackData 호출 완료');
+        
+        // fallback 함수 정의
+        const generateFallbackSummaries = () => {
+          const userScores = details.map((item: any) => {
+            try {
+              const feedback = JSON.parse(item.feedback || '{}');
+              return feedback.final_score || 0;
+            } catch {
+              return 0;
+            }
+          }).filter((score: number) => score > 0);
           
-          setUserSummary({
-            clarity: Math.round(avgScore * 0.9),
-            structure: Math.round(avgScore * 0.85),
-            confidence: Math.round(avgScore * 0.8),
-            overallScore: Math.round(avgScore),
-            strengths: ['구체적인 경험 언급', '논리적 구조', '성실한 답변'],
-            weaknesses: ['자신감 부족', '구체성 개선 필요', '시간 관리']
-          });
-        }
-        
-        if (aiItems.length > 0) {
-          const avgScore = aiItems.reduce((acc: number, item: any) => {
-            const feedback = JSON.parse(item.feedback || '{}');
-            return acc + (feedback.final_score || 0);
-          }, 0) / aiItems.length;
+          if (userScores.length > 0) {
+            const avgScore = userScores.reduce((acc: number, score: number) => acc + score, 0) / userScores.length;
+            setUserSummary({
+              clarity: Math.round(avgScore * 0.9),
+              structure: Math.round(avgScore * 0.95),
+              confidence: Math.round(avgScore * 0.85),
+              overallScore: Math.round(avgScore),
+              strengths: ['구체적인 경험 사례', '논리적 답변 구조'],
+              weaknesses: ['답변 시간 관리', '핵심 포인트 강조'],
+              feedback: 'fallback 피드백입니다.',
+              summary: 'fallback 요약입니다.'
+            });
+          } else {
+            setUserSummary({
+              clarity: 70, structure: 75, confidence: 65, overallScore: 70,
+              strengths: ['면접 참여 의지'], weaknesses: ['답변 준비 부족'],
+              feedback: 'fallback 피드백입니다.',
+              summary: 'fallback 요약입니다.'
+            });
+          }
           
           setAiSummary({
-            clarity: Math.round(avgScore * 0.95),
-            structure: Math.round(avgScore * 0.9),
-            confidence: Math.round(avgScore * 0.92),
-            overallScore: Math.round(avgScore),
-            strengths: ['전문적 지식', '명확한 표현', '자신감 있는 태도'],
-            weaknesses: ['감정적 연결 부족', '형식적 답변', '개인적 특색 부족']
+            clarity: 85, structure: 88, confidence: 82, overallScore: 85,
+            strengths: ['논리적 답변 구조'], weaknesses: ['구체적 사례 부족'],
+            feedback: 'AI fallback 피드백입니다.',
+            summary: 'AI fallback 요약입니다.'
           });
+          
+          console.log('🔧 fallback summary 생성 완료');
+        };
+        
+        // setDefaultLongTermFeedback 함수 정의
+        const setDefaultLongTermFeedback = () => {
+          setLongTermFeedback({
+            shortTerm: {
+              title: "단기 개선 계획 (1-3개월)",
+              improvements: [
+                {
+                  category: "답변 스킬 개선",
+                  items: ["STAR 기법 활용", "모의 면접 실시", "자기소개 연습"]
+                },
+                {
+                  category: "의사소통 능력 향상",
+                  items: ["언어적 표현 연습", "청중 고려하기"]
+                }
+              ]
+            },
+            longTerm: {
+              title: "장기 개선 계획 (6-12개월)",
+              improvements: [
+                {
+                  category: "전문성 강화", 
+                  items: ["심화 학습", "프로젝트 수행", "멘토링 받기"]
+                },
+                {
+                  category: "실무 역량 개발",
+                  items: ["인턴십 참여", "오픈소스 기여"]
+                }
+              ]
+            }
+          });
+          console.log('🔧 longTermFeedback (기본값) 설정 완료');
+        };
+        
+        // 새로운 API 응답에서 total_feedback 사용
+        console.log('🔧 total_feedback:', response.total_feedback);
+        
+        if (response.total_feedback) {
+          try {
+            const totalFeedback = typeof response.total_feedback === 'string' 
+              ? JSON.parse(response.total_feedback)
+              : response.total_feedback;
+            
+            console.log('🔧 파싱된 total_feedback:', totalFeedback);
+            
+            // 사용자 피드백 처리
+            if (totalFeedback.user) {
+              const userScore = totalFeedback.user.overall_score || 0;
+              setUserSummary({
+                clarity: Math.round(userScore * 0.9),
+                structure: Math.round(userScore * 0.95),
+                confidence: Math.round(userScore * 0.85),
+                overallScore: userScore,
+                strengths: ['구체적인 경험 사례', '논리적 답변 구조'],
+                weaknesses: ['답변 시간 관리', '핵심 포인트 강조'],
+                feedback: totalFeedback.user.overall_feedback || '',
+                summary: totalFeedback.user.summary || ''
+              });
+              console.log('🔧 userSummary (total_feedback 기반) 생성 완료:', userScore);
+            }
+            
+            // AI 지원자 피드백 처리  
+            if (totalFeedback.ai_interviewer) {
+              const aiScore = totalFeedback.ai_interviewer.overall_score || 0;
+              setAiSummary({
+                clarity: Math.round(aiScore * 0.9),
+                structure: Math.round(aiScore * 0.95),
+                confidence: Math.round(aiScore * 0.85),
+                overallScore: aiScore,
+                strengths: ['논리적 답변 구조', '기술적 깊이'],
+                weaknesses: ['구체적 사례 부족', '회사 연관성 부족'],
+                feedback: totalFeedback.ai_interviewer.overall_feedback || '',
+                summary: totalFeedback.ai_interviewer.summary || ''
+              });
+              console.log('🔧 aiSummary (total_feedback 기반) 생성 완료:', aiScore);
+            }
+            
+          } catch (error) {
+            console.error('🔧 total_feedback 파싱 오류:', error);
+            // fallback: history_detail에서 점수 계산
+            generateFallbackSummaries();
+          }
+        } else {
+          // fallback: history_detail에서 점수 계산
+          generateFallbackSummaries();
+        }
+        
+        console.log('🔧 summary 생성 완료');
+        
+        // plans 테이블 데이터를 사용하여 장기 피드백 설정 (shortly_plan 컬럼에서만 파싱)
+        if (response.plans && response.plans.shortly_plan) {
+          try {
+            const planData = typeof response.plans.shortly_plan === 'string'
+              ? JSON.parse(response.plans.shortly_plan)
+              : response.plans.shortly_plan;
+            
+            console.log('🔧 plans 원본 데이터 (shortly_plan 컬럼):', planData);
+            console.log('🔧 planData.user:', planData?.user);
+            
+            // shortly_plan 컬럼에서 user의 단기/장기 계획 추출
+            const userShortPlan = planData?.user?.shortly_plan || {};
+            const userLongPlan = planData?.user?.long_plan || {};
+            
+            console.log('🔧 파싱된 사용자 계획:', { userShortPlan, userLongPlan });
+            
+            setLongTermFeedback({
+              shortTerm: {
+                title: "단기 개선 계획 (1-3개월)",
+                improvements: Object.entries(userShortPlan).map(([category, items]) => ({
+                  category: category.replace(/_/g, ' '),
+                  items: Array.isArray(items) ? items : []
+                }))
+              },
+              longTerm: {
+                title: "장기 개선 계획 (6-12개월)", 
+                improvements: Object.entries(userLongPlan).map(([category, items]) => ({
+                  category: category.replace(/_/g, ' '),
+                  items: Array.isArray(items) ? items : []
+                }))
+              }
+            });
+            
+            console.log('🔧 longTermFeedback (plans 기반) 설정 완료');
+            
+          } catch (error) {
+            console.error('🔧 plans 파싱 오류:', error);
+            // fallback으로 기본 계획 설정
+            setDefaultLongTermFeedback();
+          }
+        } else {
+          // plans 데이터가 없으면 기본 계획 설정
+          setDefaultLongTermFeedback();
         }
       } else {
         // 데이터가 없는 경우 빈 상태로 설정
@@ -310,14 +498,47 @@ const InterviewResults: React.FC = () => {
       setAiSummary(mockAiSummary);
       setLongTermFeedback(mockLongTermFeedback);
     } finally {
+      console.log('🔧 데이터 로딩 완료, isLoading을 false로 설정');
       setIsLoading(false);
     }
-  }, [sessionId]);
+  }, [interviewId]);
 
-  // 컴포넌트 마운트 시 데이터 로드
+  // 면접 결과 데이터 로드 함수
+  const loadInterviewResults = useCallback(async (interviewId: string) => {
+    console.log('🔄 loadInterviewResults 시작:', interviewId);
+    setIsLoading(true);
+    try {
+      // 실제 면접 데이터 로드
+      await loadInterviewData();
+    } catch (error) {
+      console.error('면접 결과 로드 실패:', error);
+      // 에러 시 mock 데이터 사용
+      setFeedbackData(mockFeedbackData);
+      setUserSummary(mockUserSummary);
+      setAiSummary(mockAiSummary);
+      setLongTermFeedback(mockLongTermFeedback);
+      setIsLoading(false);
+    }
+  }, [loadInterviewData]); // mock 데이터는 의존성에서 제거
+
+  // interview ID가 없으면 기본 결과 페이지로 리다이렉트
   useEffect(() => {
-    loadInterviewData();
-  }, [loadInterviewData]);
+    if (!interviewId) {
+      // interview ID가 없는 경우 (직접 접근) - 가라 데이터 사용
+      setFeedbackData(mockFeedbackData);
+      setUserSummary(mockUserSummary);
+      setAiSummary(mockAiSummary);
+      setLongTermFeedback(mockLongTermFeedback);
+      setIsLoading(false);
+    } else {
+      // interview ID가 있는 경우 - 실제 데이터 로드
+      loadInterviewResults(interviewId);
+    }
+  }, [interviewId]); // mock 데이터는 의존성에서 제거하여 무한 루프 방지
+
+  // 중복 호출 방지: loadInterviewResults에서 이미 loadInterviewData를 호출함
+
+  // 중복 호출 방지: loadInterviewResults에서 이미 loadInterviewData를 호출함
 
   // location state에서 탭 설정 확인
   useEffect(() => {
@@ -364,38 +585,6 @@ const InterviewResults: React.FC = () => {
             </button>
           </div>
 
-          {/* 최종 피드백 요약 */}
-          <div className="bg-white rounded-lg shadow-sm p-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">최종 피드백</h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700">명확성</span>
-                <span className={`text-sm font-semibold ${getScoreColor(userSummary.clarity)}`}>
-                  {userSummary.clarity}점
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700">구조</span>
-                <span className={`text-sm font-semibold ${getScoreColor(userSummary.structure)}`}>
-                  {userSummary.structure}점
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700">자신감</span>
-                <span className={`text-sm font-semibold ${getScoreColor(userSummary.confidence)}`}>
-                  {userSummary.confidence}점
-                </span>
-              </div>
-              <div className="border-t pt-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-base font-semibold text-gray-900">종합 점수</span>
-                  <span className={`text-lg font-bold ${getScoreColor(userSummary.overallScore)}`}>
-                    {userSummary.overallScore}점
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* 강점 및 개선점 */}
           <div className="bg-white rounded-lg shadow-sm p-4">
@@ -425,6 +614,26 @@ const InterviewResults: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* 전체적인 피드백 */}
+          {userSummary.feedback && (
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">전체적인 피드백</h3>
+              <div className="prose prose-sm text-gray-700">
+                <p>{userSummary.feedback}</p>
+              </div>
+            </div>
+          )}
+
+          {/* 요약 */}
+          {userSummary.summary && (
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">요약</h3>
+              <div className="prose prose-sm text-gray-700">
+                <p>{userSummary.summary}</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 우측 패널 - 질문별 상세 피드백 */}
@@ -492,38 +701,6 @@ const InterviewResults: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 좌측 패널 */}
         <div className="lg:col-span-1 space-y-6">
-          {/* AI 지원자 최종 피드백 요약 */}
-          <div className="bg-white rounded-lg shadow-sm p-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">AI 지원자 최종 피드백</h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700">명확성</span>
-                <span className={`text-sm font-semibold ${getScoreColor(aiSummary.clarity)}`}>
-                  {aiSummary.clarity}점
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700">구조</span>
-                <span className={`text-sm font-semibold ${getScoreColor(aiSummary.structure)}`}>
-                  {aiSummary.structure}점
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700">자신감</span>
-                <span className={`text-sm font-semibold ${getScoreColor(aiSummary.confidence)}`}>
-                  {aiSummary.confidence}점
-                </span>
-              </div>
-              <div className="border-t pt-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-base font-semibold text-gray-900">종합 점수</span>
-                  <span className={`text-lg font-bold ${getScoreColor(aiSummary.overallScore)}`}>
-                    {aiSummary.overallScore}점
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* AI 지원자 강점 및 개선점 */}
           <div className="bg-white rounded-lg shadow-sm p-4">
@@ -553,6 +730,26 @@ const InterviewResults: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* 전체적인 피드백 */}
+          {aiSummary.feedback && (
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">전체적인 피드백</h3>
+              <div className="prose prose-sm text-gray-700">
+                <p>{aiSummary.feedback}</p>
+              </div>
+            </div>
+          )}
+
+          {/* 요약 */}
+          {aiSummary.summary && (
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">요약</h3>
+              <div className="prose prose-sm text-gray-700">
+                <p>{aiSummary.summary}</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 우측 패널 - AI 지원자 질문별 상세 피드백 */}
@@ -625,7 +822,7 @@ const InterviewResults: React.FC = () => {
             <div>
               <h4 className="text-lg font-semibold text-blue-600 mb-4">즉시 개선 가능한 부분</h4>
               <ul className="space-y-3">
-                {longTermFeedback.shortTerm.immediateActions.map((action, index) => (
+                {longTermFeedback.shortTerm.improvements[0]?.items.map((action, index) => (
                   <li key={index} className="text-sm text-gray-700 flex items-start">
                     <span className="text-blue-500 mr-2">•</span>
                     {action}
@@ -636,7 +833,7 @@ const InterviewResults: React.FC = () => {
             <div>
               <h4 className="text-lg font-semibold text-green-600 mb-4">다음 면접 준비</h4>
               <ul className="space-y-3">
-                {longTermFeedback.shortTerm.nextInterviewPrep.map((prep, index) => (
+                {longTermFeedback.shortTerm.improvements[1]?.items.map((prep, index) => (
                   <li key={index} className="text-sm text-gray-700 flex items-start">
                     <span className="text-green-500 mr-2">•</span>
                     {prep}
@@ -647,7 +844,7 @@ const InterviewResults: React.FC = () => {
             <div>
               <h4 className="text-lg font-semibold text-purple-600 mb-4">구체적 개선사항</h4>
               <ul className="space-y-3">
-                {longTermFeedback.shortTerm.specificImprovements.map((improvement, index) => (
+                {longTermFeedback.shortTerm.improvements[2]?.items.map((improvement, index) => (
                   <li key={index} className="text-sm text-gray-700 flex items-start">
                     <span className="text-purple-500 mr-2">•</span>
                     {improvement}
@@ -665,7 +862,7 @@ const InterviewResults: React.FC = () => {
             <div>
               <h4 className="text-lg font-semibold text-orange-600 mb-4">기술 개발</h4>
               <ul className="space-y-3">
-                {longTermFeedback.longTerm.skillDevelopment.map((skill, index) => (
+                {longTermFeedback.longTerm.improvements[0]?.items.map((skill, index) => (
                   <li key={index} className="text-sm text-gray-700 flex items-start">
                     <span className="text-orange-500 mr-2">•</span>
                     {skill}
@@ -676,7 +873,7 @@ const InterviewResults: React.FC = () => {
             <div>
               <h4 className="text-lg font-semibold text-indigo-600 mb-4">경험 영역</h4>
               <ul className="space-y-3">
-                {longTermFeedback.longTerm.experienceAreas.map((experience, index) => (
+                {longTermFeedback.longTerm.improvements[1]?.items.map((experience, index) => (
                   <li key={index} className="text-sm text-gray-700 flex items-start">
                     <span className="text-indigo-500 mr-2">•</span>
                     {experience}
@@ -687,7 +884,7 @@ const InterviewResults: React.FC = () => {
             <div>
               <h4 className="text-lg font-semibold text-teal-600 mb-4">경력 경로</h4>
               <ul className="space-y-3">
-                {longTermFeedback.longTerm.careerPath.map((path, index) => (
+                {longTermFeedback.longTerm.improvements[1]?.items.map((path, index) => (
                   <li key={index} className="text-sm text-gray-700 flex items-start">
                     <span className="text-teal-500 mr-2">•</span>
                     {path}
@@ -714,6 +911,17 @@ const InterviewResults: React.FC = () => {
       </div>
     );
   }
+
+  // 현재 상태 디버깅
+  console.log('🔧 렌더링 시점 상태 확인:', {
+    isLoading,
+    feedbackDataLength: feedbackData.length,
+    hasUserSummary: !!userSummary,
+    hasAiSummary: !!aiSummary,
+    hasLongTermFeedback: !!longTermFeedback,
+    longTermFeedbackData: longTermFeedback,
+    activeTab
+  });
 
   return (
     <div className="min-h-screen bg-gray-50">

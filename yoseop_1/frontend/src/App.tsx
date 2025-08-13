@@ -33,6 +33,7 @@ function App() {
             <Routes>
               {/* Main Routes */}
               <Route path="/" element={<MainPage />} />
+              <Route path="/app" element={<MainPage />} />
               <Route path="/history" element={
                 <ProtectedRoute>
                   <InterviewHistory />
@@ -87,12 +88,7 @@ function App() {
                   <InterviewActiveTemp />
                 </ProtectedRoute>
               } />
-              <Route path="/interview/results" element={
-                <ProtectedRoute>
-                  <InterviewResults />
-                </ProtectedRoute>
-              } />
-              <Route path="/interview/results/:sessionId" element={
+              <Route path="/interview/results/:interviewId" element={
                 <ProtectedRoute>
                   <InterviewResults />
                 </ProtectedRoute>

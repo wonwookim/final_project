@@ -5,6 +5,9 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 import { supabase } from '../lib/supabase';
 import { tokenManager } from '../services/api';
 
+// API Base URL 설정
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
 const OAuthCallbackPage: React.FC = () => {
   const navigate = useNavigate();
   const { checkAuthStatus } = useAuth();
@@ -34,7 +37,7 @@ const OAuthCallbackPage: React.FC = () => {
       }
 
       // 백엔드에 사용자 동기화 요청
-      const response = await fetch('http://127.0.0.1:8000/auth/oauth/complete', {
+      const response = await fetch(`${API_BASE_URL}/auth/oauth/complete`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,

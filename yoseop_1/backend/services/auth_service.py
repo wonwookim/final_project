@@ -255,6 +255,11 @@ class AuthService:
     async def send_email_otp(self, email: str) -> Dict[str, Any]:
         """회원가입용 이메일 OTP 코드 발송"""
         try:
+            # 먼저 이메일 중복 확인
+            existing_users = self.supabase.from_("User").select("*").eq("email", email).execute()
+            if existing_users.data:
+                raise HTTPException(status_code=400, detail="이미 등록된 이메일입니다.")
+            
             import uuid
             import string
             import random
@@ -298,7 +303,11 @@ class AuthService:
             
             return {"success": True, "message": "인증번호가 이메일로 발송되었습니다."}
             
+        except HTTPException:
+            # HTTPException은 그대로 재발생
+            raise
         except Exception as e:
+            print(f"❌ OTP 발송 중 오류: {str(e)}")
             raise HTTPException(status_code=500, detail=f"OTP 발송 실패: {str(e)}")
     
     async def verify_email_otp(self, email: str, code: str) -> Dict[str, Any]:

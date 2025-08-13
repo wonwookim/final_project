@@ -40,7 +40,8 @@ interface AISettings {
 
 // 면접 기록 타입 정의
 interface InterviewRecord {
-  session_id: string;
+  session_id: string; // 라우팅용 (interview_id를 문자열로 변환)
+  interview_id: number; // 실제 DB ID
   company: string;
   position: string;
   date: string;
@@ -410,7 +411,29 @@ const InterviewContext = createContext<{
 
 // Provider 컴포넌트
 export function InterviewProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(interviewReducer, initialState);
+  // localStorage에서 상태 복원
+  const getInitialState = (): InterviewState => {
+    try {
+      const savedState = localStorage.getItem('interview_state');
+      if (savedState) {
+        const parsedState = JSON.parse(savedState);
+        console.log('🔄 localStorage에서 면접 상태 복원:', parsedState);
+        return {
+          ...initialState,
+          ...parsedState,
+          // 민감한 정보나 객체는 제외하고 복원
+          cameraStream: null, // MediaStream은 복원하지 않음
+          isLoading: false, // 로딩 상태 초기화
+          error: null, // 에러 상태 초기화
+        };
+      }
+    } catch (error) {
+      console.error('localStorage 상태 복원 실패:', error);
+    }
+    return initialState;
+  };
+
+  const [state, dispatch] = useReducer(interviewReducer, getInitialState());
   const hasInitialized = useRef(false);
   const currentUser = useRef<any>(null);
   
@@ -467,7 +490,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       // 새로운 /interview/history API 호출
       const interviews = await interviewApi.getInterviewHistory();
       console.log(interviews)
-      const processedInterviews: InterviewRecord[] = interviews.map(interview => {
+      const processedInterviews = interviews.map(interview => {
         const date = new Date(interview.date);
         // total_feedback에서 점수 추출 (통합 구조 지원)
         let score = 0; // 기본값
@@ -497,8 +520,15 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
           }
         }
         console.log(interview)
+        // 유효한 interview_id가 있는지 확인
+        if (!interview.interview_id || typeof interview.interview_id !== 'number' || interview.interview_id <= 0) {
+          console.error('❌ 유효하지 않은 interview_id:', interview.interview_id);
+          return null; // null 반환하여 필터링에서 제거됨
+        }
+        
         return {
-          session_id: interview.interview_id.toString(),
+          session_id: interview.interview_id.toString(), // API URL 파라미터로 사용 (string)
+          interview_id: interview.interview_id, // 실제 DB ID (number)
           company: interview.company?.name || '회사명 없음',
           position: interview.position?.position_name || '직군명 없음',
           date: date.toLocaleDateString('ko-KR'),
@@ -519,7 +549,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
           },
           completed_at: interview.date
         };
-      });
+      }).filter(interview => interview !== null) as InterviewRecord[]; // null 값 제거 후 타입 단언
 
       // 최신순으로 정렬
       processedInterviews.sort((a, b) => new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime());
@@ -585,6 +615,53 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('storage', handleStorageChange);
     };
   }, [updateAuthState]);
+
+  // 상태가 변경될 때마다 localStorage에 저장
+  useEffect(() => {
+    try {
+      // 중요한 상태 정보만 선별해서 저장
+      const stateToSave = {
+        jobPosting: state.jobPosting,
+        resume: state.resume,
+        interviewMode: state.interviewMode,
+        aiSettings: state.aiSettings,
+        settings: state.settings,
+        sessionId: state.sessionId,
+        questions: state.questions,
+        currentQuestionIndex: state.currentQuestionIndex,
+        totalQuestions: state.totalQuestions,
+        answers: state.answers,
+        aiAnswers: state.aiAnswers,
+        interviewStatus: state.interviewStatus,
+        results: state.results,
+        timeLeft: state.timeLeft,
+        progress: state.progress,
+        textCompetitionData: state.textCompetitionData,
+      };
+      
+      localStorage.setItem('interview_state', JSON.stringify(stateToSave));
+      console.log('💾 면접 상태 localStorage에 저장됨');
+    } catch (error) {
+      console.error('localStorage 저장 실패:', error);
+    }
+  }, [
+    state.jobPosting,
+    state.resume,
+    state.interviewMode,
+    state.aiSettings,
+    state.settings,
+    state.sessionId,
+    state.questions,
+    state.currentQuestionIndex,
+    state.totalQuestions,
+    state.answers,
+    state.aiAnswers,
+    state.interviewStatus,
+    state.results,
+    state.timeLeft,
+    state.progress,
+    state.textCompetitionData,
+  ]);
 
   // 인증 상태 변경 시 면접 히스토리 로드
   useEffect(() => {

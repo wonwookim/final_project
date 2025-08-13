@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.responses import StreamingResponse, HTMLResponse
 from typing import Optional
 import logging
@@ -443,22 +443,39 @@ async def get_interview_history(current_user: UserResponse = Depends(auth_servic
     return data
 
 
-@interview_router.get("/history/{interview_id}", response_model=List[InterviewHistoryResponse])
+@interview_router.get("/history/{interview_id}")
 async def get_interview_results(
     interview_id: int,
     current_user: UserResponse = Depends(auth_service.get_current_user)
 ):
-    """현재 로그인한 유저의 특정 면접 기록 조회"""
-    res = supabase_client.client.from_("history_detail") \
+    """현재 로그인한 유저의 특정 면접 기록 조회 (상세 데이터 + 전체 피드백)"""
+    
+    # 1. history_detail 테이블에서 질문별 상세 데이터 가져오기
+    detail_res = supabase_client.client.from_("history_detail") \
         .select("*") \
         .eq("interview_id", interview_id) \
         .execute()
-        # .eq("user_id", current_user.user_id) \
     
-    if not res.data:
-        return []  # 빈 배열 반환 (404 에러 대신)
+    # 2. interview 테이블에서 전체 피드백 가져오기
+    interview_res = supabase_client.client.from_("interview") \
+        .select("total_feedback") \
+        .eq("interview_id", interview_id) \
+        .execute()
     
-    return res.data
+    # 3. plans 테이블에서 개선 계획 가져오기
+    plans_res = supabase_client.client.from_("plans") \
+        .select("shortly_plan, long_plan") \
+        .eq("interview_id", interview_id) \
+        .execute()
+    
+    # 데이터 통합
+    result = {
+        "details": detail_res.data or [],
+        "total_feedback": interview_res.data[0]["total_feedback"] if interview_res.data else None,
+        "plans": plans_res.data[0] if plans_res.data else None
+    }
+    
+    return result
 
 # 🟢 POST /interview/tts
 @interview_router.post("/tts")
@@ -810,3 +827,47 @@ except ImportError as e:
     @interview_router.post("/feedback/plans")
     async def generate_interview_plans_fallback():
         raise HTTPException(status_code=503, detail="면접 계획 서비스를 사용할 수 없습니다.")
+
+# 🟢 POST /interview/complete – 면접 완료 처리 (비동기)
+@interview_router.post("/complete")
+async def complete_interview_async(
+    session_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: UserResponse = Depends(auth_service.get_current_user)
+):
+    """면접 완료 시 즉시 응답하고 백그라운드에서 피드백 처리"""
+    try:
+        interview_logger.info(f"🏁 면접 완료 요청: session_id={session_id}, user={current_user.user_id}")
+        
+        # 백그라운드에서 피드백 처리 스케줄링
+        if FEEDBACK_ENABLED:
+            background_tasks.add_task(process_feedback_async, session_id, current_user.user_id)
+        
+        # 즉시 응답 반환
+        return {
+            "status": "completed",
+            "message": "면접이 완료되었습니다. 피드백 처리가 백그라운드에서 진행됩니다.",
+            "session_id": session_id,
+            "feedback_processing": FEEDBACK_ENABLED
+        }
+        
+    except Exception as e:
+        interview_logger.error(f"❌ 면접 완료 처리 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def process_feedback_async(session_id: str, user_id: int):
+    """백그라운드에서 실행되는 피드백 처리"""
+    try:
+        interview_logger.info(f"🔄 백그라운드 피드백 처리 시작: session_id={session_id}")
+        
+        if FEEDBACK_ENABLED:
+            # 기존 피드백 평가 로직 실행
+            request = EvaluationRequest(session_id=session_id)
+            evaluation_service.evaluate_interview(request)
+            
+            interview_logger.info(f"✅ 백그라운드 피드백 처리 완료: session_id={session_id}")
+        else:
+            interview_logger.warning(f"⚠️ 피드백 서비스 비활성화: session_id={session_id}")
+            
+    except Exception as e:
+        interview_logger.error(f"❌ 백그라운드 피드백 처리 실패: session_id={session_id}, error={str(e)}")
