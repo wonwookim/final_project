@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { CalibrationProps, CalibrationStatusResponse } from './types';
-
-const API_BASE_URL = 'http://127.0.0.1:8000';
+import apiClient, { handleApiError, tokenManager } from '../../services/api';
+import { GAZE_CONSTANTS, GAZE_ERROR_MESSAGES } from '../../constants/gazeConstants';
 
 // 실시간 피드백 인터페이스
 interface FrameFeedback {
@@ -36,7 +36,13 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
         setTestMode(true);
         return;
       }
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          width: GAZE_CONSTANTS.VIDEO.WIDTH, 
+          height: GAZE_CONSTANTS.VIDEO.HEIGHT 
+        }, 
+        audio: false 
+      });
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -46,7 +52,7 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
         setTestMode(true);
         return;
       }
-      onError('웹캠에 접근할 수 없습니다. 권한을 확인하거나 테스트 모드를 사용하세요.');
+      onError(GAZE_ERROR_MESSAGES.CAMERA_PERMISSION);
     }
   }, [onError]);
 
@@ -77,18 +83,18 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
       const imageData = canvas.toDataURL('image/jpeg', 0.8);
       const formData = new FormData();
       formData.append('frame_data', imageData);
-      const response = await fetch(`${API_BASE_URL}/test/gaze/calibration/frame/${sessionId}`, { method: 'POST', body: formData });
-      if (response.ok) {
-        const feedback: FrameFeedback = await response.json();
-        setRealtimeFeedback(feedback);
-        if (feedback.status === 'completed') {
-          setIsCompleted(true);
-          if (frameStreamInterval.current) {
-            clearInterval(frameStreamInterval.current);
-            frameStreamInterval.current = null;
-          }
-          onCalibrationComplete(sessionId);
+      const response = await apiClient.post(`/test/gaze/calibration/frame/${sessionId}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      const feedback: FrameFeedback = response.data;
+      setRealtimeFeedback(feedback);
+      if (feedback.status === 'completed') {
+        setIsCompleted(true);
+        if (frameStreamInterval.current) {
+          clearInterval(frameStreamInterval.current);
+          frameStreamInterval.current = null;
         }
+        onCalibrationComplete(sessionId);
       }
     } catch (error) {
       console.error('프레임 전송 오류:', error);
@@ -101,7 +107,7 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
       startTestModeFrameStreaming(sessionId);
       return;
     }
-    frameStreamInterval.current = setInterval(() => { captureAndSendFrame(sessionId); }, 200);
+    frameStreamInterval.current = setInterval(() => { captureAndSendFrame(sessionId); }, GAZE_CONSTANTS.FRAME_STREAM_INTERVAL);
   }, [captureAndSendFrame, testMode]);
 
   const startTestModeFrameStreaming = useCallback((sessionId: string) => {
@@ -129,15 +135,15 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
 
   const startCalibration = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/test/gaze/calibration/start`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify({ user_id: null }), signal: AbortSignal.timeout(10000) });
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        let errorMessage = `캘리브레이션 시작 실패 (${response.status}): ${errorText}`;
-        if (response.status === 404) errorMessage = '캘리브레이션 API 엔드포인트를 찾을 수 없습니다. 백엔드 서버가 실행 중인지 확인하세요.';
-        else if (response.status >= 500) errorMessage = '서버 내부 오류가 발생했습니다. 백엔드 로그를 확인하세요.';
-        throw new Error(errorMessage);
-      }
-      const data = await response.json();
+      // 실제 사용자 ID 가져오기 (로그인된 사용자)
+      const user = tokenManager.getUser();
+      const userId = user?.user_id || null;
+      
+      const response = await apiClient.post('/test/gaze/calibration/start', 
+        { user_id: userId },
+        { timeout: GAZE_CONSTANTS.API_TIMEOUT }
+      );
+      const data = response.data;
       if (!data.session_id) throw new Error('세션 ID를 받지 못했습니다.');
       setSessionId(data.session_id);
       setIsStarted(true);
@@ -145,21 +151,8 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
       startStatusCheck(data.session_id);
       startFrameStreaming(data.session_id);
     } catch (error) {
-      let userMessage = error instanceof Error ? error.message : '❌ 캘리브레이션을 시작할 수 없습니다.';
-      if (error instanceof TypeError && error.message.includes('fetch')) userMessage = `❌ 백엔드 서버 연결 실패
-
-🔧 해결 방법:
-1. 백엔드 서버를 실행하세요:
-   • 터미널에서 backend 폴더로 이동
-   • "uvicorn main:app --reload --port 8000" 실행
-   
-2. 또는 테스트 모드를 사용하세요:
-   • 아래 "테스트 모드" 체크박스를 선택
-   • 가상으로 캘리브레이션을 진행할 수 있습니다
-
-🌐 서버 URL: http://127.0.0.1:8000`;
-      else if ((error as Error)?.name === 'TimeoutError') userMessage = '⏰ 요청 시간 초과: 서버 응답이 너무 느립니다. 서버 상태를 확인하고 다시 시도하세요.';
-      onError(userMessage);
+      const errorMessage = handleApiError(error);
+      onError(`${GAZE_ERROR_MESSAGES.CALIBRATION_FAILED}: ${errorMessage}`);
     }
   };
 
@@ -167,9 +160,8 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
     if (statusCheckInterval.current) clearInterval(statusCheckInterval.current);
     statusCheckInterval.current = setInterval(async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/test/gaze/calibration/status/${sessionId}`);
-        if (!response.ok) throw new Error(`상태 체크 실패: ${response.status}`);
-        const statusData: CalibrationStatusResponse = await response.json();
+        const response = await apiClient.get(`/test/gaze/calibration/status/${sessionId}`);
+        const statusData: CalibrationStatusResponse = response.data;
         setStatus(statusData);
         if (statusData.current_phase === 'completed') {
           setIsCompleted(true);
@@ -179,7 +171,7 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
       } catch (error) {
         console.error('❌ 상태 체크 오류:', error);
       }
-    }, 500);
+    }, GAZE_CONSTANTS.STATUS_CHECK_INTERVAL);
   };
 
   useEffect(() => {

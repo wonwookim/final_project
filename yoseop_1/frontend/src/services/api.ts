@@ -148,6 +148,222 @@ export interface InterviewResponse {
   };
 }
 
+// 🆕 시선 분석 상태 응답 타입
+export interface AnalysisStatusResponse {
+  task_id: string;
+  status: 'processing' | 'completed' | 'failed';
+  progress?: number;
+  result?: {
+    gaze_score: number;
+    jitter_score: number;
+    compliance_score: number;
+    stability_rating: string;
+    total_frames: number;
+    analyzed_frames: number;
+    in_range_frames: number;
+    in_range_ratio: number;
+    feedback: string;
+    analysis_duration: number;
+    gaze_points: [number, number][];
+    allowed_range: {
+      left_bound: number;
+      right_bound: number;
+      top_bound: number;
+      bottom_bound: number;
+    };
+    calibration_points: [number, number][];
+  };
+  error?: string;
+  message?: string;
+}
+
+// 🆕 시선 분석 작업 시작 응답 타입
+export interface AnalysisTaskResponse {
+  task_id: string;
+  status: string;
+  message: string;
+}
+
+// 🆕 파일 업로드 응답 타입
+export interface FileUploadResponse {
+  upload_url?: string;
+  play_url: string;
+  file_name: string;
+  file_type: string;
+  test_id?: string;
+  media_id?: string;
+}
+
+// 🆕 STT 응답 타입
+export interface STTResponse {
+  text: string;
+  confidence?: number;
+  duration?: number;
+}
+
+// 🆕 피드백 평가 응답 타입
+export interface FeedbackEvaluationResponse {
+  success: boolean;
+  results?: Array<{
+    interview_id: number;
+    user_id: number;
+    evaluation_data: any;
+  }>;
+  message?: string;
+}
+
+// 🆕 시선 분석 DB 저장 응답 타입
+export interface GazeAnalysisSaveResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    analysis_id: number;
+    interview_id: number;
+    user_id: number;
+  };
+}
+
+// 🆕 피드백 계획 생성 응답 타입
+export interface FeedbackPlanResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    plan_id: number;
+    interview_id: number;
+    plans: Array<{
+      category: string;
+      recommendations: string[];
+    }>;
+  };
+}
+
+// 🆕 면접 진행 응답 공통 타입 (턴 정보 포함)
+export interface InterviewSubmitResponse {
+  status: string;
+  content?: {
+    content: string;
+    type?: string;
+    metadata?: {
+      resume_id?: number;
+      [key: string]: any;
+    };
+    ai_answer?: {
+      metadata?: {
+        resume_id?: number;
+        [key: string]: any;
+      };
+    };
+  };
+  metadata?: {
+    next_agent?: string;
+    task?: string;
+    resume_id?: number;
+    [key: string]: any;
+  };
+  turn_info?: {
+    is_user_turn?: boolean;
+    is_ai_turn?: boolean;
+    ai_metadata?: {
+      resume_id?: number;
+      [key: string]: any;
+    };
+  };
+  session_id?: string;
+  intro_message?: string;
+  question?: string | {
+    question: string;
+    category: string;
+    time_limit: number;
+    id?: string;
+  };
+  ai_question?: {
+    content: string;
+  };
+  ai_answer?: {
+    content: string;
+    metadata?: {
+      resume_id?: number;
+      [key: string]: any;
+    };
+  };
+  ai_response?: {
+    content: string;
+    metadata?: {
+      resume_id?: number;
+      [key: string]: any;
+    };
+  };
+  // TTS 오디오 필드들
+  intro_audio?: string;
+  ai_question_audio?: string;
+  ai_answer_audio?: string;
+  question_audio?: string;
+}
+
+// 🆕 AI 경쟁 면접 시작 응답 타입
+export interface AICompetitionStartResponse {
+  session_id?: string;
+  interview_id?: string;
+  status?: string;
+  content?: {
+    content: string;
+    type?: string;
+    metadata?: {
+      resume_id?: number;
+      [key: string]: any;
+    };
+    ai_answer?: {
+      metadata?: {
+        resume_id?: number;
+        [key: string]: any;
+      };
+    };
+  };
+  metadata?: {
+    next_agent?: string;
+    task?: string;
+    resume_id?: number;
+    [key: string]: any;
+  };
+  turn_info?: {
+    is_user_turn?: boolean;
+    is_ai_turn?: boolean;
+    ai_metadata?: {
+      resume_id?: number;
+      [key: string]: any;
+    };
+  };
+  intro_message?: string;
+  question?: string | {
+    question: string;
+    category: string;
+    time_limit: number;
+    id?: string;
+  };
+  ai_question?: {
+    content: string;
+  };
+  ai_answer?: {
+    content: string;
+    metadata?: {
+      resume_id?: number;
+      [key: string]: any;
+    };
+  };
+  ai_response?: {
+    content: string;
+    metadata?: {
+      resume_id?: number;
+      [key: string]: any;
+    };
+  };
+  // TTS 오디오 필드들
+  intro_audio?: string;
+  ai_question_audio?: string;
+  ai_answer_audio?: string;
+  question_audio?: string;
+}
+
 // UI에서 사용할 확장된 면접 히스토리 타입 (추가 정보만 포함)
 export interface InterviewHistoryItem extends InterviewResponse {
   score?: number;        // 계산된 점수 (total_feedback에서 파싱)
@@ -291,30 +507,7 @@ export const interviewApi = {
   },
 
   // AI 경쟁 면접 시작 (Orchestrator 기반)
-  async startAICompetition(settings: InterviewSettings): Promise<{
-    session_id?: string;
-    interview_id?: string;
-    status?: string;
-    content?: {
-      content: string;
-    };
-    flow_state?: string;
-    next_action?: string;
-    message?: string;
-    question?: string;
-    ai_answer?: string;
-    interview_progress?: {
-      turn_count: number;
-      total_questions: number;
-      answer_seq: number;
-      current_interviewer: string;
-    };
-    // 🆕 TTS 오디오 필드들 추가
-    intro_audio?: string;
-    ai_question_audio?: string;
-    ai_answer_audio?: string;
-    question_audio?: string;
-  }> {
+  async startAICompetition(settings: InterviewSettings): Promise<AICompetitionStartResponse> {
     // 🎯 무조건 InterviewerService 사용하도록 하드코딩
     console.log('🐛 DEBUG: API로 전송하는 원본 설정값:', settings);
     
@@ -326,78 +519,17 @@ export const interviewApi = {
     console.log('🎯 DEBUG: 최종 전송 설정값 (InterviewerService 강제):', finalSettings);
     
     const response = await apiClient.post('/interview/ai/start', finalSettings);
-    return response.data as {
-      session_id?: string;
-      interview_id?: string;
-      status?: string;
-      content?: {
-        content: string;
-      };
-      flow_state?: string;
-      next_action?: string;
-      message?: string;
-      question?: string;
-      ai_answer?: string;
-      interview_progress?: {
-        turn_count: number;
-        total_questions: number;
-        answer_seq: number;
-        current_interviewer: string;
-      };
-      // 🆕 TTS 오디오 필드들 추가
-      intro_audio?: string;
-      ai_question_audio?: string;
-      ai_answer_audio?: string;
-      question_audio?: string;
-    };
+    return response.data as AICompetitionStartResponse;
   },
 
   // 사용자 답변 제출
-  async submitUserAnswer(sessionId: string, answer: string, timeSpent?: number): Promise<{
-    status: string;
-    flow_state: string;
-    next_action: string;
-    message: string;
-    question?: string;
-    ai_answer?: string;
-    first_answerer?: string;
-    interview_progress?: {
-      turn_count: number;
-      total_questions: number;
-      answer_seq: number;
-      current_interviewer: string;
-    };
-    // 🆕 TTS 오디오 필드들 추가
-    intro_audio?: string;
-    ai_question_audio?: string;
-    ai_answer_audio?: string;
-    question_audio?: string;
-  }> {
+  async submitUserAnswer(sessionId: string, answer: string, timeSpent?: number): Promise<InterviewSubmitResponse> {
     const response = await apiClient.post('/interview/answer', {
       session_id: sessionId,
       answer: answer,
       time_spent: timeSpent || 0
     });
-    return response.data as {
-      status: string;
-      flow_state: string;
-      next_action: string;
-      message: string;
-      question?: string;
-      ai_answer?: string;
-      first_answerer?: string;
-      interview_progress?: {
-        turn_count: number;
-        total_questions: number;
-        answer_seq: number;
-        current_interviewer: string;
-      };
-      // 🆕 TTS 오디오 필드들 추가
-      intro_audio?: string;
-      ai_question_audio?: string;
-      ai_answer_audio?: string;
-      question_audio?: string;
-    };
+    return response.data as InterviewSubmitResponse;
   },
 
   // 경쟁 면접 통합 턴 처리 (사용자 답변 → AI 답변 + 다음 질문)

@@ -5,6 +5,8 @@ import StepIndicator from '../../components/interview/StepIndicator';
 import NavigationButtons from '../../components/interview/NavigationButtons';
 import { useInterview } from '../../contexts/InterviewContext';
 import { interviewApi } from '../../services/api';
+import VideoCalibration from '../../components/test/VideoCalibration';
+import { GAZE_CONSTANTS } from '../../constants/gazeConstants';
 
 interface CheckItem {
   id: string;
@@ -22,6 +24,7 @@ const EnvironmentCheck: React.FC = () => {
   const [allChecksComplete, setAllChecksComplete] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [showGazeCalibration, setShowGazeCalibration] = useState(false);
 
   const [checkItems, setCheckItems] = useState<CheckItem[]>([
     {
@@ -51,6 +54,13 @@ const EnvironmentCheck: React.FC = () => {
       description: '브라우저가 면접 시스템을 지원하는지 확인합니다.',
       status: 'pending',
       icon: '💻'
+    },
+    {
+      id: 'gaze_calibration',
+      title: '시선 캘리브레이션',
+      description: '비언어적 분석을 위한 시선 추적 캘리브레이션을 진행합니다.',
+      status: 'pending',
+      icon: '👁️'
     }
   ]);
 
@@ -196,6 +206,24 @@ const EnvironmentCheck: React.FC = () => {
     });
   };
 
+  // 시선 캘리브레이션 완료 핸들러
+  const handleGazeCalibrationComplete = (sessionId: string) => {
+    console.log('🎯 시선 캘리브레이션 완료:', sessionId);
+    updateCheckStatus('gaze_calibration', 'success');
+    dispatch({ type: 'SET_GAZE_CALIBRATION', payload: { sessionId } });
+    setShowGazeCalibration(false);
+  };
+
+  const handleGazeCalibrationError = (error: string) => {
+    console.error('❌ 시선 캘리브레이션 오류:', error);
+    updateCheckStatus('gaze_calibration', 'error', error);
+  };
+
+  const startGazeCalibration = () => {
+    updateCheckStatus('gaze_calibration', 'checking');
+    setShowGazeCalibration(true);
+  };
+
   const runAllChecks = async () => {
     setIsLoading(true);
     
@@ -205,13 +233,22 @@ const EnvironmentCheck: React.FC = () => {
       await checkMicrophone();
       await checkCamera();
       
-      setAllChecksComplete(true);
+      // 기본 체크 완료 후 시선 캘리브레이션 시작
+      startGazeCalibration();
+      
     } catch (error) {
       console.error('환경 체크 실패:', error);
     } finally {
       setIsLoading(false);
     }
   };
+
+  // 모든 체크 완료 여부 확인
+  useEffect(() => {
+    const basicChecksComplete = checkItems.filter(item => item.id !== 'gaze_calibration').every(item => item.status === 'success');
+    const gazeCalibrationComplete = checkItems.find(item => item.id === 'gaze_calibration')?.status === 'success';
+    setAllChecksComplete(basicChecksComplete && gazeCalibrationComplete);
+  }, [checkItems]);
 
   const handlePrevious = () => {
     // 카메라 스트림 정리
@@ -343,7 +380,8 @@ const EnvironmentCheck: React.FC = () => {
     }
   };
 
-  const allChecksPassed = checkItems.every(item => item.status === 'success');
+  // allChecksComplete 상태로 대체 (이미 useEffect에서 관리됨)
+  const allChecksPassed = allChecksComplete;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
@@ -450,8 +488,39 @@ const EnvironmentCheck: React.FC = () => {
             </p>
           </div>
 
+          {/* 시선 캘리브레이션 모달 */}
+          {showGazeCalibration && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="border-b border-gray-200 p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-900">👁️ 시선 캘리브레이션</h2>
+                      <p className="text-gray-600 text-sm mt-1">비언어적 분석을 위한 시선 추적 설정</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowGazeCalibration(false);
+                        updateCheckStatus('gaze_calibration', 'error', '사용자가 취소했습니다.');
+                      }}
+                      className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+                <div className="p-6">
+                  <VideoCalibration
+                    onCalibrationComplete={handleGazeCalibrationComplete}
+                    onError={handleGazeCalibrationError}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* 최종 확인 */}
-          {allChecksPassed && (
+          {allChecksComplete && (
             <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-2xl p-8 border border-green-200 text-center">
               <div className="text-6xl mb-4">✅</div>
               <h3 className="text-2xl font-bold text-green-900 mb-4">
