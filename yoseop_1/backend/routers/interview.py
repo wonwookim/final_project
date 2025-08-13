@@ -5,7 +5,7 @@ import logging
 from typing import List, Union
 from backend.services.supabase_client import supabase_client
 from backend.schemas.user import UserResponse
-from schemas.interview import InterviewHistoryResponse, InterviewSettings, AnswerSubmission, AICompetitionAnswerSubmission, CompetitionTurnSubmission, InterviewResponse, TTSRequest, STTResponse
+from schemas.interview import InterviewHistoryResponse, InterviewSettings, AnswerSubmission, AICompetitionAnswerSubmission, CompetitionTurnSubmission, InterviewResponse, TTSRequest, STTResponse, MemoUpdateRequest
 from services.interview_service import InterviewService
 from services.interview_service_temp import InterviewServiceTemp
 from backend.services.auth_service import AuthService
@@ -476,6 +476,33 @@ async def get_interview_results(
     }
     
     return result
+
+@interview_router.post("/memo")
+async def update_memo(memo_update: MemoUpdateRequest):
+    """
+    Updates the memo field in the history_detail table.
+    """
+    try:
+        response = supabase_client.client.from_("history_detail").update(
+            {"memo": memo_update.memo}
+        ).eq("interview_id", memo_update.interview_id).eq(
+            "question_index", memo_update.question_index
+        ).eq(
+            "who", memo_update.who
+        ).execute()
+
+        if response.data:
+            interview_logger.info(f"메모 업데이트 성공: interview_id={memo_update.interview_id}, question_index={memo_update.question_index}, who={memo_update.who}")
+            return {"message": "메모가 성공적으로 업데이트되었습니다."}
+        else:
+            interview_logger.warning(f"메모 업데이트 실패: 해당 항목을 찾을 수 없음. interview_id={memo_update.interview_id}, question_index={memo_update.question_index}, who={memo_update.who}")
+            raise HTTPException(status_code=404, detail="해당 면접 기록을 찾을 수 없습니다.")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        interview_logger.error(f"메모 업데이트 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"메모 업데이트 중 오류 발생: {str(e)}")
 
 # 🟢 POST /interview/tts
 @interview_router.post("/tts")

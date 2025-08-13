@@ -107,4 +107,10 @@ class STTResponse(BaseModel):
     text: str
     language: str = "ko"
     duration: float = 0.0
+
+class MemoUpdateRequest(BaseModel):
+    interview_id: int
+    question_index: int
+    who: str
+    memo: str
     

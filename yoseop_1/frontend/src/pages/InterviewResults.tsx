@@ -8,8 +8,11 @@ interface FeedbackData {
   question: string;
   userAnswer: string;
   aiAnswer: string;
-  userFeedback: string;
+  userEvaluation: string;
+  userImprovement: string;
   aiFeedback: string;
+  aiEvaluation: string;
+  aiImprovement: string;
   userScore: number;
   aiScore: number;
   userMemo: string;
@@ -83,6 +86,42 @@ const InterviewResults: React.FC = () => {
   const [aiSummary, setAiSummary] = useState<SummaryData | null>(null);
   const [longTermFeedback, setLongTermFeedback] = useState<LongTermFeedback | null>(null);
   const [interviewData, setInterviewData] = useState<any>(null);
+  const [memos, setMemos] = useState<{[key: string]: {user: string, ai: string}}>({});
+
+  // 메모 저장 함수
+  const saveMemo = async (questionIndex: number, type: 'user' | 'ai', memo: string) => {
+    try {
+      const response = await fetch(`/interview/memo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          interview_id: parseInt(interviewId || '0'),
+          question_index: questionIndex,
+          who: type === 'user' ? 'user' : 'ai_interviewer',
+          memo: memo
+        })
+      });
+
+      if (response.ok) {
+        console.log('메모 저장 성공');
+        alert('메모가 성공적으로 저장되었습니다.'); // Success alert
+        // 로컬 state도 업데이트
+        setMemos(prev => ({
+          ...prev,
+          [`${questionIndex}`]: {
+            ...prev[`${questionIndex}`],
+            [type]: memo
+          }
+        }));
+      } else {
+        console.error('메모 저장 실패');
+        alert('메모 저장에 실패했습니다. 다시 시도해주세요.'); // Failure alert
+      }
+    } catch (error) {
+      console.error('메모 저장 오류:', error);
+      alert('메모 저장 중 오류가 발생했습니다. 네트워크 연결을 확인해주세요.'); // Error alert
+    }
+  };
 
   // 가라 데이터
   const mockFeedbackData: FeedbackData[] = [
@@ -90,8 +129,11 @@ const InterviewResults: React.FC = () => {
       question: "자기소개를 해주세요",
       userAnswer: "안녕하세요. 저는 3년간 웹 개발 경험을 가진 김개발입니다. React와 Node.js를 주로 사용하여 사용자 친화적인 웹 애플리케이션을 개발해왔습니다. 팀 협업을 통해 프로젝트를 성공적으로 완료한 경험이 있으며, 지속적인 학습을 통해 새로운 기술을 습득하는 것을 즐깁니다.",
       aiAnswer: "안녕하세요. 저는 춘식이입니다. 5년간 다양한 프로젝트에서 풀스택 개발자로 활동해왔습니다. 특히 마이크로서비스 아키텍처와 클라우드 기술에 전문성을 가지고 있으며, 팀 리딩 경험도 있습니다. 사용자 중심의 솔루션을 제공하는 것을 목표로 하고 있습니다.",
-      userFeedback: "전반적으로 좋은 자기소개입니다. 구체적인 성과나 수치를 포함하면 더욱 설득력 있는 답변이 될 것입니다. 예를 들어 '사용자 만족도 20% 향상' 같은 구체적인 결과를 언급해보세요.",
+      userEvaluation: "전반적으로 좋은 자기소개입니다. 구체적인 성과나 수치를 포함하면 더욱 설득력 있는 답변이 될 것입니다.",
+      userImprovement: "예를 들어 '사용자 만족도 20% 향상' 같은 구체적인 결과를 언급해보세요.",
       aiFeedback: "춘식이의 답변은 경험과 전문성을 잘 보여줍니다. 다만 너무 일반적인 표현보다는 구체적인 프로젝트나 성과를 언급하면 더욱 효과적일 것입니다.",
+      aiEvaluation: "답변이 체계적이고 경험을 잘 보여줍니다.",
+      aiImprovement: "구체적인 성과 수치를 포함하면 더 좋겠습니다.",
       userScore: 85,
       aiScore: 90,
       userMemo: "구체적인 수치와 성과를 더 포함해야겠다.",
@@ -101,8 +143,11 @@ const InterviewResults: React.FC = () => {
       question: "이 직무에 왜 관심이 있나요?",
       userAnswer: "사용자 경험을 개선하는 것에 관심이 많고, 이 회사의 혁신적인 제품과 문화가 매력적입니다. 또한 제가 가진 기술을 활용하여 회사에 기여할 수 있다고 생각합니다.",
       aiAnswer: "이 회사의 기술적 도전과 사회적 임팩트에 깊이 공감합니다. 제가 가진 마이크로서비스와 클라우드 경험이 회사의 확장 계획에 도움이 될 것이라 확신합니다. 또한 지속적인 혁신 문화가 개인의 성장과 잘 맞는다고 생각합니다.",
-      userFeedback: "관심을 명확하게 표현했습니다. 회사의 구체적인 제품이나 서비스에 대한 언급을 추가하면 더욱 설득력 있는 답변이 될 것입니다.",
+      userEvaluation: "관심을 명확하게 표현했습니다. 회사의 구체적인 제품이나 서비스에 대한 언급을 추가하면 더욱 설득력 있는 답변이 될 것입니다.",
+      userImprovement: "회사의 구체적인 제품이나 서비스에 대한 언급을 추가하면 더욱 설득력 있는 답변이 될 것입니다.",
       aiFeedback: "춘식이는 회사에 대한 이해도가 높고, 자신의 경험과 회사의 니즈를 잘 연결시켰습니다. 다만 너무 형식적인 느낌이 있습니다.",
+      aiEvaluation: "회사에 대한 이해도가 높고 경험과 연결점을 잘 찾았습니다.",
+      aiImprovement: "더 개인적이고 진정성 있는 답변이 필요합니다.",
       userScore: 80,
       aiScore: 88,
       userMemo: "회사에 대한 더 깊은 조사가 필요하다.",
@@ -112,8 +157,11 @@ const InterviewResults: React.FC = () => {
       question: "실패한 경험을 말해주세요",
       userAnswer: "프로젝트 일정을 맞추지 못한 경험이 있습니다. 초기 계획이 부족했고, 팀원들과의 소통이 원활하지 않았습니다. 이후에는 더 철저한 계획 수립과 정기적인 미팅을 통해 개선했습니다.",
       aiAnswer: "새로운 기술 스택 도입 과정에서 예상보다 많은 시간이 소요된 경험이 있습니다. 충분한 학습 시간을 확보하지 못했고, 팀 전체의 이해도가 낮았습니다. 이후 단계적 도입과 교육 프로그램을 통해 해결했습니다.",
-      userFeedback: "실패를 인정하고 개선점을 찾아낸 점이 좋습니다. 구체적인 개선 결과나 학습한 점을 더 자세히 설명하면 더욱 효과적일 것입니다.",
+      userEvaluation: "실패를 인정하고 개선점을 찾아낸 점이 좋습니다.",
+      userImprovement: "구체적인 개선 결과나 학습한 점을 더 자세히 설명하면 더욱 효과적일 것입니다.",
       aiFeedback: "춘식이는 실패 경험을 통해 얻은 학습과 개선 방안을 잘 제시했습니다. 다만 너무 완벽한 해결책처럼 보일 수 있습니다.",
+      aiEvaluation: "실패 경험을 통해 얻은 학습과 개선 방안을 잘 제시했습니다.",
+      aiImprovement: "너무 완벽한 해결책처럼 보이지 않도록, 어려웠던 점을 더 강조하면 좋겠습니다.",
       userScore: 82,
       aiScore: 85,
       userMemo: "실패 경험에서 배운 점을 더 구체적으로 정리해야겠다.",
@@ -257,8 +305,10 @@ const InterviewResults: React.FC = () => {
             question: item.question_content || '질문이 없습니다',
             userAnswer: '',
             aiAnswer: '',
-            userFeedback: '',
-            aiFeedback: '',
+            userEvaluation: '',
+            userImprovement: '',
+            aiEvaluation: '',
+            aiImprovement: '',
             userScore: 0,
             aiScore: 0,
             userMemo: '',
@@ -273,12 +323,14 @@ const InterviewResults: React.FC = () => {
             const userFeedback = JSON.parse(item.feedback || '{}');
             console.log(`🔧 question ${questionIndex} user feedback:`, userFeedback);
             
-            groupedData[questionIndex].userFeedback = userFeedback.detailed_feedback || userFeedback.feedback || '';
+            groupedData[questionIndex].userEvaluation = userFeedback.evaluation || userFeedback.detailed_feedback || '';
+            groupedData[questionIndex].userImprovement = userFeedback.improvement || '';
             groupedData[questionIndex].userScore = userFeedback.final_score || userFeedback.score || 0;
-            groupedData[questionIndex].userMemo = userFeedback.improvement_suggestions || userFeedback.memo || '';
+            groupedData[questionIndex].userMemo = item.memo || '';
           } catch (error) {
             console.log(`🔧 question ${questionIndex} user feedback 파싱 실패:`, error);
-            groupedData[questionIndex].userFeedback = item.feedback || '';
+            groupedData[questionIndex].userEvaluation = item.feedback || '';
+            groupedData[questionIndex].userImprovement = '';
           }
         } else if (item.who === 'ai_interviewer') {
           groupedData[questionIndex].aiAnswer = item.answer || '';
@@ -286,9 +338,10 @@ const InterviewResults: React.FC = () => {
             const aiFeedback = JSON.parse(item.feedback || '{}');
             console.log(`🔧 question ${questionIndex} ai feedback:`, aiFeedback);
             
-            groupedData[questionIndex].aiFeedback = aiFeedback.detailed_feedback || aiFeedback.feedback || '';
+            groupedData[questionIndex].aiEvaluation = aiFeedback.evaluation || '';
+            groupedData[questionIndex].aiImprovement = aiFeedback.improvement || '';
             groupedData[questionIndex].aiScore = aiFeedback.final_score || aiFeedback.score || 0;
-            groupedData[questionIndex].aiMemo = aiFeedback.improvement_suggestions || aiFeedback.memo || '';
+            groupedData[questionIndex].aiMemo = item.memo || '';
           } catch (error) {
             console.log(`🔧 question ${questionIndex} ai feedback 파싱 실패:`, error);
             groupedData[questionIndex].aiFeedback = item.feedback || '';
@@ -586,34 +639,6 @@ const InterviewResults: React.FC = () => {
           </div>
 
 
-          {/* 강점 및 개선점 */}
-          <div className="bg-white rounded-lg shadow-sm p-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">강점 및 개선점</h3>
-            <div className="space-y-4">
-              <div>
-                <h4 className="text-sm font-medium text-green-700 mb-2">강점</h4>
-                <ul className="space-y-1">
-                  {userSummary.strengths.map((strength, index) => (
-                    <li key={index} className="text-sm text-gray-700 flex items-start">
-                      <span className="text-green-500 mr-2">•</span>
-                      {strength}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h4 className="text-sm font-medium text-red-700 mb-2">개선점</h4>
-                <ul className="space-y-1">
-                  {userSummary.weaknesses.map((weakness, index) => (
-                    <li key={index} className="text-sm text-gray-700 flex items-start">
-                      <span className="text-red-500 mr-2">•</span>
-                      {weakness}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
 
           {/* 전체적인 피드백 */}
           {userSummary.feedback && (
@@ -666,11 +691,21 @@ const InterviewResults: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    AI 피드백
+                    평가
                   </label>
                   <div className="rounded-lg border border-gray-300 bg-gray-50 p-4">
                     <p className="text-sm text-gray-900 leading-relaxed">
-                      {feedback.userFeedback}
+                      {feedback.userEvaluation}
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    보완할점
+                  </label>
+                  <div className="rounded-lg border border-gray-300 bg-gray-50 p-4">
+                    <p className="text-sm text-gray-900 leading-relaxed">
+                      {feedback.userImprovement}
                     </p>
                   </div>
                 </div>
@@ -680,12 +715,26 @@ const InterviewResults: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   내 메모
                 </label>
-                <textarea
-                  className="w-full rounded-lg border border-gray-300 bg-gray-50 p-4 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 resize-none"
-                  rows={3}
-                  placeholder="개인 메모와 생각을 여기에 추가하세요..."
-                  defaultValue={feedback.userMemo}
-                />
+                <div className="flex gap-2">
+                  <textarea
+                    id={`user-memo-${index}`}
+                    className="flex-1 rounded-lg border border-gray-300 bg-white p-4 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 resize-none"
+                    rows={3}
+                    placeholder="개인 메모와 생각을 여기에 추가하세요..."
+                    defaultValue={memos[`${index + 1}`]?.user || feedback.userMemo || ''}
+                  />
+                  <button
+                    onClick={() => {
+                      const textarea = document.getElementById(`user-memo-${index}`) as HTMLTextAreaElement;
+                      if (textarea) {
+                        saveMemo(index + 1, 'user', textarea.value);
+                      }
+                    }}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium whitespace-nowrap"
+                  >
+                    저장
+                  </button>
+                </div>
               </div>
             </div>
           ))}
@@ -702,34 +751,6 @@ const InterviewResults: React.FC = () => {
         {/* 좌측 패널 */}
         <div className="lg:col-span-1 space-y-6">
 
-          {/* AI 지원자 강점 및 개선점 */}
-          <div className="bg-white rounded-lg shadow-sm p-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">AI 지원자 분석</h3>
-            <div className="space-y-4">
-              <div>
-                <h4 className="text-sm font-medium text-green-700 mb-2">강점</h4>
-                <ul className="space-y-1">
-                  {aiSummary.strengths.map((strength, index) => (
-                    <li key={index} className="text-sm text-gray-700 flex items-start">
-                      <span className="text-green-500 mr-2">•</span>
-                      {strength}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h4 className="text-sm font-medium text-red-700 mb-2">개선점</h4>
-                <ul className="space-y-1">
-                  {aiSummary.weaknesses.map((weakness, index) => (
-                    <li key={index} className="text-sm text-gray-700 flex items-start">
-                      <span className="text-red-500 mr-2">•</span>
-                      {weakness}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
 
           {/* 전체적인 피드백 */}
           {aiSummary.feedback && (
@@ -782,11 +803,21 @@ const InterviewResults: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    AI 답변 분석
+                    평가
                   </label>
                   <div className="rounded-lg border border-gray-300 bg-gray-50 p-4">
                     <p className="text-sm text-gray-900 leading-relaxed">
-                      {feedback.aiFeedback}
+                      {feedback.aiEvaluation}
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    보완할점
+                  </label>
+                  <div className="rounded-lg border border-gray-300 bg-gray-50 p-4">
+                    <p className="text-sm text-gray-900 leading-relaxed">
+                      {feedback.aiImprovement}
                     </p>
                   </div>
                 </div>
@@ -796,12 +827,26 @@ const InterviewResults: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   내 메모
                 </label>
-                <textarea
-                  className="w-full rounded-lg border border-gray-300 bg-gray-50 p-4 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 resize-none"
-                  rows={3}
-                  placeholder="AI 답변에 대한 개인적인 생각을 여기에 기록하세요..."
-                  defaultValue={feedback.aiMemo}
-                />
+                <div className="flex gap-2">
+                  <textarea
+                    id={`ai-memo-${index}`}
+                    className="flex-1 rounded-lg border border-gray-300 bg-white p-4 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 resize-none"
+                    rows={3}
+                    placeholder="AI 답변에 대한 개인적인 생각을 여기에 기록하세요..."
+                    defaultValue={memos[`${index + 1}`]?.ai || feedback.aiMemo || ''}
+                  />
+                  <button
+                    onClick={() => {
+                      const textarea = document.getElementById(`ai-memo-${index}`) as HTMLTextAreaElement;
+                      if (textarea) {
+                        saveMemo(index + 1, 'ai', textarea.value);
+                      }
+                    }}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium whitespace-nowrap"
+                  >
+                    저장
+                  </button>
+                </div>
               </div>
             </div>
           ))}
