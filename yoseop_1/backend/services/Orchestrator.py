@@ -301,7 +301,11 @@ class Orchestrator:
         
         # 첫 번째 답변: 랜덤 선택
         if current_answers == 0:
-            selected_agent = 'user' if self._random_select() == -1 else 'ai'
+            current_turn = self.session_state.get('turn_count', 0)
+            if current_turn == 1:
+                selected_agent = 'user' # 첫 질문은 항상 사용자가 먼저
+            else:
+                selected_agent = 'user' if self._random_select() == -1 else 'ai'
             # 에이전트별로 전달할 질문 텍스트 결정
             if selected_agent == 'ai':
                 question_text = self._format_question_for_ai(self.session_state['current_question'])
