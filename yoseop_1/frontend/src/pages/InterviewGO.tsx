@@ -68,19 +68,7 @@ const InterviewGO: React.FC = () => {
     loadSessionFromService();
   }, [state.sessionId, dispatch, navigate]);
 
-  // 👁️ 면접 시작 시 자동으로 시선 추적 시작
-  useEffect(() => {
-    const startAutoGazeTracking = async () => {
-      // 캘리브레이션 세션 ID가 있고, 아직 녹화 중이 아닐 때만 시작
-      const calibrationSessionId = state.gazeTracking?.calibrationSessionId;
-      if (calibrationSessionId && !isGazeRecording && !isRestoring) {
-        console.log('👁️ 면접 페이지 진입 - 시선 추적 자동 시작');
-        await startGazeRecording();
-      }
-    };
-
-    startAutoGazeTracking();
-  }, [state.gazeTracking?.calibrationSessionId, isRestoring]);
+  
 
   // 난이도별 AI 지원자 이미지 매핑 함수
   const getAICandidateImage = (level: number): string => {
@@ -374,7 +362,7 @@ const InterviewGO: React.FC = () => {
           setTimeout(() => {
             if (gazeBlob) {
               console.log('👁️ 면접 완료 - 시선 분석 시작');
-              uploadAndAnalyzeGaze();
+              // uploadAndAnalyzeGaze();
             }
           }, 1000);
         }
@@ -907,11 +895,18 @@ const InterviewGO: React.FC = () => {
       
       console.log('🗣️ STT 요청 전송 중...');
       
-      const response = await apiClient.post('/interview/stt', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      const response = await fetch('http://localhost:8000/interview/stt', {
+        method: 'POST',
+        body: formData
       });
       
-      const result = response.data;
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('🔥 STT API 에러 응답:', response.status, errorData);
+        throw new Error(`STT API 오류: ${response.status} - ${errorData.detail || response.statusText}`);
+      }
+      
+      const result = await response.json();
       const transcribedText = result.text || '';
       
       console.log('✅ STT 처리 성공:', transcribedText);
@@ -1004,6 +999,7 @@ const InterviewGO: React.FC = () => {
     }
   };
 
+  /*
   // 👁️ 시선 추적 비디오 업로드 및 분석
   const uploadAndAnalyzeGaze = async () => {
     if (!gazeBlob || !state.sessionId) {
@@ -1077,6 +1073,7 @@ const InterviewGO: React.FC = () => {
       setGazeError('시선 분석을 완료할 수 없습니다.');
     }
   };
+  */
 
   // 👁️ 분석 결과를 Supabase에 저장
   const saveGazeAnalysisToDatabase = async (result: GazeAnalysisResult) => {
@@ -1218,6 +1215,7 @@ const InterviewGO: React.FC = () => {
     return null;
   };
 
+  /*
   // 🆕 피드백 처리 함수들
   const triggerBackgroundFeedback = async (qaHistory: any[]) => {
     try {
@@ -1328,6 +1326,7 @@ const InterviewGO: React.FC = () => {
       console.error('❌ 백그라운드 피드백 처리 실패:', error);
     }
   };
+  */
 
   // 🎤 음성 답변 제출 (녹음 후 자동 제출)
   const submitVoiceAnswer = async () => {
@@ -1373,6 +1372,20 @@ const InterviewGO: React.FC = () => {
       }
     };
   }, []);
+
+  // 👁️ 면접 시작 시 자동으로 시선 추적 시작
+  useEffect(() => {
+    const startAutoGazeTracking = async () => {
+      // 캘리브레이션 세션 ID가 있고, 아직 녹화 중이 아닐 때만 시작
+      const calibrationSessionId = state.gazeTracking?.calibrationSessionId;
+      if (calibrationSessionId && !isGazeRecording && !isRestoring) {
+        console.log('👁️ 면접 페이지 진입 - 시선 추적 자동 시작');
+        await startGazeRecording();
+      }
+    };
+
+    startAutoGazeTracking();
+  }, [state.gazeTracking?.calibrationSessionId, isRestoring, isGazeRecording, startGazeRecording]);
 
   return (
     <div className="h-screen bg-black text-white flex flex-col overflow-hidden">
