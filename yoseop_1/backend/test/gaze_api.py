@@ -29,7 +29,7 @@ BUCKET_NAME = 'betago-s3'
 # --- Pydantic 모델 ---
 
 class CalibrationStartRequest(BaseModel):
-    user_id: Optional[str] = None
+    user_id: Optional[int] = None
 
 class CalibrationStartResponse(BaseModel):
     session_id: str
