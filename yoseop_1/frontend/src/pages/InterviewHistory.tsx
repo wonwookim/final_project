@@ -276,9 +276,9 @@ const InterviewHistory: React.FC = () => {
                                 console.log('🚨🚨🚨 상세보기 버튼 클릭됨! 🚨🚨🚨');
                                 alert('상세보기 버튼이 클릭되었습니다!');
                                 console.log('🔴 interview.session_id (string):', interview.session_id, typeof interview.session_id);
-                                console.log('🔴 interview.interview_id (number):', interview.interview_id, typeof interview.interview_id);
-                                console.log('🔴 전체 interview 객체:', interview);
-                                handleViewDetails(interview.session_id, interview.interview_id);
+                                // console.log('🔴 interview.interview_id (number):', interview.interview_id, typeof interview.interview_id);
+                                // console.log('🔴 전체 interview 객체:', interview);
+                                // handleViewDetails(interview.session_id, interview.interview_id);
                               }}
                               className="text-blue-600 hover:text-blue-700 transition-colors bg-red-100 border-2 border-red-500 px-2 py-1"
                               style={{ zIndex: 9999, position: 'relative' }}
