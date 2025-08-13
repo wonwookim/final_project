@@ -14,8 +14,8 @@ RUN npm ci
 # Copy source code first
 COPY frontend/ ./
 
-# Copy .env file to the correct location (React project root)
-COPY .env ./
+# Copy frontend .env file to the React project root
+COPY frontend/.env ./
 
 # Build with environment variables (React reads .env from project root)
 RUN npm run build

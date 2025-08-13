@@ -833,6 +833,22 @@ export const interviewApi = {
     console.log('✅ TTS 오디오 생성 완료');
     return audio;
   },
+
+  // 면접 완료 (비동기 피드백 처리)
+  async completeInterview(sessionId: string): Promise<{
+    status: string;
+    message: string;
+    session_id: string;
+    feedback_processing: boolean;
+  }> {
+    const response = await apiClient.post(`/interview/complete?session_id=${sessionId}`, {});
+    return response.data as {
+      status: string;
+      message: string;
+      session_id: string;
+      feedback_processing: boolean;
+    };
+  },
 };
 
 // 에러 처리 유틸리티

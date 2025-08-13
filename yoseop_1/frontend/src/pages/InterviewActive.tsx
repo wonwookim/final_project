@@ -18,6 +18,7 @@ import {
 
 
 const InterviewActive: React.FC = () => {
+  
   const navigate = useNavigate();
   const { state, dispatch } = useInterview();
   const { startInterview: startInterviewAPI, isStarting } = useInterviewStart();
@@ -1680,24 +1681,10 @@ const InterviewActive: React.FC = () => {
   };
 
   const submitAnswer = async () => {
-    // 🐛 디버깅: 버튼 클릭 시 상태 확인
-    console.log('🔘 submitAnswer 함수 호출됨');
-    console.log('📋 현재 상태:', {
-      sessionId: state.sessionId,
-      currentAnswer: currentAnswer?.length || 0,
-      currentAnswerTrim: currentAnswer?.trim() || '',
-      isLoading,
-      currentPhase,
-      comparisonMode,
-      canAnswer,
-      comparisonSessionId
-    });
-    
     if (!state.sessionId) return;
     
     // 답변 제출 시 STT 자동 종료
     if (isSTTActive && sttInstance) {
-      console.log('🎤 답변 제출 시 STT 자동 종료');
       sttInstance.stop();
       setIsSTTActive(false);
     }
@@ -1905,32 +1892,6 @@ const InterviewActive: React.FC = () => {
     try {
       setIsLoading(true);
       
-      // 일반 모드에서도 사용자 답변을 timeline에 추가
-      const userAnswer = {
-        id: `user_answer_${Date.now()}`,
-        type: 'user' as const,
-        question: currentQuestion.question,
-        questionType: currentQuestion.category,
-        answer: currentAnswer,
-        isAnswering: false
-      };
-      
-      // 중복 방지: 같은 질문에 대한 사용자 답변이 이미 있는지 확인
-      setTimeline(prev => {
-        const hasExistingUserAnswer = prev.some(turn => 
-          turn.type === 'user' && 
-          turn.question === userAnswer.question && 
-          turn.answer
-        );
-        
-        if (hasExistingUserAnswer) {
-          console.log('⚠️ 같은 질문에 대한 사용자 답변이 이미 존재함, 추가하지 않음');
-          return prev;
-        }
-        
-        return [...prev, userAnswer];
-      });
-      
       const answerData = {
         session_id: state.sessionId,
         question_id: currentQuestion.id,
@@ -1938,38 +1899,13 @@ const InterviewActive: React.FC = () => {
         time_spent: (currentQuestion.time_limit || 120) - timeLeft
       };
 
+      // 답변 제출
       await interviewApi.submitAnswer(answerData);
       dispatch({ type: 'ADD_ANSWER', payload: answerData });
       setCurrentAnswer('');
       
-      // AI 경쟁 모드인 경우 AI 답변 생성
-      if (state.settings?.mode === 'ai_competition' && state.sessionId) {
-        try {
-          const aiResponse = await interviewApi.getAIAnswer(state.sessionId, currentQuestion.id);
-          
-          dispatch({ 
-            type: 'ADD_AI_ANSWER', 
-            payload: {
-              question_id: currentQuestion.id,
-              answer: aiResponse.answer,
-              score: aiResponse.score,
-              persona_name: aiResponse.persona_name,
-              time_spent: aiResponse.time_spent
-            }
-          });
-          
-          setInterviewState('ai_answering');
-          
-          setTimeout(() => {
-            proceedToNextQuestion();
-          }, 3000);
-        } catch (aiError) {
-          console.error('AI 답변 생성 실패:', aiError);
-          proceedToNextQuestion();
-        }
-      } else {
-        proceedToNextQuestion();
-      }
+      // 다음 질문으로 진행
+      proceedToNextQuestion();
       
     } catch (error) {
       console.error('답변 제출 실패:', error);
@@ -1991,6 +1927,20 @@ const InterviewActive: React.FC = () => {
         setTimeLeft(nextResponse.question.time_limit || 120);
         setInterviewState('active');
         
+        // 즉시 localStorage에 새로운 상태 저장 (sessionId는 변경하지 않음)
+        setTimeout(() => {
+          const currentState = JSON.parse(localStorage.getItem('interview_state') || '{}');
+          const updatedState = {
+            ...currentState,
+            questions: [...state.questions, nextResponse.question],
+            currentQuestionIndex: state.currentQuestionIndex + 1,
+            // sessionId는 기존 값 유지
+            sessionId: currentState.sessionId || state.sessionId
+          };
+          localStorage.setItem('interview_state', JSON.stringify(updatedState));
+          console.log('💾 다음 질문으로 진행 후 localStorage 저장됨 (sessionId 유지)');
+        }, 100);
+        
         setTimeout(() => {
           answerRef.current?.focus();
         }, 100);
@@ -2003,17 +1953,20 @@ const InterviewActive: React.FC = () => {
     }
   };
 
-  const completeInterview = () => {
-    setInterviewState('completed');
-    dispatch({ type: 'SET_INTERVIEW_STATUS', payload: 'completed' });
-    
-    setTimeout(() => {
+  const completeInterview = async () => {
+    try {
+      setInterviewState('completed');
+      dispatch({ type: 'SET_INTERVIEW_STATUS', payload: 'completed' });
+      
+      // 백그라운드에서 피드백 처리 시작
       if (state.sessionId) {
-        navigate(`/interview/results/${state.sessionId}`);
-      } else {
-        navigate('/interview/results');
+        await interviewApi.completeInterview(state.sessionId);
       }
-    }, 3000);
+      
+    } catch (error) {
+      console.error('면접 완료 처리 실패:', error);
+      // 에러가 발생해도 면접은 완료된 것으로 처리
+    }
   };
 
   const formatTime = (seconds: number): string => {
@@ -2701,12 +2654,39 @@ const InterviewActive: React.FC = () => {
               </svg>
             </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-4">면접 완료!</h1>
-            <p className="text-lg text-gray-600 mb-8">
-              수고하셨습니다. 곧 결과 페이지로 이동합니다.
+            <p className="text-lg text-gray-600 mb-6">
+              수고하셨습니다. 피드백 분석이 백그라운드에서 진행됩니다.
             </p>
-            <div className="flex items-center justify-center">
-              <LoadingSpinner />
-              <span className="ml-3 text-gray-600">결과 분석 중...</span>
+            <div className="bg-blue-50 rounded-lg p-4 mb-8">
+              <div className="flex items-center justify-center mb-2">
+                <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-blue-800 font-medium">분석 진행 중</span>
+              </div>
+              <p className="text-sm text-blue-700">
+                잠시 후 면접 기록에서 상세한 피드백을 확인하실 수 있습니다.
+              </p>
+            </div>
+            <div className="space-y-4">
+              <button
+                onClick={() => {
+                  if (state.sessionId) {
+                    navigate(`/interview/results/${state.sessionId}`);
+                  } else {
+                    navigate('/interview/results');
+                  }
+                }}
+                className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+              >
+                결과 페이지로 이동
+              </button>
+              <button
+                onClick={() => navigate('/main')}
+                className="w-full px-6 py-3 bg-gray-500 text-white rounded-lg font-medium hover:bg-gray-600 transition-colors"
+              >
+                메인 페이지로 이동
+              </button>
             </div>
           </div>
         </div>

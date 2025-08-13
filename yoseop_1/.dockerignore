@@ -30,7 +30,7 @@ pip-delete-this-directory.txt
 
 # Node.js dependencies and cache
 frontend/node_modules/
-frontend/.env
+# frontend/.env  # Allow frontend/.env for build
 frontend/.env.local
 frontend/.env.development.local
 frontend/.env.test.local

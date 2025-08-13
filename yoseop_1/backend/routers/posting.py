@@ -11,7 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 posting_router = APIRouter(prefix="/posting", tags=["Posting"])
 
 # 🟢 GET /posting – 채용공고 목록 조회
-@posting_router.get("/", response_model=List[PostingResponse])
+@posting_router.get("", response_model=List[PostingResponse])
 async def get_posting_list():
     """모든 채용공고 조회 (회사, 직무 정보 포함)"""
     try:

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -6,7 +6,8 @@ import { useInterviewHistory } from '../hooks/useInterviewHistory';
 import { InterviewSettings } from '../services/api';
 
 interface InterviewRecord {
-  session_id: string;
+  session_id: string; // 라우팅용 (interview_id를 문자열로 변환)
+  interview_id: number; // 실제 DB ID
   company: string;
   position: string;
   date: string;
@@ -19,11 +20,24 @@ interface InterviewRecord {
 }
 
 const InterviewHistory: React.FC = () => {
+  console.log('🟢🟢🟢 InterviewHistory 컴포넌트 마운트됨!');
+  
   const navigate = useNavigate();
   const [selectedFilter, setSelectedFilter] = useState('all');
   
   // Context에서 면접 기록 데이터 가져오기
   const { interviews, stats, isLoading, error } = useInterviewHistory();
+  
+  // 컴포넌트 마운트 확인을 위한 useEffect
+  useEffect(() => {
+    console.log('🟢 InterviewHistory useEffect 실행됨');
+    console.log('🟢 interviews 길이:', interviews.length);
+    console.log('🟢 첫 번째 interview:', interviews[0]);
+    
+    return () => {
+      console.log('🔴 InterviewHistory 컴포넌트 언마운트됨');
+    };
+  }, [interviews.length]);
 
   const statistics = {
     totalInterviews: stats.totalInterviews,
@@ -72,9 +86,25 @@ const InterviewHistory: React.FC = () => {
     }
   };
 
-  const handleViewDetails = (sessionId: string) => {
-    // 세션 ID를 사용하여 결과 페이지로 이동
-    console.log('🔍 DEBUG - handleViewDetails 호출됨, sessionId:', sessionId);
+  const handleViewDetails = (sessionId: string, interviewId: number) => {
+    // interview_id를 사용하여 결과 페이지로 이동 (sessionId는 interview_id를 문자열로 변환한 것)
+    console.log('🔍 DEBUG - handleViewDetails 호출됨');
+    console.log('🔍 DEBUG - sessionId (string):', sessionId, typeof sessionId);
+    console.log('🔍 DEBUG - interviewId (number):', interviewId, typeof interviewId);
+    
+    // 유효성 검사 추가
+    if (!sessionId || sessionId === 'undefined' || sessionId === 'null') {
+      console.error('❌ 유효하지 않은 sessionId:', sessionId);
+      alert('면접 결과를 불러올 수 없습니다. 데이터가 손상되었을 수 있습니다.');
+      return;
+    }
+    
+    if (!interviewId || isNaN(interviewId) || interviewId <= 0) {
+      console.error('❌ 유효하지 않은 interviewId:', interviewId);
+      alert('면접 결과를 불러올 수 없습니다. 면접 ID가 유효하지 않습니다.');
+      return;
+    }
+    
     console.log('🔍 DEBUG - 이동할 URL:', `/interview/results/${sessionId}`);
     navigate(`/interview/results/${sessionId}`);
   };
@@ -82,6 +112,14 @@ const InterviewHistory: React.FC = () => {
   const handleViewFeedback = (sessionId: string) => {
     // 피드백 상세 페이지로 이동
     console.log('🔍 DEBUG - handleViewFeedback 호출됨, sessionId:', sessionId);
+    
+    // 유효성 검사 추가
+    if (!sessionId || sessionId === 'undefined' || sessionId === 'null') {
+      console.error('❌ 유효하지 않은 sessionId:', sessionId);
+      alert('면접 피드백을 불러올 수 없습니다. 데이터가 손상되었을 수 있습니다.');
+      return;
+    }
+    
     console.log('🔍 DEBUG - 이동할 URL:', `/interview/results/${sessionId}`);
     navigate(`/interview/results/${sessionId}`, { state: { tab: 'longterm' } });
   };
@@ -232,13 +270,20 @@ const InterviewHistory: React.FC = () => {
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex gap-3">
                             <button 
-                              onClick={() => {
-                                console.log('🔴 상세보기 버튼 클릭됨! interview.session_id:', interview.session_id);
-                                handleViewDetails(interview.session_id);
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                console.log('🚨🚨🚨 상세보기 버튼 클릭됨! 🚨🚨🚨');
+                                alert('상세보기 버튼이 클릭되었습니다!');
+                                console.log('🔴 interview.session_id (string):', interview.session_id, typeof interview.session_id);
+                                console.log('🔴 interview.interview_id (number):', interview.interview_id, typeof interview.interview_id);
+                                console.log('🔴 전체 interview 객체:', interview);
+                                handleViewDetails(interview.session_id, interview.interview_id);
                               }}
-                              className="text-blue-600 hover:text-blue-700 transition-colors"
+                              className="text-blue-600 hover:text-blue-700 transition-colors bg-red-100 border-2 border-red-500 px-2 py-1"
+                              style={{ zIndex: 9999, position: 'relative' }}
                             >
-                              상세보기
+                              상세보기 [TEST]
                             </button>
                             <button 
                               onClick={() => {

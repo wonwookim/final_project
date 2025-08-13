@@ -93,7 +93,7 @@ const LoginPage: React.FC = () => {
     
     try {
       const oauthOptions: any = {
-        redirectTo: `${window.location.origin}/auth/callback`
+        redirectTo: `${process.env.REACT_APP_BASE_URL || window.location.origin}/auth/callback`
       };
 
       // 카카오의 경우 이메일과 이름만 요청

@@ -4,12 +4,14 @@ FastAPI 기반 AI 면접 시스템
 새로운 서비스 계층 구조 적용
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import os
 import sys
 from datetime import datetime
+import mimetypes
 
 # 프로젝트 루트 경로 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -60,10 +62,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# API 엔드포인트
-@app.get("/")
+# API 엔드포인트 (API 정보는 /api 경로로 이동)
+@app.get("/api")
 async def root():
-    """루트 엔드포인트 - API 정보 반환"""
+    """API 정보 반환"""
     return {
         "message": "Beta-GO Interview API",
         "version": "2.0.0",
@@ -72,38 +74,85 @@ async def root():
         "health": "/health"
     }
 
+@app.post("/api")
+async def debug_log(request: Request):
+    """프론트엔드 디버깅 로그 수신"""
+    try:
+        body = await request.json()
+        print(f"🔍 FRONTEND_DEBUG: {body}")
+        return {"status": "logged"}
+    except Exception as e:
+        print(f"❌ 디버깅 로그 처리 실패: {e}")
+        return {"error": str(e)}
+
 @app.get("/health")
 async def health_check():
     """서버 상태 확인"""
     return {"status": "healthy", "timestamp": datetime.now()}
 
-from fastapi.responses import FileResponse
-from fastapi import Request
-import mimetypes
 
-# SPA 라우팅 처리를 위한 catch-all 핸들러
+# SPA 라우팅을 위한 간단한 미들웨어
 @app.middleware("http")
-async def spa_handler(request: Request, call_next):
+async def spa_middleware(request: Request, call_next):
     response = await call_next(request)
     
-    # API 경로와 정적 파일 경로 제외 목록
-    api_prefixes = [
-        '/docs', '/redoc', '/openapi.json',
-        '/health', '/static', '/js', '/css', '/img',
-        '/auth', '/user', '/resume', '/company', 
-        '/posting', '/position', '/interview'
-    ]
+    # API 경로들은 그대로 반환 (더 구체적으로 지정)
+    api_paths = ['/auth', '/user', '/resume', '/company', '/posting', '/position', '/docs', '/redoc', '/openapi.json', '/health']
     
-    # API 경로가 아니고, 404 에러인 경우 React 앱 반환
-    is_api_path = any(request.url.path.startswith(prefix) for prefix in api_prefixes)
+    # /interview API 경로들 (정확한 매칭을 위해)
+    is_interview_api = (
+        request.url.path.startswith('/interview/start') or
+        request.url.path.startswith('/interview/answer') or
+        request.url.path.startswith('/interview/question') or
+        request.url.path.startswith('/interview/history/') or  # /interview/history/123 (API)
+        request.url.path == '/interview/history' or  # /interview/history (API)
+        request.url.path.startswith('/interview/ai/') or
+        request.url.path.startswith('/interview/complete') or
+        request.url.path.startswith('/interview/upload') or
+        request.url.path.startswith('/interview/tts') or
+        request.url.path.startswith('/interview/stt') or
+        request.url.path.startswith('/interview/text-competition') or
+        request.url.path.startswith('/interview/comparison') or
+        request.url.path.startswith('/interview/session') or
+        request.url.path.startswith('/interview/feedback')
+    )
     
-    if not is_api_path and response.status_code == 404:
+    # 디버깅: 면접 관련 API 호출 로깅
+    if request.url.path.startswith('/interview/'):
+        print(f"🔍 면접 API 요청: {request.method} {request.url.path}")
+        print(f"📊 API 매칭 결과: is_interview_api={is_interview_api}")
+        print(f"📈 응답 상태: {response.status_code}")
+    
+    if (any(request.url.path.startswith(path) for path in api_paths) or is_interview_api):
+        return response
+    
+    # 정적 파일들은 그대로 반환
+    static_extensions = ['.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2', '.ttf', '.eot']
+    if any(request.url.path.endswith(ext) for ext in static_extensions):
+        return response
+    
+    # /static, /js, /css, /img 경로들은 그대로 반환
+    if request.url.path.startswith('/static') or request.url.path.startswith('/js') or request.url.path.startswith('/css') or request.url.path.startswith('/img'):
+        return response
+    
+    # 404 에러인 경우 React 앱 반환
+    if response.status_code == 404:
         static_dir = os.path.join(os.path.dirname(__file__), "static")
         index_path = os.path.join(static_dir, "index.html")
         if os.path.exists(index_path):
-            return FileResponse(index_path)
+            return FileResponse(index_path, media_type="text/html")
     
     return response
+
+# 루트 경로와 앱 경로는 React 앱 반환
+@app.get("/")
+@app.get("/app")
+async def serve_root():
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    index_path = os.path.join(static_dir, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path, media_type="text/html")
+    return {"message": "Beta-GO Interview API", "version": "2.0.0", "status": "running", "docs": "/docs", "health": "/health"}
 
 # 정적 파일 서빙 설정 (React 앱)
 static_dir = os.path.join(os.path.dirname(__file__), "static")

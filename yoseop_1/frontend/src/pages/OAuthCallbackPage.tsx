@@ -4,7 +4,9 @@ import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { supabase } from '../lib/supabase';
 import { tokenManager } from '../services/api';
-import apiClient from '../services/api';
+
+// API Base URL 설정
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 const OAuthCallbackPage: React.FC = () => {
   const navigate = useNavigate();
@@ -35,13 +37,19 @@ const OAuthCallbackPage: React.FC = () => {
       }
 
       // 백엔드에 사용자 동기화 요청
-      const response = await apiClient.post('/auth/oauth/complete', {}, {
+      const response = await fetch(`${API_BASE_URL}/auth/oauth/complete`, {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
         }
       });
 
-      const userData = response.data;
+      if (!response.ok) {
+        throw new Error(`사용자 동기화 실패: ${response.status}`);
+      }
+
+      const userData = await response.json();
 
       // tokenManager에 토큰과 사용자 정보 저장
       if (userData.access_token && userData.user) {
