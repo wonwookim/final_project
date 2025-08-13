@@ -25,6 +25,7 @@ const EnvironmentCheck: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [showGazeCalibration, setShowGazeCalibration] = useState(false);
+  const isNavigatingForward = useRef(false);
 
   const [checkItems, setCheckItems] = useState<CheckItem[]>([
     {
@@ -251,7 +252,8 @@ const EnvironmentCheck: React.FC = () => {
   }, [checkItems]);
 
   const handlePrevious = () => {
-    // 카메라 스트림 정리
+    // 뒤로 가기는 정상적인 이동이므로 스트림 정리
+    isNavigatingForward.current = false;
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
     }
@@ -318,6 +320,9 @@ const EnvironmentCheck: React.FC = () => {
     localStorage.setItem('interview_state', JSON.stringify(stateToSave));
     console.log('💾 면접 설정을 localStorage에 저장 완료 - API 호출은 면접 화면에서 수행');
     
+    // 정상적인 다음 단계로의 이동임을 명시적으로 기록
+    isNavigatingForward.current = true;
+    
     // 카메라 스트림을 Context에 저장
     if (stream) {
       dispatch({
@@ -343,11 +348,15 @@ const EnvironmentCheck: React.FC = () => {
     }, 500);
   };
 
-  // 컴포넌트 언마운트 시 스트림 정리
+  // 컴포넌트 언마운트 시 조건부 스트림 정리
   useEffect(() => {
     return () => {
-      if (stream) {
+      // 면접 시작으로 인한 이동이 아닐 경우에만 스트림 중지
+      if (!isNavigatingForward.current && stream) {
+        console.log('🔄 페이지 이탈로 인한 스트림 정리');
         stream.getTracks().forEach(track => track.stop());
+      } else if (isNavigatingForward.current) {
+        console.log('✅ 면접 시작으로 인한 이동 - 스트림 유지');
       }
     };
   }, [stream]);

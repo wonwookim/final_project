@@ -69,6 +69,67 @@ const InterviewGO: React.FC = () => {
     loadSessionFromService();
   }, [state.sessionId, dispatch, navigate]);
 
+  // 🎥 카메라 스트림 검증 및 연결
+  useEffect(() => {
+    const validateAndConnectStream = async () => {
+      console.log('🔍 카메라 스트림 검증 시작:', !!state.cameraStream);
+      
+      // 1. 스트림 객체가 존재하는지 확인
+      if (!state.cameraStream) {
+        console.log('❌ 카메라 스트림이 없습니다.');
+        alert('카메라 연결에 문제가 발생했습니다. 환경 체크 페이지로 다시 이동합니다.');
+        navigate('/interview/environment-check');
+        return;
+      }
+      
+      // 2. 스트림이 활성화 상태인지 확인
+      if (!state.cameraStream.active) {
+        console.log('❌ 카메라 스트림이 비활성화 상태입니다.');
+        alert('카메라 연결에 문제가 발생했습니다. 환경 체크 페이지로 다시 이동합니다.');
+        navigate('/interview/environment-check');
+        return;
+      }
+      
+      // 3. 비디오 트랙이 존재하고 live 상태인지 확인
+      const videoTracks = state.cameraStream.getVideoTracks();
+      if (videoTracks.length === 0 || videoTracks[0].readyState !== 'live') {
+        console.log('❌ 카메라 비디오 트랙이 유효하지 않습니다:', videoTracks.length, videoTracks[0]?.readyState);
+        alert('카메라 연결에 문제가 발생했습니다. 환경 체크 페이지로 다시 이동합니다.');
+        navigate('/interview/environment-check');
+        return;
+      }
+      
+      // 4. 모든 검증을 통과했다면 비디오 엘리먼트에 스트림 연결
+      if (videoRef.current) {
+        console.log('✅ 카메라 스트림 검증 완료 - 비디오 엘리먼트에 연결');
+        videoRef.current.srcObject = state.cameraStream;
+        
+        try {
+          await videoRef.current.play();
+          console.log('✅ 카메라 비디오 재생 시작');
+        } catch (playError) {
+          console.warn('⚠️ 비디오 자동 재생 실패 (권한 문제일 수 있음):', playError);
+        }
+      }
+    };
+
+    // cameraStream이 존재할 때 검증 실행
+    if (state.cameraStream) {
+      validateAndConnectStream();
+    }
+  }, [state.cameraStream, navigate]);
+
+  // 🧹 컴포넌트 언마운트 시 비디오 스트림 정리 (메모리 누수 방지)
+  useEffect(() => {
+    const currentVideoRef = videoRef.current;
+    return () => {
+      if (currentVideoRef) {
+        console.log('🧹 비디오 엘리먼트 스트림 연결 해제');
+        currentVideoRef.srcObject = null;
+      }
+    };
+  }, []);
+
   
 
   // 난이도별 AI 지원자 이미지 매핑 함수
