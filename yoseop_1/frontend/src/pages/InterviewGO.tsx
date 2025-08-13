@@ -2,8 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInterview } from '../contexts/InterviewContext';
 import { sessionApi, interviewApi, tokenManager } from '../services/api';
+import apiClient, { handleApiError } from '../services/api';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import SpeechIndicator from '../components/voice/SpeechIndicator';
+import { GazeAnalysisResult } from '../components/test/types';
 
 const InterviewGO: React.FC = () => {
   const navigate = useNavigate();
@@ -66,6 +68,20 @@ const InterviewGO: React.FC = () => {
     loadSessionFromService();
   }, [state.sessionId, dispatch, navigate]);
 
+  // 👁️ 면접 시작 시 자동으로 시선 추적 시작
+  useEffect(() => {
+    const startAutoGazeTracking = async () => {
+      // 캘리브레이션 세션 ID가 있고, 아직 녹화 중이 아닐 때만 시작
+      const calibrationSessionId = state.gazeTracking?.calibrationSessionId;
+      if (calibrationSessionId && !isGazeRecording && !isRestoring) {
+        console.log('👁️ 면접 페이지 진입 - 시선 추적 자동 시작');
+        await startGazeRecording();
+      }
+    };
+
+    startAutoGazeTracking();
+  }, [state.gazeTracking?.calibrationSessionId, isRestoring]);
+
   // 난이도별 AI 지원자 이미지 매핑 함수
   const getAICandidateImage = (level: number): string => {
     if (level <= 3) return '/img/candidate_1.png'; // 초급자
@@ -114,6 +130,12 @@ const InterviewGO: React.FC = () => {
   const [sttResult, setSttResult] = useState('');
   const [recordingTime, setRecordingTime] = useState(0);
   const [hasAudioPermission, setHasAudioPermission] = useState<boolean | null>(null);
+
+  // 👁️ 시선 추적 관련 상태
+  const [isGazeRecording, setIsGazeRecording] = useState(false);
+  const [gazeBlob, setGazeBlob] = useState<Blob | null>(null);
+  const [gazeError, setGazeError] = useState<string | null>(null);
+  const [gazeAnalysisResult, setGazeAnalysisResult] = useState<GazeAnalysisResult | null>(null);
   
   const answerRef = useRef<HTMLTextAreaElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -121,6 +143,11 @@ const InterviewGO: React.FC = () => {
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 👁️ 시선 추적용 refs
+  const gazeVideoRef = useRef<HTMLVideoElement>(null);
+  const gazeMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const gazeChunksRef = useRef<Blob[]>([]);
 
   // 🆕 타이머 관리
   useEffect(() => {
@@ -338,6 +365,19 @@ const InterviewGO: React.FC = () => {
         setIsTimerActive(false);
         setCanSubmit(false);
         console.log('✅ 면접 완료로 설정됨');
+
+        // 👁️ 시선 추적 녹화 중지 및 분석 시작
+        if (isGazeRecording) {
+          console.log('👁️ 면접 완료 - 시선 추적 중지 및 분석 준비');
+          stopGazeRecording();
+          // 녹화 중지 후 잠시 대기한 다음 분석 시작 (blob 생성 시간 필요)
+          setTimeout(() => {
+            if (gazeBlob) {
+              console.log('👁️ 면접 완료 - 시선 분석 시작');
+              uploadAndAnalyzeGaze();
+            }
+          }, 1000);
+        }
     } else if (nextAgent === 'user' || status === 'waiting_for_user' || turnInfo?.is_user_turn) {
         setCurrentPhase('user_turn');
         setCurrentTurn('user');
@@ -867,18 +907,11 @@ const InterviewGO: React.FC = () => {
       
       console.log('🗣️ STT 요청 전송 중...');
       
-      const response = await fetch('http://localhost:8000/interview/stt', {
-        method: 'POST',
-        body: formData
+      const response = await apiClient.post('/interview/stt', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
       
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('🔥 STT API 에러 응답:', response.status, errorData);
-        throw new Error(`STT API 오류: ${response.status} - ${errorData.detail || response.statusText}`);
-      }
-      
-      const result = await response.json();
+      const result = response.data;
       const transcribedText = result.text || '';
       
       console.log('✅ STT 처리 성공:', transcribedText);
@@ -898,7 +931,183 @@ const InterviewGO: React.FC = () => {
     }
   };
 
+  // 👁️ 시선 추적 녹화 시작
+  const startGazeRecording = async () => {
+    // 캘리브레이션 세션 ID 확인
+    const calibrationSessionId = state.gazeTracking?.calibrationSessionId;
+    if (!calibrationSessionId) {
+      console.log('⚠️ 캘리브레이션 정보가 없어 시선 추적을 건너뜁니다.');
+      return;
+    }
 
+    try {
+      // 화면 + 웹캠 스트림 가져오기
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 }
+        },
+        audio: false // 음성은 별도로 녹음
+      });
+
+      if (gazeVideoRef.current) {
+        gazeVideoRef.current.srcObject = stream;
+      }
+
+      // MediaRecorder 설정
+      let mimeType = 'video/webm;codecs=vp8';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm';
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      gazeMediaRecorderRef.current = mediaRecorder;
+      gazeChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          gazeChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(gazeChunksRef.current, { type: mimeType });
+        setGazeBlob(blob);
+        console.log('👁️ 시선 추적 녹화 완료, 크기:', blob.size);
+
+        // 스트림 정리
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.onerror = (event) => {
+        console.error('❌ 시선 추적 녹화 오류:', event);
+        setGazeError('시선 추적 녹화 중 오류가 발생했습니다.');
+      };
+
+      mediaRecorder.start();
+      setIsGazeRecording(true);
+      console.log('👁️ 시선 추적 녹화 시작');
+
+    } catch (error) {
+      console.error('❌ 시선 추적 녹화 시작 실패:', error);
+      setGazeError('시선 추적을 시작할 수 없습니다.');
+    }
+  };
+
+  // 👁️ 시선 추적 녹화 중지
+  const stopGazeRecording = () => {
+    if (gazeMediaRecorderRef.current && isGazeRecording) {
+      gazeMediaRecorderRef.current.stop();
+      setIsGazeRecording(false);
+      console.log('👁️ 시선 추적 녹화 중지');
+    }
+  };
+
+  // 👁️ 시선 추적 비디오 업로드 및 분석
+  const uploadAndAnalyzeGaze = async () => {
+    if (!gazeBlob || !state.sessionId) {
+      console.log('⚠️ 시선 비디오 또는 세션 ID가 없어 분석을 건너뜁니다.');
+      return;
+    }
+
+    const calibrationSessionId = state.gazeTracking?.calibrationSessionId;
+    if (!calibrationSessionId) {
+      console.log('⚠️ 캘리브레이션 세션 ID가 없어 분석을 건너뜁니다.');
+      return;
+    }
+
+    try {
+      console.log('👁️ 시선 비디오 업로드 시작...');
+
+      // 1. 비디오 업로드
+      const formData = new FormData();
+      formData.append('file', gazeBlob, 'gaze-recording.webm');
+      formData.append('file_type', 'video');
+      formData.append('interview_id', state.sessionId);
+
+      const uploadResponse = await apiClient.post('/test/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      const videoUrl = uploadResponse.data.play_url;
+      console.log('✅ 시선 비디오 업로드 완료:', videoUrl);
+
+      // 2. 시선 분석 요청
+      console.log('👁️ 시선 분석 시작...');
+      const analysisResponse = await apiClient.post('/test/gaze/analyze', {
+        video_url: videoUrl,
+        session_id: calibrationSessionId
+      });
+
+      const taskId = analysisResponse.data.task_id;
+      console.log('✅ 시선 분석 작업 시작:', taskId);
+
+      // 3. 분석 상태 체크 (간단 버전)
+      const checkAnalysisStatus = async () => {
+        try {
+          const statusResponse = await apiClient.get(`/test/gaze/analyze/status/${taskId}`);
+          const statusData = statusResponse.data;
+
+          if (statusData.status === 'completed' && statusData.result) {
+            setGazeAnalysisResult(statusData.result);
+            console.log('🎉 시선 분석 완료:', statusData.result);
+
+            // 4. 결과를 gaze_analysis 테이블에 저장
+            await saveGazeAnalysisToDatabase(statusData.result);
+
+          } else if (statusData.status === 'failed') {
+            console.error('❌ 시선 분석 실패:', statusData.error);
+            setGazeError('시선 분석에 실패했습니다.');
+          } else {
+            // 아직 진행 중이면 5초 후 다시 체크
+            setTimeout(checkAnalysisStatus, 5000);
+          }
+        } catch (error) {
+          console.error('❌ 분석 상태 체크 실패:', error);
+          setGazeError('시선 분석 상태를 확인할 수 없습니다.');
+        }
+      };
+
+      // 첫 번째 상태 체크 (5초 후)
+      setTimeout(checkAnalysisStatus, 5000);
+
+    } catch (error) {
+      console.error('❌ 시선 분석 프로세스 실패:', error);
+      setGazeError('시선 분석을 완료할 수 없습니다.');
+    }
+  };
+
+  // 👁️ 분석 결과를 Supabase에 저장
+  const saveGazeAnalysisToDatabase = async (result: GazeAnalysisResult) => {
+    try {
+      const user = tokenManager.getUser();
+      const userId = user?.user_id;
+      const calibrationSessionId = state.gazeTracking?.calibrationSessionId;
+
+      if (!userId || !state.sessionId || !calibrationSessionId) {
+        console.error('❌ 필수 정보 누락:', { userId, sessionId: state.sessionId, calibrationSessionId });
+        return;
+      }
+
+      // Supabase gaze_analysis 테이블에 저장
+      const saveResponse = await apiClient.post('/gaze/analysis/save', {
+        interview_id: parseInt(state.sessionId),
+        user_id: userId,
+        calibration_session_id: calibrationSessionId,
+        gaze_score: result.gaze_score,
+        jitter_score: result.jitter_score,
+        compliance_score: result.compliance_score,
+        stability_rating: result.stability_rating
+      });
+
+      console.log('✅ 시선 분석 결과 DB 저장 완료:', saveResponse.data);
+
+    } catch (error) {
+      console.error('❌ 시선 분석 결과 DB 저장 실패:', error);
+      // DB 저장 실패해도 면접 진행에는 영향 없도록 처리
+    }
+  };
 
   // 🆕 필요한 데이터 추출 함수들
   const getCurrentUserId = (): number => {
@@ -1092,19 +1301,8 @@ const InterviewGO: React.FC = () => {
       console.log('📤 피드백 평가 API 호출 중...');
       
       // 피드백 평가 API 호출
-      const response = await fetch('http://localhost:8000/interview/feedback/evaluate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(evaluationRequests)
-      });
-
-      if (!response.ok) {
-        throw new Error(`피드백 API 오류: ${response.status}`);
-      }
-
-      const result = await response.json();
+      const response = await apiClient.post('/interview/feedback/evaluate', evaluationRequests);
+      const result = response.data;
       console.log('✅ 피드백 평가 완료:', result);
 
       // 계획 생성 API 호출 (옵션)
@@ -1112,18 +1310,11 @@ const InterviewGO: React.FC = () => {
         for (const evalResult of result.results) {
           if (evalResult.interview_id) {
             try {
-              const planResponse = await fetch('http://localhost:8000/interview/feedback/plans', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ interview_id: evalResult.interview_id })
+              const planResponse = await apiClient.post('/interview/feedback/plans', { 
+                interview_id: evalResult.interview_id 
               });
               
-              if (planResponse.ok) {
-                const planResult = await planResponse.json();
-                console.log(`✅ 면접 계획 생성 완료 (ID: ${evalResult.interview_id}):`, planResult);
-              }
+              console.log(`✅ 면접 계획 생성 완료 (ID: ${evalResult.interview_id}):`, planResponse.data);
             } catch (planError) {
               console.error(`❌ 면접 계획 생성 실패 (ID: ${evalResult.interview_id}):`, planError);
             }
@@ -1175,6 +1366,10 @@ const InterviewGO: React.FC = () => {
       }
       if (mediaRecorderRef.current && isRecording) {
         stopRecording();
+      }
+      // 👁️ 시선 추적 정리
+      if (gazeMediaRecorderRef.current && isGazeRecording) {
+        stopGazeRecording();
       }
     };
   }, []);
@@ -1257,6 +1452,15 @@ const InterviewGO: React.FC = () => {
               playsInline
               className="w-full h-full object-cover"
               style={{ transform: 'scaleX(-1)' }}
+            />
+
+            {/* 👁️ 시선 추적용 숨겨진 비디오 */}
+            <video
+              ref={gazeVideoRef}
+              autoPlay
+              muted
+              playsInline
+              className="hidden"
             />
             
             {/* 📹 카메라 연결 상태 오버레이 */}
@@ -1380,6 +1584,42 @@ const InterviewGO: React.FC = () => {
               {hasAudioPermission === false && (
                 <div className="text-red-400 text-xs mb-2">
                   🚫 마이크 권한이 필요합니다
+                </div>
+              )}
+
+              {/* 👁️ 시선 추적 상태 표시 */}
+              {state.gazeTracking?.calibrationSessionId && (
+                <div className="text-center mb-2">
+                  {isGazeRecording ? (
+                    <div className="text-green-400 text-xs flex items-center justify-center">
+                      <div className="w-2 h-2 bg-green-400 rounded-full mr-1 animate-pulse"></div>
+                      👁️ 면접 전체 시선 추적 중
+                    </div>
+                  ) : currentPhase === 'interview_completed' ? (
+                    <div className="text-blue-400 text-xs">
+                      👁️ 시선 추적 완료 - 분석 중
+                    </div>
+                  ) : (
+                    <div className="text-gray-400 text-xs">
+                      👁️ 시선 추적 준비 중
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 👁️ 시선 분석 상태 표시 */}
+              {gazeAnalysisResult && (
+                <div className="text-center mb-2">
+                  <div className="text-blue-400 text-xs">
+                    🎉 시선 분석 완료 (점수: {gazeAnalysisResult.gaze_score}/100)
+                  </div>
+                </div>
+              )}
+
+              {/* 👁️ 시선 추적 에러 표시 */}
+              {gazeError && (
+                <div className="text-red-400 text-xs mb-2 text-center">
+                  ⚠️ {gazeError}
                 </div>
               )}
             </div>

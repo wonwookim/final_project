@@ -3,6 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { interviewApi } from '../services/api';
+import apiClient, { handleApiError } from '../services/api';
 
 interface FeedbackData {
   question: string;
@@ -38,6 +39,15 @@ interface LongTermFeedback {
   };
 }
 
+// 👁️ 시선 분석 결과 타입
+interface GazeAnalysisData {
+  gaze_score: number;
+  jitter_score: number;
+  compliance_score: number;
+  stability_rating: string;
+  created_at: string;
+}
+
 const InterviewResults: React.FC = () => {
   const navigate = useNavigate();
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -47,13 +57,17 @@ const InterviewResults: React.FC = () => {
   console.log('🔍 DEBUG - URL params:', useParams());
   console.log('🔍 DEBUG - sessionId:', sessionId);
   console.log('🔍 DEBUG - location pathname:', location.pathname);
-  const [activeTab, setActiveTab] = useState<'user' | 'ai' | 'longterm'>('user');
+  const [activeTab, setActiveTab] = useState<'user' | 'ai' | 'longterm' | 'gaze'>('user');
   const [isLoading, setIsLoading] = useState(true);
   const [feedbackData, setFeedbackData] = useState<FeedbackData[]>([]);
   const [userSummary, setUserSummary] = useState<SummaryData | null>(null);
   const [aiSummary, setAiSummary] = useState<SummaryData | null>(null);
   const [longTermFeedback, setLongTermFeedback] = useState<LongTermFeedback | null>(null);
   const [interviewData, setInterviewData] = useState<any>(null);
+  
+  // 👁️ 시선 분석 결과 상태
+  const [gazeAnalysis, setGazeAnalysis] = useState<GazeAnalysisData | null>(null);
+  const [gazeLoading, setGazeLoading] = useState(false);
 
   // 가라 데이터
   const mockFeedbackData: FeedbackData[] = [
@@ -188,6 +202,72 @@ const InterviewResults: React.FC = () => {
     }
   }, [mockFeedbackData, mockUserSummary, mockAiSummary, mockLongTermFeedback]);
 
+  // 👁️ 시선 분석 결과 로드 함수
+  const loadGazeAnalysis = useCallback(async (sessionId: string) => {
+    setGazeLoading(true);
+    try {
+      console.log('👁️ 시선 분석 결과 조회 시작:', sessionId);
+      const response = await apiClient.get(`/gaze/analysis/${sessionId}`);
+      
+      if (response.data) {
+        setGazeAnalysis(response.data);
+        console.log('✅ 시선 분석 결과 로드 완료:', response.data);
+      } else {
+        console.log('ℹ️ 시선 분석 결과가 없습니다 (시선 추적을 하지 않은 면접)');
+        setGazeAnalysis(null);
+      }
+    } catch (error) {
+      console.error('❌ 시선 분석 결과 로드 실패:', error);
+      setGazeAnalysis(null);
+    } finally {
+      setGazeLoading(false);
+    }
+  }, []);
+
+  // 👁️ 시선 분석 피드백 생성 함수
+  const generateGazeFeedback = (gazeData: GazeAnalysisData): string => {
+    const { gaze_score, jitter_score, compliance_score, stability_rating } = gazeData;
+    
+    let feedback = "";
+    
+    // 전체 점수에 따른 기본 피드백
+    if (gaze_score >= 80) {
+      feedback = "🎉 우수합니다! 면접 중 시선 처리가 매우 안정적이었습니다.";
+    } else if (gaze_score >= 60) {
+      feedback = "👍 좋습니다! 전반적으로 안정적이나 조금 더 개선할 수 있습니다.";
+    } else {
+      feedback = "💪 개선이 필요합니다. 면접관을 직접 바라보는 연습을 해보세요.";
+    }
+    
+    // 세부 점수별 추가 피드백
+    const details = [];
+    
+    if (jitter_score < 30) {
+      details.push("시선 움직임이 불안정했습니다. 한 곳에 집중하여 안정감을 높여보세요.");
+    } else if (jitter_score >= 70) {
+      details.push("시선이 매우 안정적이었습니다.");
+    }
+    
+    if (compliance_score < 50) {
+      details.push("화면을 벗어나는 시간이 많았습니다. 카메라 방향을 더 의식해보세요.");
+    } else if (compliance_score >= 80) {
+      details.push("카메라 방향을 잘 의식하고 계셨습니다.");
+    }
+    
+    // 안정성 등급별 추가 조언
+    if (stability_rating === 'poor') {
+      details.push("다음 면접에서는 카메라 위치를 조정하고 시선 연습을 해보세요.");
+    } else if (stability_rating === 'excellent') {
+      details.push("시선 처리가 매우 전문적이었습니다.");
+    }
+    
+    if (details.length > 0) {
+      feedback += " " + details.join(" ");
+    }
+    
+    return feedback;
+  };
+
   // 세션 ID가 없으면 기본 결과 페이지로 리다이렉트
   useEffect(() => {
     if (!sessionId) {
@@ -200,8 +280,10 @@ const InterviewResults: React.FC = () => {
     } else {
       // 세션 ID가 있는 경우 - 실제 데이터 로드
       loadInterviewResults(sessionId);
+      // 👁️ 시선 분석 결과도 함께 로드
+      loadGazeAnalysis(sessionId);
     }
-  }, [sessionId, loadInterviewResults, mockAiSummary, mockFeedbackData, mockLongTermFeedback, mockUserSummary]);
+  }, [sessionId, loadInterviewResults, loadGazeAnalysis, mockAiSummary, mockFeedbackData, mockLongTermFeedback, mockUserSummary]);
 
   // 면접 데이터 로드
   const loadInterviewData = useCallback(async () => {
@@ -701,6 +783,119 @@ const InterviewResults: React.FC = () => {
     );
   };
 
+  // 👁️ 시선 분석 결과 렌더링
+  const renderGazeAnalysis = () => {
+    if (gazeLoading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <LoadingSpinner />
+          <span className="ml-3 text-gray-600">시선 분석 결과를 불러오는 중...</span>
+        </div>
+      );
+    }
+
+    if (!gazeAnalysis) {
+      return (
+        <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+          <div className="text-gray-400 text-6xl mb-4">👁️</div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">시선 분석 데이터 없음</h3>
+          <p className="text-gray-600">이 면접에서는 시선 추적이 진행되지 않았습니다.</p>
+        </div>
+      );
+    }
+
+    const feedback = generateGazeFeedback(gazeAnalysis);
+    const scoreColor = gazeAnalysis.gaze_score >= 80 ? 'text-green-600' : 
+                      gazeAnalysis.gaze_score >= 60 ? 'text-blue-600' : 'text-orange-600';
+
+    return (
+      <div className="space-y-6">
+        {/* 전체 점수 카드 */}
+        <div className="bg-white rounded-lg shadow-sm p-6">
+          <div className="text-center">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gray-100 mb-4">
+              <span className={`text-3xl font-bold ${scoreColor}`}>
+                {Math.round(gazeAnalysis.gaze_score)}
+              </span>
+            </div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">전체 시선 점수</h3>
+            <div className="inline-flex items-center px-3 py-1 rounded-full text-sm">
+              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                gazeAnalysis.stability_rating === 'excellent' ? 'bg-green-100 text-green-800' :
+                gazeAnalysis.stability_rating === 'good' ? 'bg-blue-100 text-blue-800' :
+                'bg-orange-100 text-orange-800'
+              }`}>
+                {gazeAnalysis.stability_rating === 'excellent' ? '우수' :
+                 gazeAnalysis.stability_rating === 'good' ? '양호' : '개선필요'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* 세부 점수 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* 시선 안정성 */}
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <h4 className="text-lg font-semibold text-gray-900 mb-4">🎯 시선 안정성</h4>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-gray-600">안정성 점수</span>
+              <span className="font-semibold">{Math.round(gazeAnalysis.jitter_score)}/100</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${gazeAnalysis.jitter_score}%` }}
+              />
+            </div>
+            <p className="text-sm text-gray-600 mt-3">
+              {gazeAnalysis.jitter_score >= 70 ? '시선 움직임이 매우 안정적입니다.' :
+               gazeAnalysis.jitter_score >= 50 ? '시선 움직임이 적당히 안정적입니다.' :
+               '시선 움직임이 불안정합니다. 집중도를 높여보세요.'}
+            </p>
+          </div>
+
+          {/* 준수도 점수 */}
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <h4 className="text-lg font-semibold text-gray-900 mb-4">📹 카메라 시선</h4>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-gray-600">준수도 점수</span>
+              <span className="font-semibold">{Math.round(gazeAnalysis.compliance_score)}/100</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${gazeAnalysis.compliance_score}%` }}
+              />
+            </div>
+            <p className="text-sm text-gray-600 mt-3">
+              {gazeAnalysis.compliance_score >= 80 ? '카메라 방향을 잘 바라보셨습니다.' :
+               gazeAnalysis.compliance_score >= 60 ? '대체로 카메라 방향을 의식하셨습니다.' :
+               '카메라 방향을 더 의식해보세요.'}
+            </p>
+          </div>
+        </div>
+
+        {/* 피드백 메시지 */}
+        <div className="bg-white rounded-lg shadow-sm p-6">
+          <h4 className="text-lg font-semibold text-gray-900 mb-4">💡 시선 분석 피드백</h4>
+          <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
+            <p className="text-gray-700 leading-relaxed">{feedback}</p>
+          </div>
+        </div>
+
+        {/* 분석 정보 */}
+        <div className="bg-gray-50 rounded-lg p-4">
+          <h5 className="text-sm font-medium text-gray-900 mb-2">분석 정보</h5>
+          <div className="text-xs text-gray-600 space-y-1">
+            <p>• 분석 시간: {new Date(gazeAnalysis.created_at).toLocaleString()}</p>
+            <p>• MediaPipe AI를 사용한 정밀 시선 추적</p>
+            <p>• 면접 전체 과정에 대한 종합 분석</p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -754,6 +949,19 @@ const InterviewResults: React.FC = () => {
               >
                 단기/장기 피드백
               </button>
+              {/* 👁️ 시선 분석 탭 - 데이터가 있을 때만 표시 */}
+              {gazeAnalysis && (
+                <button
+                  onClick={() => setActiveTab('gaze')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'gaze'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  👁️ 시선 분석
+                </button>
+              )}
             </nav>
           </div>
         </div>
@@ -763,6 +971,7 @@ const InterviewResults: React.FC = () => {
           {activeTab === 'user' && renderUserFeedback()}
           {activeTab === 'ai' && renderAiFeedback()}
           {activeTab === 'longterm' && renderLongTermFeedback()}
+          {activeTab === 'gaze' && renderGazeAnalysis()}
         </div>
 
         {/* 하단 액션 버튼 */}

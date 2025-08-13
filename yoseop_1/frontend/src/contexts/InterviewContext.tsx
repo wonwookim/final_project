@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef, useCallback, useState, ReactNode } from 'react';
 import { InterviewSettings, Question, InterviewResult, interviewApi } from '../services/api';
 import { tokenManager } from '../services/api';
+import { GazeAnalysisResult } from '../components/test/types';
 
 // JobPosting 타입 정의 - 실제 DB 구조에 맞게 최종 단순화
 interface JobPosting {
@@ -133,6 +134,19 @@ interface InterviewState {
     progress: { current: number; total: number; percentage: number } | null;
     extracted_ai_resume_id: number | null;  // AI 응답에서 추출된 AI 이력서 ID
   } | null;
+  
+  // 시선 추적 관련 상태
+  gazeTracking: {
+    calibrationSessionId: string | null;
+    isCalibrated: boolean;
+    isRecording: boolean;
+    recordingStartTime: number | null;
+    analysisResult: GazeAnalysisResult | null;
+    isAnalyzing: boolean;
+    analysisProgress: number;
+    testId: string | null;
+    mediaId: string | null;
+  };
 }
 
 // 액션 타입 정의
@@ -157,6 +171,12 @@ type InterviewAction =
   | { type: 'SET_TIME_LEFT'; payload: number }
   | { type: 'SET_PROGRESS'; payload: number }
   | { type: 'SET_TEXT_COMPETITION_DATA'; payload: { initialQuestion: any; aiPersona: any; progress: { current: number; total: number; percentage: number }; extracted_ai_resume_id?: number | null } }
+  | { type: 'SET_GAZE_CALIBRATION'; payload: { sessionId: string } }
+  | { type: 'SET_GAZE_RECORDING'; payload: boolean }
+  | { type: 'SET_GAZE_ANALYSIS_RESULT'; payload: GazeAnalysisResult }
+  | { type: 'SET_GAZE_ANALYSIS_PROGRESS'; payload: number }
+  | { type: 'SET_GAZE_TEST_IDS'; payload: { testId: string; mediaId: string } }
+  | { type: 'RESET_GAZE_TRACKING' }
   | { type: 'SET_EXTRACTED_AI_RESUME_ID'; payload: number }
   | { type: 'RESET_INTERVIEW' }
   | { type: 'SET_INTERVIEW_HISTORY'; payload: InterviewRecord[] }
@@ -198,6 +218,17 @@ const initialState: InterviewState = {
   historyLoading: false,
   historyError: null,
   textCompetitionData: null,
+  gazeTracking: {
+    calibrationSessionId: null,
+    isCalibrated: false,
+    isRecording: false,
+    recordingStartTime: null,
+    analysisResult: null,
+    isAnalyzing: false,
+    analysisProgress: 0,
+    testId: null,
+    mediaId: null,
+  },
 };
 
 // 리듀서 함수
@@ -362,6 +393,73 @@ function interviewReducer(state: InterviewState, action: InterviewAction): Inter
         ...state,
         historyLoading: false,
         historyError: action.payload
+      };
+    
+    case 'SET_GAZE_CALIBRATION':
+      return {
+        ...state,
+        gazeTracking: {
+          ...state.gazeTracking,
+          calibrationSessionId: action.payload.sessionId,
+          isCalibrated: true
+        }
+      };
+    
+    case 'SET_GAZE_RECORDING':
+      return {
+        ...state,
+        gazeTracking: {
+          ...state.gazeTracking,
+          isRecording: action.payload,
+          recordingStartTime: action.payload ? Date.now() : null
+        }
+      };
+    
+    case 'SET_GAZE_ANALYSIS_RESULT':
+      return {
+        ...state,
+        gazeTracking: {
+          ...state.gazeTracking,
+          analysisResult: action.payload,
+          isAnalyzing: false,
+          analysisProgress: 100
+        }
+      };
+    
+    case 'SET_GAZE_ANALYSIS_PROGRESS':
+      return {
+        ...state,
+        gazeTracking: {
+          ...state.gazeTracking,
+          analysisProgress: action.payload,
+          isAnalyzing: action.payload < 100
+        }
+      };
+    
+    case 'SET_GAZE_TEST_IDS':
+      return {
+        ...state,
+        gazeTracking: {
+          ...state.gazeTracking,
+          testId: action.payload.testId,
+          mediaId: action.payload.mediaId
+        }
+      };
+    
+    case 'RESET_GAZE_TRACKING':
+      return {
+        ...state,
+        gazeTracking: {
+          calibrationSessionId: null,
+          isCalibrated: false,
+          isRecording: false,
+          recordingStartTime: null,
+          analysisResult: null,
+          isAnalyzing: false,
+          analysisProgress: 0,
+          testId: null,
+          mediaId: null
+        }
       };
     
     default:

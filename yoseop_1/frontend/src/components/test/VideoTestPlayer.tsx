@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PlayerProps, TestPlayResponse } from './types';
-
-const API_BASE_URL = 'http://127.0.0.1:8000';
+import apiClient, { handleApiError } from '../../services/api';
+import { GAZE_ERROR_MESSAGES } from '../../constants/gazeConstants';
 
 const VideoTestPlayer: React.FC<PlayerProps> = ({ testId, onError }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -14,26 +14,10 @@ const VideoTestPlayer: React.FC<PlayerProps> = ({ testId, onError }) => {
     setIsLoading(true);
     
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) {
-        throw new Error('로그인이 필요합니다');
-      }
+      console.log('🎥 비디오 로드 시작:', { testId });
 
-      console.log('🎥 비디오 로드 시작:', { testId, token: token.substring(0, 50) + '...' });
-
-      const response = await fetch(`${API_BASE_URL}/video/play/${testId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      console.log('🎥 API 응답:', { status: response.status, statusText: response.statusText });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: null }));
-        console.error('❌ 비디오 로드 실패:', { status: response.status, errorData });
-        throw new Error(`비디오 로드 실패 (${response.status}): ${(errorData as any)?.detail || response.statusText}`);
-      }
-
-      const data: TestPlayResponse = await response.json();
+      const response = await apiClient.get(`/video/play/${testId}`);
+      const data: TestPlayResponse = response.data;
       console.log('✅ 비디오 데이터 받음:', {
         play_url: data.play_url ? `${data.play_url.substring(0, 100)}...` : 'null',
         file_name: data.file_name,
@@ -67,9 +51,9 @@ const VideoTestPlayer: React.FC<PlayerProps> = ({ testId, onError }) => {
       }
 
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '비디오를 로드할 수 없습니다';
+      const errorMessage = handleApiError(error);
       console.error('❌ 비디오 로드 실패:', { error, testId, errorMessage });
-      onError(errorMessage);
+      onError(`${GAZE_ERROR_MESSAGES.SERVER_ERROR}: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }

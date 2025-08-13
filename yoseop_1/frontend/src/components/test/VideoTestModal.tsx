@@ -274,7 +274,7 @@ const VideoTestModal: React.FC<VideoTestModalProps> = ({ isOpen, onClose }) => {
                 🔍 4단계: 시선 분석 진행 중
               </div>
               <VideoGazeAnalysis
-                videoUrl={`http://127.0.0.1:8000/video/play/${sessionState.testId}`}
+                videoUrl={`/video/play/${sessionState.testId}`}
                 calibrationSessionId={sessionState.calibrationSessionId}
                 onAnalysisComplete={handleAnalysisComplete}
                 onProgress={handleAnalysisProgress}

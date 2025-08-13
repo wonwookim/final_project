@@ -36,7 +36,7 @@ const VideoGazeAnalysis: React.FC<GazeAnalysisProps> = ({
       // 상태 체크 시작
       startStatusCheck(data.task_id);
       
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ 분석 시작 오류:', error);
       const errorMessage = handleApiError(error);
       onError(errorMessage);

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { UploaderProps, TestUploadResponse } from './types';
-
-const API_BASE_URL = 'http://127.0.0.1:8000';
+import apiClient, { handleApiError } from '../../services/api';
+import { GAZE_CONSTANTS, GAZE_ERROR_MESSAGES } from '../../constants/gazeConstants';
 
 // 다양한 완료 API 패턴 시도 함수
-const tryCompleteUpload = async (mediaId: string, fileSize: number, token: string): Promise<void> => {
+const tryCompleteUpload = async (mediaId: string, fileSize: number): Promise<void> => {
   const completeEndpoints = [
     // ⭐ 기존 구현된 API 경로 (video_api.py에서 확인)
     { method: 'PATCH', url: `/video/complete/${mediaId}?file_size=${fileSize}` },
@@ -42,18 +42,17 @@ const tryCompleteUpload = async (mediaId: string, fileSize: number, token: strin
         requestOptions.body = JSON.stringify(endpoint.body);
       }
       
-      const response = await fetch(`${API_BASE_URL}${endpoint.url}`, requestOptions);
+      const response = await apiClient.request({
+        method: endpoint.method as any,
+        url: endpoint.url,
+        data: endpoint.body,
+        timeout: GAZE_CONSTANTS.API_TIMEOUT
+      });
       
       console.log(`📨 API 응답: ${endpoint.method} ${endpoint.url} -> ${response.status} ${response.statusText}`);
       
-      if (response.ok) {
-        console.log(`✅ 완료 API 성공: ${endpoint.method} ${endpoint.url}`);
-        return; // 성공시 종료
-      } else if (response.status !== 404 && response.status !== 405) {
-        // 404(미구현), 405(Method Not Allowed) 외의 에러는 로깅
-        const errorText = await response.text().catch(() => 'No response body');
-        console.warn(`⚠️ API 오류: ${endpoint.method} ${endpoint.url} -> ${response.status}: ${errorText}`);
-      }
+      console.log(`✅ 완료 API 성공: ${endpoint.method} ${endpoint.url}`);
+      return; // 성공시 종료
     } catch (error) {
       console.warn(`⚠️ API 호출 실패: ${endpoint.method} ${endpoint.url}:`, error);
     }
@@ -113,11 +112,9 @@ const VideoTestUploader: React.FC<UploaderProps> = ({
     const normalizedContentType = normalizeContentType(originalContentType);
 
     try {
-      const token = localStorage.getItem('auth_token');
-      console.log('🔍 Retrieved token:', token ? `${token.substring(0, 50)}...` : 'null');
-      if (!token) {
-        throw new Error('로그인이 필요합니다');
-      }
+      // 실제 면접 ID를 Context에서 가져오기
+      const interviewState = localStorage.getItem('interview_state');
+      const interviewId = interviewState ? JSON.parse(interviewState).sessionId || '999' : '999';
 
       // 파일 확장자와 이름 준비
       const fileExtension = normalizedContentType.includes('webm') ? 'webm' : 'mp4';
@@ -142,24 +139,15 @@ const VideoTestUploader: React.FC<UploaderProps> = ({
       };
       console.log('🔍 Request headers:', headers);
       
-      const response = await fetch(`${API_BASE_URL}/video/test/upload-url`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          interview_id: 999,  // 테스트용 고정 ID
-          file_name: fileName,
-          file_type: 'video',
-          file_size: blob.size,
-          content_type: normalizedContentType  // 정규화된 Content-Type 전달
-        })
+      const response = await apiClient.post('/video/test/upload-url', {
+        interview_id: interviewId,  // 실제 면접 ID 사용
+        file_name: fileName,
+        file_type: 'video',
+        file_size: blob.size,
+        content_type: normalizedContentType
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: null }));
-        throw new Error((errorData as any).detail || `업로드 URL 요청 실패: ${response.status}`);
-      }
-
-      const { upload_url, media_id, test_id }: TestUploadResponse = await response.json();
+      const { upload_url, media_id, test_id }: TestUploadResponse = response.data;
       
       console.log('✅ Presigned URL 받음:', {
         upload_url: upload_url.substring(0, 100) + '...',
@@ -220,7 +208,7 @@ const VideoTestUploader: React.FC<UploaderProps> = ({
       setUploadStatus('업로드 완료 처리 중...');
       onUploadProgress(90);
 
-      await tryCompleteUpload(media_id, blob.size, token);
+      await tryCompleteUpload(media_id, blob.size);
 
       // 4. 완료
       setProgress(100);
@@ -229,7 +217,7 @@ const VideoTestUploader: React.FC<UploaderProps> = ({
       onUploadComplete(media_id, test_id); // media_id를 첫 번째 인자로 전달
 
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '업로드 중 오류가 발생했습니다';
+      const errorMessage = handleApiError(error);
       console.error('❌ Upload failed:', {
         error,
         message: errorMessage,
@@ -239,7 +227,7 @@ const VideoTestUploader: React.FC<UploaderProps> = ({
           normalized: normalizedContentType
         }
       });
-      onError(errorMessage);
+      onError(`${GAZE_ERROR_MESSAGES.UPLOAD_FAILED}: ${errorMessage}`);
     } finally {
       setIsUploading(false);
     }
