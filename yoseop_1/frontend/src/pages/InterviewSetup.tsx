@@ -4,6 +4,7 @@ import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { useInterview } from '../contexts/InterviewContext';
 import { interviewApi, handleApiError, validateFileSize, validateFileExtension } from '../services/api';
+import { saveInterviewState, InterviewState, markApiCallCompleted } from '../utils/interviewStateManager';
 
 const InterviewSetup: React.FC = () => {
   const navigate = useNavigate();
@@ -195,29 +196,36 @@ const InterviewSetup: React.FC = () => {
           status: 'waiting_for_user',
           content: { content: "면접을 시작합니다. 첫 번째 질문을 기다려주세요." }
         };
+
+        // 임시 상태를 localStorage에 저장 (needsApiCall 플래그 포함)
+        const tempState: InterviewState = {
+          sessionId: response.session_id,
+          settings: settings,
+          interviewStatus: 'setup',
+          timestamp: Date.now(),
+          jobPosting: selectedCompanyData,
+          resume: state.resume,
+          interviewMode: selectedMode,
+          aiSettings: {
+            mode: 'ai_competition',
+            persona: 'professional'
+          },
+          interviewStartResponse: response,
+          needsApiCall: true,        // API 호출 필요 플래그
+          apiCallCompleted: false    // API 호출 완료 상태
+        };
+        saveInterviewState(tempState);
+        console.log('💾 임시 상태로 localStorage 저장 (needsApiCall: true):', tempState);
         
         // 백그라운드에서 실제 API 호출
         interviewApi.startAICompetition(settings).then(realResponse => {
           console.log('✅ 백그라운드 면접 시작 완료:', realResponse);
-          // 실제 응답으로 localStorage 업데이트
-          const updatedState = {
-            sessionId: realResponse.session_id,
-            settings: settings,
-            interviewStatus: 'setup',
-            timestamp: Date.now(),
-            jobPosting: selectedCompanyData,
-            resume: state.resume,
-            interviewMode: selectedMode,
-            aiSettings: selectedMode === 'ai_competition' ? {
-              mode: 'ai_competition',
-              persona: 'professional'
-            } : null,
-            interviewStartResponse: realResponse
-          };
-          localStorage.setItem('interview_state', JSON.stringify(updatedState));
-          console.log('💾 실제 응답으로 localStorage 업데이트 완료');
+          // 유틸리티 함수를 사용하여 API 호출 완료 상태로 업데이트
+          markApiCallCompleted(realResponse);
         }).catch(error => {
           console.error('❌ 백그라운드 면접 시작 실패:', error);
+          // 유틸리티 함수를 사용하여 에러 상태로 업데이트
+          markApiCallCompleted(undefined, error.message);
         });
         
       } else if (selectedMode === 'text_competition') {
