@@ -86,7 +86,7 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
       const response = await apiClient.post(`/test/gaze/calibration/frame/${sessionId}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      const feedback: FrameFeedback = response.data;
+      const feedback: FrameFeedback = response.data as FrameFeedback;
       setRealtimeFeedback(feedback);
       if (feedback.status === 'completed') {
         setIsCompleted(true);
@@ -143,7 +143,7 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
         { user_id: userId },
         { timeout: GAZE_CONSTANTS.API_TIMEOUT }
       );
-      const data = response.data;
+      const data = response.data as { session_id: string };
       if (!data.session_id) throw new Error('세션 ID를 받지 못했습니다.');
       setSessionId(data.session_id);
       setIsStarted(true);
@@ -161,7 +161,7 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
     statusCheckInterval.current = setInterval(async () => {
       try {
         const response = await apiClient.get(`/test/gaze/calibration/status/${sessionId}`);
-        const statusData: CalibrationStatusResponse = response.data;
+        const statusData: CalibrationStatusResponse = response.data as CalibrationStatusResponse;
         setStatus(statusData);
         if (statusData.current_phase === 'completed') {
           setIsCompleted(true);
