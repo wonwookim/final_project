@@ -40,6 +40,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Force remove opencv-contrib-python and ensure only headless version
+RUN pip uninstall opencv-contrib-python opencv-python -y || true
+RUN pip install --no-cache-dir opencv-python-headless --force-reinstall
+
 # Copy application code
 COPY backend/ ./backend/
 COPY llm/ ./llm/
