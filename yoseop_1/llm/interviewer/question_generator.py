@@ -156,8 +156,8 @@ class QuestionGenerator:
     def generate_question_by_role(self, interviewer_role: str, company_id: str, 
                                  user_resume: Dict, user_answer: str = None, 
                                  chun_sik_answer: str = None, previous_qa_pairs: List[Dict] = None) -> Dict:
-        """면접관 역할별 질문 생성"""
-        print(f"[DEBUG] 질문 생성 요청: company_id='{company_id}', role='{interviewer_role}'")
+        """면접관 역할별 개별 질문 생성 (사용자/AI 동시 생성)"""
+        print(f"[DEBUG] 개별 질문 생성 요청: company_id='{company_id}', role='{interviewer_role}'")
         print(f"[DEBUG] 사용 가능한 회사 키들: {list(self.companies_data.keys())}")
         
         company_info = self.companies_data.get(company_id, {})
@@ -179,47 +179,27 @@ class QuestionGenerator:
         
         selected_topic = random.choice(topic_pool)
         
-        # 50% 확률로 DB 템플릿 또는 LLM 생성 방식 선택
-        use_db_first = random.choice([True, False])
+        # 사용자 질문 생성
+        user_main_question = self._try_generate_main_question_for_user(
+            user_resume, company_info, interviewer_role, selected_topic
+        )
         
-        question_result = None
+        # AI 질문 생성
+        ai_main_question = self._try_generate_main_question_for_ai(
+            user_resume, company_info, interviewer_role, selected_topic
+        )
         
-        if use_db_first:
-            # 1차: DB 템플릿 기반 생성 시도
-            question_result = self._try_generate_from_db_template(
-                user_resume, company_info, interviewer_role, selected_topic
-            )
-            
-            if question_result:
-                return question_result
-            
-            # 2차: DB 실패 시 LLM 생성 시도 
-            question_result = self._try_generate_from_llm(
-                user_resume, company_info, interviewer_role, selected_topic
-            )
-            
-            if question_result:
-                return question_result
-        else:
-            # 1차: LLM 기반 생성 시도
-            question_result = self._try_generate_from_llm(
-                user_resume, company_info, interviewer_role, selected_topic
-            )
-            
-            if question_result:
-                return question_result
-            
-            # 2차: LLM 실패 시 DB 템플릿 시도
-            question_result = self._try_generate_from_db_template(
-                user_resume, company_info, interviewer_role, selected_topic
-            )
-            
-            if question_result:
-                return question_result
+        print(f"[DEBUG] 개별 질문 생성 완료 - 주제: {selected_topic}")
+        print(f"[DEBUG] 사용자 질문: {user_main_question.get('question', 'N/A')[:50]}...")
+        print(f"[DEBUG] AI 질문: {ai_main_question.get('question', 'N/A')[:50]}...")
         
-        # 최종 폴백: 일반적인 질문
-        return self._get_generic_question(interviewer_role, selected_topic, 
-                                        user_resume.get('name', '지원자') if user_resume else '지원자')
+        return {
+            'user_question': user_main_question,
+            'ai_question': ai_main_question,
+            'interviewer_type': interviewer_role,
+            'question_type': 'main',
+            'is_individual_questions': True
+        }
     
     def generate_question_with_orchestrator_state(self, state: Dict[str, Any]) -> Dict:
         """
@@ -835,6 +815,192 @@ AI 지원자 특성을 고려한 질문 생성 가이드라인:
         except Exception as e:
             logger.error(f"DB 템플릿 LLM 튜닝 실패: {e}")
             return db_template
+
+    def _try_generate_main_question_for_user(self, user_resume: Dict, company_info: Dict, 
+                                            interviewer_role: str, topic: str) -> Dict:
+        """사용자에게 적합한 메인 질문 생성 시도 (기존 로직 재사용)"""
+        use_db_first = random.choice([True, False])
+        
+        question_result = None
+        
+        if use_db_first:
+            # 1차: DB 템플릿 기반 생성 시도
+            question_result = self._try_generate_from_db_template(
+                user_resume, company_info, interviewer_role, topic
+            )
+            if question_result:
+                return question_result
+            
+            # 2차: DB 실패 시 LLM 생성 시도 
+            question_result = self._try_generate_from_llm(
+                user_resume, company_info, interviewer_role, topic
+            )
+            if question_result:
+                return question_result
+        else:
+            # 1차: LLM 기반 생성 시도
+            question_result = self._try_generate_from_llm(
+                user_resume, company_info, interviewer_role, topic
+            )
+            if question_result:
+                return question_result
+            
+            # 2차: LLM 실패 시 DB 템플릿 시도
+            question_result = self._try_generate_from_db_template(
+                user_resume, company_info, interviewer_role, topic
+            )
+            if question_result:
+                return question_result
+        
+        # 최종 폴백: 일반적인 질문
+        return self._get_generic_question(interviewer_role, topic, 
+                                        user_resume.get('name', '지원자') if user_resume else '지원자')
+
+    def _try_generate_main_question_for_ai(self, user_resume: Dict, company_info: Dict, 
+                                          interviewer_role: str, topic: str) -> Dict:
+        """AI 지원자에게 적합한 메인 질문 생성 시도"""
+        use_db_first = random.choice([True, False])
+        
+        question_result = None
+        
+        if use_db_first:
+            # 1차: AI용 DB 템플릿 기반 생성 시도
+            try:
+                question_result = self._generate_from_db_template_for_ai_with_topic(
+                    user_resume, company_info, interviewer_role, topic
+                )
+                if question_result:
+                    return question_result
+            except Exception as e:
+                print(f"[ERROR] AI용 DB 템플릿 생성 중 예외: {e}")
+            
+            # 2차: DB 실패 시 AI용 LLM 생성 시도
+            try:
+                question_result = self._generate_from_llm_for_ai_with_topic(
+                    user_resume, company_info, interviewer_role, topic
+                )
+                if question_result:
+                    return question_result
+            except Exception as e:
+                print(f"[ERROR] AI용 LLM 생성 중 예외: {e}")
+        else:
+            # 1차: AI용 LLM 기반 생성 시도
+            try:
+                question_result = self._generate_from_llm_for_ai_with_topic(
+                    user_resume, company_info, interviewer_role, topic
+                )
+                if question_result:
+                    return question_result
+            except Exception as e:
+                print(f"[ERROR] AI용 LLM 생성 중 예외: {e}")
+            
+            # 2차: LLM 실패 시 AI용 DB 템플릿 시도
+            try:
+                question_result = self._generate_from_db_template_for_ai_with_topic(
+                    user_resume, company_info, interviewer_role, topic
+                )
+                if question_result:
+                    return question_result
+            except Exception as e:
+                print(f"[ERROR] AI용 DB 템플릿 생성 중 예외: {e}")
+        
+        # 최종 폴백: AI용 일반적인 질문
+        return self._get_generic_question(interviewer_role, topic, 'AI 지원자')
+
+    def _generate_from_llm_for_ai_with_topic(self, user_resume: Dict, company_info: Dict, 
+                                     interviewer_role: str, topic: str) -> Dict:
+        """AI 지원자에게 적합한 LLM 기반 메인 질문 생성"""
+        
+        # 프롬프트 빌더를 사용하여 기본 프롬프트 생성
+        base_prompt = self.prompt_builder.build_main_question_prompt(
+            user_resume, company_info, interviewer_role, topic
+        )
+        
+        # AI 전용 시스템 프롬프트
+        ai_system_prompt = f"""
+당신은 {interviewer_role} 면접관입니다. AI 지원자에게 적합한 메인 질문을 생성하세요.
+
+AI 지원자 특성을 고려한 질문 생성 가이드라인:
+- 기술적 세부사항이나 이론적 배경을 더 깊이 탐구하는 질문
+- 구현 방법론이나 아키텍처적 관점에서 접근하는 질문
+- 비교 분석이나 대안적 접근 방식에 대한 질문
+- 확장성이나 최적화 관점에서의 심화 질문
+- AI의 학습 능력, 데이터 처리, 모델 최적화 등에 초점을 맞춘 질문
+
+응답 형식:
+{{
+    "question": "질문 내용",
+    "intent": "질문 의도",
+    "focus": "기술적 심화"
+}}
+        """
+        
+        # LLM 호출
+        try:
+            response = self.openai_client.chat.completions.create(
+                model=GPT_MODEL,
+                messages=[
+                    {"role": "system", "content": ai_system_prompt},
+                    {"role": "user", "content": base_prompt}
+                ],
+                max_tokens=MAX_TOKENS,
+                temperature=TEMPERATURE
+            )
+            
+            # JSON 파싱
+            result_text = response.choices[0].message.content.strip()
+            
+            if not result_text:
+                raise ValueError("LLM이 빈 응답을 반환했습니다")
+            
+            result = json.loads(result_text)
+            
+            # 결과 검증 및 보정
+            if not result.get('question'):
+                raise ValueError("question 필드가 비어있습니다")
+            
+            # AI용 질문이므로 "AI 지원자님" 호명 추가
+            result['question'] = f"AI 지원자님, {result['question']}"
+            result['interviewer_type'] = interviewer_role
+            result['topic'] = topic
+            result['question_source'] = 'llm_generated_for_ai'
+            return result
+            
+        except Exception as e:
+            print(f"[ERROR] AI 중심 메인 질문 생성 실패: {e}")
+            raise
+
+    def _generate_from_db_template_for_ai_with_topic(self, user_resume: Dict, company_info: Dict, 
+                                            interviewer_role: str, topic: str) -> Dict:
+        """AI 지원자에게 적합한 DB 템플릿 기반 질문 생성"""
+        question_type = self.interviewer_role_to_db_id.get(interviewer_role)
+        if not question_type:
+            raise ValueError(f"지원되지 않는 면접관 역할: {interviewer_role}")
+        
+        # 해당 면접관 유형의 질문들 필터링
+        role_questions = [
+            q for q in self.fixed_questions 
+            if q.get('question_type') == question_type
+        ]
+        
+        if not role_questions:
+            raise ValueError(f"{interviewer_role} 유형의 질문이 DB에 없습니다")
+        
+        # 랜덤 선택
+        selected_template = random.choice(role_questions)
+        question_content = selected_template.get('question_content', '질문을 생성할 수 없습니다.')
+        
+        # AI용 질문이므로 "AI 지원자님" 호명 추가
+        question_with_name = f"AI 지원자님, {question_content}"
+        
+        return {
+            'question': question_with_name,
+            'intent': f"{topic} 관련 {selected_template.get('question_intent', f'{interviewer_role} 역량 평가')}",
+            'interviewer_type': interviewer_role,
+            'topic': topic,
+            'question_source': 'db_template_for_ai'
+        }
+
 
 # 로거 초기화
 logger = logging.getLogger(__name__)
