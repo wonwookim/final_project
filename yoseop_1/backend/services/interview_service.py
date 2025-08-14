@@ -275,7 +275,9 @@ class InterviewService:
             from llm.feedback.api_service import InterviewEvaluationService
             import os
             import glob
-
+            interview_logger.info(f"피드백 트리거 시작: {session_id}")
+            await asyncio.sleep(1)  # CPU 사용 없이 5초 비동기 대기
+            interview_logger.info(f"피드백 트리거 종료: {session_id}")
             session_state = self.session_states.get(session_id)
             if not session_state:
                 return
