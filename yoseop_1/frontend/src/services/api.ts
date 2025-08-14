@@ -240,6 +240,7 @@ export interface FeedbackPlanResponse {
 // 🆕 면접 진행 응답 공통 타입 (턴 정보 포함)
 export interface InterviewSubmitResponse {
   status: string;
+  flow_state?: string;
   content?: {
     content: string;
     type?: string;
