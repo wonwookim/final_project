@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInterview } from '../contexts/InterviewContext';
 import { sessionApi, interviewApi, tokenManager } from '../services/api';
@@ -14,6 +14,12 @@ interface UploadResponse {
   file_name?: string;
   file_type?: string;
   media_id?: string;
+}
+
+interface PresignedUploadResponse {
+  upload_url: string;
+  media_id: string;
+  test_id?: string; // 백엔드에서 test_id도 반환될 수 있음
 }
 
 interface FeedbackEvaluationRequest {
@@ -161,8 +167,22 @@ const InterviewGO: React.FC = () => {
       }
     };
   }, []);
-
-  
+  // 🆕 currentPhase 상태 추가
+  const [currentPhase, setCurrentPhase] = useState<'user_turn' | 'ai_processing' | 'interview_completed' | 'waiting' | 'unknown' | 'intro' | 'ready'>('waiting');
+  // ✨ 새 면접 시작 시 시선 추적 상태 초기화
+  useEffect(() => {
+    if (currentPhase === 'intro' || currentPhase === 'ready') {
+      console.log('✨ 새 면접 시작 - 시선 추적 상태 초기화 시작...', { currentPhase });
+      setGazeBlob(null);
+      setIsGazeRecording(false);
+      setGazeError(null);
+      setGazeAnalysisResult(null);
+      setAnalysisTaskId(null);
+      setIsPolling(false);
+      setPollingError(null);
+      console.log('✨ 시선 추적 상태가 초기화되었습니다.');
+    }
+  }, [currentPhase]);
 
   // 난이도별 AI 지원자 이미지 매핑 함수
   const getAICandidateImage = (level: number): string => {
@@ -209,8 +229,7 @@ const InterviewGO: React.FC = () => {
   const [canSubmit, setCanSubmit] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState<string>('');
   
-  // 🆕 currentPhase 상태 추가
-  const [currentPhase, setCurrentPhase] = useState<'user_turn' | 'ai_processing' | 'interview_completed' | 'waiting' | 'unknown'>('waiting');
+  
   
   // 🎤 음성 관련 상태
   const [isRecording, setIsRecording] = useState(false);
@@ -235,6 +254,7 @@ const InterviewGO: React.FC = () => {
   // 🆕 API 호출 중복 방지를 위한 useRef
   const apiCallCancelRef = useRef<AbortController | null>(null);
   const isApiCallInProgressRef = useRef(false);
+  
 
   // 👁️ 시선 추적용 refs
   const gazeVideoRef = useRef<HTMLVideoElement>(null);
@@ -833,6 +853,9 @@ const InterviewGO: React.FC = () => {
                   console.log('👤 일반 모드 - API 호출 시작');
                   response = await interviewApi.startInterview(finalSettings);
                 }
+
+                console.log('🔍 startInterview/startAICompetition 응답:', response);
+                console.log('🔍 응답 내 interview_id 값:', response.interview_id);
                 
                 // AbortController 확인 (호출이 취소되었으면 중단)
                 if (abortController.signal.aborted) {
@@ -851,6 +874,15 @@ const InterviewGO: React.FC = () => {
                   
                   // localStorage도 즉시 업데이트 (나중에 다시 업데이트하지만 일관성을 위해)
                   parsedState.sessionId = response.session_id;
+                }
+
+                // 🆕 interview_id (정수형) 저장
+                console.log('🔍 백엔드 응답에서 interview_id 확인:', response.interview_id);
+                if (response.interview_id) {
+                  console.log('🔄 면접 ID 업데이트:', response.interview_id);
+                  dispatch({ type: 'SET_INTERVIEW_ID', payload: response.interview_id });
+                } else {
+                  console.warn('⚠️ 백엔드 응답에 interview_id가 없습니다. response:', response);
                 }
                 
                 // 질문 처리 함수 (response를 파라미터로 받음)
@@ -1149,23 +1181,8 @@ const InterviewGO: React.FC = () => {
         setCanSubmit(false);
         console.log('✅ 면접 완료로 설정됨');
 
-        // 🆕 면접 완전 완료 후 분석 작업 시작
-        console.log('🔍 면접 완료 - 분석 작업 준비 중...');
-        console.log('📊 gazeBlob 상태:', !!gazeBlob, gazeBlob?.size);
-        console.log('👁️ calibrationSessionId:', state.gazeTracking?.calibrationSessionId);
-
-        // 👁️ 시선 분석 시작
-        if (gazeBlob && state.gazeTracking?.calibrationSessionId) {
-          console.log('👁️ 면접 완료 - 시선 분석 시작');
-          setTimeout(() => {
-            uploadAndAnalyzeGaze();
-          }, 1000); // blob 안정화를 위한 1초 대기
-        } else {
-          console.log('⚠️ 시선 분석 조건 미충족:', {
-            hasGazeBlob: !!gazeBlob,
-            hasCalibrationSessionId: !!state.gazeTracking?.calibrationSessionId
-          });
-        }
+        // ✅ 시선 분석은 MediaRecorder onstop에서 자동 처리됨
+        console.log('✅ 면접 완료 - 시선 분석은 녹화 종료와 함께 자동 처리됩니다.');
 
         // 📊 면접 피드백 처리 시작
         console.log('📊 면접 완료 - 백그라운드 피드백 처리 시작');
@@ -1347,7 +1364,25 @@ const InterviewGO: React.FC = () => {
   };
 
   // 👁️ 시선 추적 녹화 시작
-  const startGazeRecording = async () => {
+  const startGazeRecording = useCallback(async () => {
+    // 면접 완료 상태에서는 시선 추적을 시작하지 않음
+    if (currentPhase === 'interview_completed') {
+      console.log('⚠️ 면접 완료 상태 - 시선 추적 시작 거부');
+      return;
+    }
+
+    // 이미 gazeBlob이 있으면 새로운 녹화를 시작하지 않음 (기존 데이터 보호)
+    if (gazeBlob) {
+      console.log('⚠️ 기존 gazeBlob 존재 - 새로운 시선 추적 시작 거부');
+      return;
+    }
+
+    // 이미 녹화 중이면 중복 시작 방지
+    if (isGazeRecording) {
+      console.log('⚠️ 이미 시선 추적 녹화 중 - 중복 시작 방지');
+      return;
+    }
+
     // 캘리브레이션 세션 ID 확인
     const calibrationSessionId = state.gazeTracking?.calibrationSessionId;
     if (!calibrationSessionId) {
@@ -1408,7 +1443,7 @@ const InterviewGO: React.FC = () => {
       console.error('❌ 시선 추적 녹화 시작 실패:', error);
       setGazeError('시선 추적을 시작할 수 없습니다.');
     }
-  };
+  }, [currentPhase, gazeBlob, isGazeRecording, state.gazeTracking?.calibrationSessionId]);
 
   // 👁️ 시선 추적 녹화 중지
   const stopGazeRecording = () => {
@@ -1420,36 +1455,64 @@ const InterviewGO: React.FC = () => {
   };
 
   // 👁️ 시선 추적 비디오 업로드 및 분석
-  const uploadAndAnalyzeGaze = async () => {
-    if (!gazeBlob || !state.sessionId) {
+  const uploadAndAnalyzeGaze = useCallback(async (videoBlob: Blob | null) => {
+    if (!videoBlob || !state.sessionId) {
       console.log('⚠️ 시선 비디오 또는 세션 ID가 없어 분석을 건너뜁니다.');
       return;
     }
 
     const calibrationSessionId = state.gazeTracking?.calibrationSessionId;
     if (!calibrationSessionId) {
-      console.log('⚠️ 캘리브레이션 세션 ID가 없어 분석을 건너뜁니다.');
+      console.log('⚠️ 캘리브레이션 세션 ID가 없어 분석을 건너뜀니다.');
       return;
     }
 
     try {
-      console.log('👁️ 시선 비디오 업로드 시작...');
-
-      // 1. 비디오 업로드
-      const formData = new FormData();
-      formData.append('file', gazeBlob, 'gaze-recording.webm');
-      formData.append('file_type', 'video');
-      formData.append('interview_id', state.sessionId);
-
-      const uploadResponse = await apiClient.post<UploadResponse>('/test/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      console.log('👁️ 시선 비디오 업로드 시작...', { blobSize: videoBlob.size });
+      
+      // 🔍 디버깅: 현재 state 값들 확인
+      console.log('🔍 현재 상태 확인:', {
+        sessionId: state.sessionId,
+        interviewId: state.interviewId,
+        calibrationSessionId: state.gazeTracking?.calibrationSessionId
       });
 
-      const videoUrl = uploadResponse.data.play_url;
-      console.log('✅ 시선 비디오 업로드 완료:', videoUrl);
+      // 🔧 interview_id fallback 로직
+      const interviewId = state.interviewId || (state.sessionId ? parseInt(state.sessionId) : null);
+      console.log('🔧 사용할 interview_id:', interviewId);
 
-      // 2. 시선 분석 요청
-      console.log('👁️ 시선 분석 시작...');
+      if (!interviewId) {
+        throw new Error('interview_id를 확인할 수 없습니다. sessionId 또는 interviewId가 필요합니다.');
+      }
+
+      // 1단계: Presigned URL 요청
+      console.log('🔗 1단계: Presigned URL 요청 중...');
+      const urlResponse = await apiClient.post<PresignedUploadResponse>('/video/test/upload-url', {
+        interview_id: interviewId,
+        file_name: `gaze-recording-${Date.now()}.webm`,
+        file_type: 'video',
+        file_size: videoBlob.size
+      });
+
+      const { upload_url, media_id } = urlResponse.data;
+      console.log('✅ Presigned URL 획득 완료:', { media_id, upload_url: upload_url.substring(0, 100) + '...' });
+
+      // 2단계: S3에 직접 업로드
+      console.log('📤 2단계: S3에 비디오 업로드 중...');
+      const uploadResult = await fetch(upload_url, {
+        method: 'PUT',
+        body: videoBlob,
+        headers: { 'Content-Type': 'video/webm' }
+      });
+
+      if (!uploadResult.ok) {
+        throw new Error(`S3 업로드 실패: ${uploadResult.status} ${uploadResult.statusText}`);
+      }
+      console.log('✅ S3 업로드 완료');
+
+      // 3단계: 분석 요청
+      console.log('🔍 3단계: 시선 분석 요청 중...');
+      const videoUrl = `http://127.0.0.1:8000/video/play/${media_id}`;
       const analysisResponse = await apiClient.post<VideoAnalysisResponse>('/test/gaze/analyze', {
         video_url: videoUrl,
         session_id: calibrationSessionId
@@ -1458,16 +1521,16 @@ const InterviewGO: React.FC = () => {
       const taskId = analysisResponse.data.task_id;
       console.log('✅ 시선 분석 작업 시작:', taskId);
 
-      // 3. taskId를 상태에 설정하여 useEffect 폴링 트리거
+      // 4단계: taskId를 상태에 설정하여 useEffect 폴링 트리거
       setAnalysisTaskId(taskId);
       setIsPolling(true);
       setPollingError(null);
 
     } catch (error) {
       console.error('❌ 시선 분석 프로세스 실패:', error);
-      setGazeError('시선 분석을 완료할 수 없습니다.');
+      setGazeError(`시선 분석을 완료할 수 없습니다: ${error}`);
     }
-  };
+  }, [state.sessionId, state.interviewId, state.gazeTracking?.calibrationSessionId]);
 
   // 👁️ 분석 결과를 Supabase에 저장
   const saveGazeAnalysisToDatabase = async (result: GazeAnalysisResult) => {
@@ -1782,6 +1845,19 @@ const InterviewGO: React.FC = () => {
     const startAutoGazeTracking = async () => {
       // 캘리브레이션 세션 ID가 있고, 아직 녹화 중이 아닐 때만 시작
       const calibrationSessionId = state.gazeTracking?.calibrationSessionId;
+      
+      // 면접 완료 상태에서는 새로운 시선 추적을 시작하지 않음
+      if (currentPhase === 'interview_completed') {
+        console.log('⚠️ 면접 완료 상태 - 시선 추적 시작 건너뜀');
+        return;
+      }
+      
+      // 이미 gazeBlob이 있으면 새로운 녹화를 시작하지 않음 (기존 데이터 보호)
+      if (gazeBlob) {
+        console.log('⚠️ gazeBlob 이미 존재 - 시선 추적 시작 건너뜀');
+        return;
+      }
+      
       if (calibrationSessionId && !isGazeRecording && !isRestoring) {
         console.log('👁️ 면접 페이지 진입 - 시선 추적 자동 시작');
         await startGazeRecording();
@@ -1879,6 +1955,14 @@ const InterviewGO: React.FC = () => {
     // Cleanup function - 컴포넌트 언마운트나 의존성 변경 시
     return stopPolling;
   }, [analysisTaskId, isPolling, saveGazeAnalysisToDatabase]);
+
+  // 👁️ gazeBlob이 설정되었을 때 자동으로 분석 시작
+  useEffect(() => {
+    if (gazeBlob && state.gazeTracking?.calibrationSessionId && !analysisTaskId) {
+      console.log('👁️ gazeBlob 감지 - 자동 분석 시작', { blobSize: gazeBlob.size });
+      uploadAndAnalyzeGaze(gazeBlob);
+    }
+  }, [gazeBlob, state.gazeTracking?.calibrationSessionId, analysisTaskId, uploadAndAnalyzeGaze]);
 
   return (
     <div className="h-screen bg-black text-white flex flex-col overflow-hidden">
