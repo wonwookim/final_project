@@ -79,6 +79,7 @@ interface InterviewState {
   
   // 세션 정보
   sessionId: string | null;
+  interviewId: number | null;
   
   // 질문 관련
   questions: Question[];
@@ -158,6 +159,7 @@ type InterviewAction =
   | { type: 'SET_CAMERA_STREAM'; payload: MediaStream | null }
   | { type: 'SET_SETTINGS'; payload: InterviewSettings }
   | { type: 'SET_SESSION_ID'; payload: string }
+  | { type: 'SET_INTERVIEW_ID'; payload: number }
   | { type: 'SET_QUESTIONS'; payload: Question[] }
   | { type: 'ADD_QUESTION'; payload: Question }
   | { type: 'SET_CURRENT_QUESTION'; payload: number }
@@ -196,6 +198,7 @@ const initialState: InterviewState = {
   cameraStream: null,
   settings: null,
   sessionId: null,
+  interviewId: null,
   questions: [],
   currentQuestionIndex: 0,
   totalQuestions: 0,
@@ -254,6 +257,9 @@ function interviewReducer(state: InterviewState, action: InterviewAction): Inter
     
     case 'SET_SESSION_ID':
       return { ...state, sessionId: action.payload };
+    
+    case 'SET_INTERVIEW_ID':
+      return { ...state, interviewId: action.payload };
     
     case 'SET_QUESTIONS':
       return { 
