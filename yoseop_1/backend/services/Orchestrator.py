@@ -366,30 +366,29 @@ class Orchestrator:
         return random.choice([-1, 1])
 
     def _should_generate_individual_follow_up(self) -> bool:
-        """개별 꼬리질문을 생성할 조건인지 체크"""
-        current_turn = self.session_state.get('turn_count', 0)
-        current_interviewer = self.session_state.get('current_interviewer')
-        turn_state = self.session_state.get('interviewer_turn_state', {})
+        """개별 꼬리질문을 생성할 조건인지 체크 - 단순한 current_questions 존재 여부 체크"""
+        # 🆕 간단한 current_questions 존재 여부 체크
+        current_questions = self.session_state.get('current_questions')
         
-        # 턴 3 이후 && 현재 면접관이 설정되어 있고 && 메인 질문이 완료된 상태
-        if (current_turn > 2 and 
-            current_interviewer and 
-            current_interviewer in turn_state):
+        # current_questions가 없으면 개별 질문 생성 가능
+        if current_questions is None:
+            current_turn = self.session_state.get('turn_count', 0)
+            current_interviewer = self.session_state.get('current_interviewer')
+            turn_state = self.session_state.get('interviewer_turn_state', {})
             
-            interviewer_state = turn_state[current_interviewer]
-            main_asked = interviewer_state.get('main_question_asked', False)
-            follow_up_count = interviewer_state.get('follow_up_count', 0)
-            
-            # 메인 질문은 완료했고, 꼬리질문이 2개 미만인 경우
-            if main_asked and follow_up_count < 2:
-                # 최근에 두 답변이 모두 완료되었는지 확인
-                qa_history = self.session_state.get('qa_history', [])
-                if len(qa_history) >= 2:
-                    # 마지막 2개가 같은 질문에 대한 답변인지 확인
-                    recent_questions = [qa['question'] for qa in qa_history[-2:]]
-                    if len(set(recent_questions)) == 1:  # 같은 질문
-                        print(f"[DEBUG] 개별 꼬리질문 조건 만족: {current_interviewer}, follow_up={follow_up_count}/2")
-                        return True
+            # 턴 3 이후 && 현재 면접관이 설정되어 있는 경우
+            if (current_turn > 2 and 
+                current_interviewer and 
+                current_interviewer in turn_state):
+                
+                interviewer_state = turn_state[current_interviewer]
+                main_asked = interviewer_state.get('main_question_asked', False)
+                follow_up_count = interviewer_state.get('follow_up_count', 0)
+                
+                # 메인 질문은 완료했고, 꼬리질문이 2개 미만인 경우
+                if main_asked and follow_up_count < 2:
+                    print(f"[DEBUG] 개별 꼬리질문 조건 만족: {current_interviewer}, follow_up={follow_up_count}/2")
+                    return True
         
         return False
 
@@ -1148,6 +1147,12 @@ class Orchestrator:
                 'resume_id': ai_resume_id
             }
         }
+        
+        # 🆕 개별 질문 텍스트 정보 추가 (프론트엔드 호환성)
+        if is_individual_question and current_questions:
+            response['turn_info']['user_question_text'] = current_questions.get('user_question', {}).get('question', '')
+            response['turn_info']['ai_question_text'] = current_questions.get('ai_question', {}).get('question', '')
+            print(f"[DEBUG] 턴 정보에 개별 질문 텍스트 추가: user={bool(response['turn_info'].get('user_question_text'))}, ai={bool(response['turn_info'].get('ai_question_text'))}")
         
         # 🆕 AI 질문과 답변을 클라이언트로 전달 (텍스트 + 오디오)
         latest_ai_question = self.session_state.get('latest_ai_question')
