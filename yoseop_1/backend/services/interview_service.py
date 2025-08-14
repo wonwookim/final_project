@@ -273,6 +273,8 @@ class InterviewService:
         try:
             from llm.feedback.api_models import QuestionAnswerPair
             from llm.feedback.api_service import InterviewEvaluationService
+            import os
+            import glob
 
             session_state = self.session_states.get(session_id)
             if not session_state:
@@ -340,6 +342,10 @@ class InterviewService:
                     interview_logger.info(f"✅ 통합 면접 평가 완료: interview_id={shared_interview_id}")
                     interview_logger.info(f"📊 평가 결과: 사용자 점수={combined_eval.get('user_score', 0):.2f}, AI 점수={combined_eval.get('ai_score', 0):.2f}")
                     
+                    # 🆕 임시 시선 추적 파일 처리 (interview_id 생성 후)
+                    if shared_interview_id:
+                        await self._process_temporary_gaze_file(session_id, shared_interview_id)
+                    
                     # 개선 계획 생성
                     try:
                         evaluation_service.generate_interview_plans(shared_interview_id)
@@ -354,4 +360,69 @@ class InterviewService:
         except Exception as e:
             interview_logger.error(f"❌ 피드백 처리 중 예외 발생: {str(e)}", exc_info=True)
             return
+
+    async def _process_temporary_gaze_file(self, session_id: str, interview_id: int) -> None:
+        """임시 시선 추적 파일을 Supabase에 업로드하고 분석을 트리거"""
+        try:
+            import os
+            import glob
+            from datetime import datetime
+
+            temp_folder = "backend/uploads/temp_gaze"
+            
+            # session_id로 임시 파일 찾기
+            temp_files = glob.glob(os.path.join(temp_folder, f"{session_id}.*"))
+            
+            if not temp_files:
+                interview_logger.info(f"🔍 세션 {session_id}에 대한 임시 시선 추적 파일이 없습니다.")
+                return
+            
+            temp_file_path = temp_files[0]  # 첫 번째 매칭 파일 사용
+            interview_logger.info(f"📁 임시 파일 발견: {temp_file_path}")
+            
+            # Supabase 클라이언트 가져오기
+            supabase_client = get_supabase_client()
+            
+            # 파일 확장자 추출
+            file_extension = os.path.splitext(temp_file_path)[1]
+            
+            # Supabase Storage에 업로드할 경로 생성
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            storage_path = f"gaze_tracking/{interview_id}/gaze_video_{timestamp}{file_extension}"
+            
+            # 파일을 Supabase Storage에 업로드
+            with open(temp_file_path, 'rb') as file:
+                file_data = file.read()
+                
+                result = supabase_client.storage.from_('betago-s3').upload(
+                    path=storage_path,
+                    file=file_data,
+                    file_options={
+                        "content-type": "video/webm" if file_extension == ".webm" else "video/mp4"
+                    }
+                )
+                
+                if result.error:
+                    raise Exception(f"Supabase 업로드 실패: {result.error}")
+                
+                interview_logger.info(f"✅ Supabase 업로드 성공: {storage_path}")
+            
+            # TODO: 여기서 시선 분석 API 호출 (기존 /gaze/analyze 엔드포인트 활용)
+            # 현재는 파일 업로드까지만 구현
+            interview_logger.info(f"📊 시선 분석 트리거 예정: interview_id={interview_id}, file_path={storage_path}")
+            
+        except Exception as e:
+            interview_logger.error(f"❌ 임시 시선 추적 파일 처리 실패: session_id={session_id}, error={str(e)}", exc_info=True)
+        finally:
+            # 임시 파일 정리
+            try:
+                temp_folder = "backend/uploads/temp_gaze"
+                temp_files = glob.glob(os.path.join(temp_folder, f"{session_id}.*"))
+                
+                for temp_file in temp_files:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                        interview_logger.info(f"🗑️ 임시 파일 삭제 완료: {temp_file}")
+            except Exception as cleanup_error:
+                interview_logger.error(f"⚠️ 임시 파일 정리 실패: {str(cleanup_error)}")
 

@@ -15,10 +15,11 @@
 작성일: 2025-08-12
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Form
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Form, UploadFile, File
 from fastapi.security import HTTPAuthorizationCredentials
 from typing import Dict
 import uuid
+import shutil
 from datetime import datetime
 import os
 import sys
@@ -51,6 +52,55 @@ auth_service = AuthService()
 # 분석 작업 상태 저장소 (실제 서비스에서는 Redis나 DB 사용 권장)
 analysis_tasks: Dict[str, Dict] = {}
 BUCKET_NAME = 'betago-s3'
+
+# 임시 파일 저장 폴더
+TEMP_GAZE_FOLDER = "backend/uploads/temp_gaze"
+
+
+# === 임시 업로드 엔드포인트 ===
+
+@router.post("/upload/temporary/{session_id}", tags=["Upload"])
+async def upload_temporary_gaze_video(session_id: int, file: UploadFile = File(...)):
+    """
+    시선 추적 영상을 임시 폴더에 session_id를 파일명으로 하여 저장합니다.
+    
+    이 API는 빠른 응답을 위해 로컬 임시 폴더에만 저장하며,
+    실제 Supabase 업로드와 분석은 나중에 백그라운드에서 처리됩니다.
+    """
+    try:
+        # 임시 폴더 생성
+        os.makedirs(TEMP_GAZE_FOLDER, exist_ok=True)
+        
+        # 파일 확장자 추출 (보안상 webm만 허용)
+        if not file.filename or not file.filename.lower().endswith(('.webm', '.mp4')):
+            raise HTTPException(status_code=400, detail="지원되지 않는 파일 형식입니다. webm 또는 mp4 파일만 업로드 가능합니다.")
+        
+        # 파일 크기 제한 (100MB)
+        if file.size and file.size > 100 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="파일 크기가 너무 큽니다. 100MB 이하의 파일만 업로드 가능합니다.")
+        
+        # 파일 확장자 결정
+        file_extension = file.filename.split('.')[-1].lower()
+        file_path = os.path.join(TEMP_GAZE_FOLDER, f"{session_id}.{file_extension}")
+        
+        # 기존 파일이 있으면 덮어쓰기
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        print(f"✅ 임시 파일 저장 완료: {file_path} (크기: {file.size} bytes)")
+        
+        return {
+            "message": "시선 추적 영상이 임시 저장되었습니다.",
+            "session_id": session_id,
+            "file_path": file_path,
+            "file_size": file.size
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ 임시 파일 저장 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"파일 임시 저장 실패: {str(e)}")
 
 
 # === 캘리브레이션 엔드포인트 ===
