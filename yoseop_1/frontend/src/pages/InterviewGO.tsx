@@ -2059,28 +2059,6 @@ const InterviewGO: React.FC = () => {
             <div className="flex-1 overflow-y-auto">
               {/* 🆕 현재 턴 상태 표시 */}
               <div className="text-center mb-4">
-              <div className={`text-sm font-bold mb-2 ${
-                isTTSPlaying ? 'text-purple-400' :
-                currentPhase === 'user_turn' ? 'text-yellow-400' : 
-                currentPhase === 'ai_processing' ? 'text-green-400' : 
-                currentPhase === 'interview_completed' ? 'text-blue-400' :
-                'text-gray-400'
-              }`}>
-                {isTTSPlaying && currentTTSIndex >= 0 && ttsQueue[currentTTSIndex] ? (
-                  // 🎯 TTS 재생 중일 때 타입별 메시지 표시
-                  getTTSDisplayMessage(ttsQueue[currentTTSIndex].type)
-                ) : isTTSPlaying ? (
-                  '🔊 음성 재생 중...'
-                ) : currentPhase === 'user_turn' ? (
-                  '🎯 사용자 답변 차례'
-                ) : currentPhase === 'ai_processing' ? (
-                  '🤖 AI 답변 중'
-                ) : currentPhase === 'interview_completed' ? (
-                  '✅ 면접 완료'
-                ) : (
-                  '⏳ 대기 중'
-                )}
-              </div>
               
               {/* 🆕 타이머 표시 */}
               {currentPhase === 'user_turn' && isTimerActive && (
