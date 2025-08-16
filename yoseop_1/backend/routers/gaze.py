@@ -60,7 +60,7 @@ TEMP_GAZE_FOLDER = "backend/uploads/temp_gaze"
 # === 임시 업로드 엔드포인트 ===
 
 @router.post("/upload/temporary/{session_id}", tags=["Upload"])
-async def upload_temporary_gaze_video(session_id: int, file: UploadFile = File(...)):
+async def upload_temporary_gaze_video(session_id: str, file: UploadFile = File(...)):
     """
     시선 추적 영상을 임시 폴더에 session_id를 파일명으로 하여 저장합니다.
     
@@ -75,9 +75,9 @@ async def upload_temporary_gaze_video(session_id: int, file: UploadFile = File(.
         if not file.filename or not file.filename.lower().endswith(('.webm', '.mp4')):
             raise HTTPException(status_code=400, detail="지원되지 않는 파일 형식입니다. webm 또는 mp4 파일만 업로드 가능합니다.")
         
-        # 파일 크기 제한 (100MB)
-        if file.size and file.size > 100 * 1024 * 1024:
-            raise HTTPException(status_code=413, detail="파일 크기가 너무 큽니다. 100MB 이하의 파일만 업로드 가능합니다.")
+        # 파일 크기 제한 (2GB) - 현재 테스트를 위해 주석 처리
+        # if file.size and file.size > 2 * 1024 * 1024 * 1024:
+        #     raise HTTPException(status_code=413, detail="파일 크기가 너무 큽니다. 2GB 이하의 파일만 업로드 가능합니다.")
         
         # 파일 확장자 결정
         file_extension = file.filename.split('.')[-1].lower()
