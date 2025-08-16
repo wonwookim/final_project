@@ -273,6 +273,26 @@ const InterviewGO: React.FC = () => {
   const [isFeedbackProcessing, setIsFeedbackProcessing] = useState(false);
   const [feedbackProcessingError, setFeedbackProcessingError] = useState<string | null>(null);
 
+  // 🆕 시간 만료 핸들러
+  const handleTimeUp = useCallback(() => {
+    console.log('⏰ 시간 만료!');
+    setIsTimerActive(false);
+    setCanSubmit(false);
+    
+    // 답변이 있을 때만 제출
+    if (currentAnswer.trim() && currentPhase === 'user_turn' && !isLoading) {
+      alert('시간이 만료되었습니다! 답변을 자동 제출합니다.');
+      // submitAnswer 함수를 비동기로 호출하되, 에러를 잡아서 처리
+      setTimeout(() => {
+        if (typeof submitAnswer === 'function') {
+          submitAnswer().catch(console.error);
+        }
+      }, 0);
+    } else {
+      alert('시간이 만료되었습니다!');
+    }
+  }, [currentAnswer, currentPhase, isLoading]);
+
   // 🆕 타이머 관리
   useEffect(() => {
     // 사용자 턴이고 타이머가 활성화되어 있을 때만 타이머 실행
@@ -300,17 +320,7 @@ const InterviewGO: React.FC = () => {
         timerRef.current = null;
       }
     };
-  }, [currentTurn, isTimerActive, timeLeft]);
-
-  // 🆕 시간 만료 핸들러
-  const handleTimeUp = () => {
-    console.log('⏰ 시간 만료!');
-    setIsTimerActive(false);
-    setCanSubmit(false);
-    alert('시간이 만료되었습니다!');
-    // 자동으로 답변 제출
-    submitAnswer();
-  };
+  }, [currentTurn, isTimerActive, timeLeft, handleTimeUp]);
 
   // 🆕 백엔드에서 생성된 base64 오디오 재생 함수
   const playBase64Audio = async (base64Data: string): Promise<void> => {
@@ -668,11 +678,11 @@ const InterviewGO: React.FC = () => {
         setCanSubmit(false);
         console.log('✅ 면접 완료로 설정됨');
 
-        // 👁️ 시선 추적 녹화만 중지 (분석은 면접 완전 완료 후 실행)
-        if (isGazeRecording) {
-          console.log('👁️ 면접 완료 - 시선 추적 녹화 중지');
-          stopGazeRecording();
-        }
+        // // 👁️ 시선 추적 녹화만 중지 (분석은 면접 완전 완료 후 실행)
+        // if (isGazeRecording) {
+        //   console.log('👁️ 면접 완료 - 시선 추적 녹화 중지');
+        //   stopGazeRecording();
+        // }
     } else if (nextAgent === 'user' || status === 'waiting_for_user' || turnInfo?.is_user_turn) {
         setCurrentPhase('user_turn');
         setCurrentTurn('user');
@@ -1100,23 +1110,15 @@ const InterviewGO: React.FC = () => {
   // 🆕 주기적 턴 상태 확인 제거 - 턴 정보는 답변 제출 후 응답에서만 받아옴
 
   // 🆕 시선 추적 영상 임시 업로드 함수 (빠른 응답을 위해)
-  const uploadGazeVideoTemporary = async (sessionId: string) => {
+  const uploadGazeVideoTemporary = async (sessionId: string, videoBlob: Blob) => {
     try {
-      // 시선 추적 비디오가 있는지 확인
-      if (!gazeBlob) {
-        console.log('📝 시선 추적 비디오가 없어 임시 업로드를 건너뜁니다.');
-        return;
-      }
+      console.log('📤 시선 추적 비디오 임시 업로드 시작...', { blobSize: videoBlob.size });
 
-      console.log('📤 시선 추적 비디오 임시 업로드 시작...', { blobSize: gazeBlob.size });
-
-      // 파일 생성
       const formData = new FormData();
       const timestamp = Date.now();
       const fileName = `gaze-recording-${timestamp}.webm`;
-      formData.append('file', gazeBlob, fileName);
+      formData.append('file', videoBlob, fileName);
 
-      // 임시 업로드 API 호출
       const response = await fetch(`http://localhost:8000/gaze/upload/temporary/${sessionId}`, {
         method: 'POST',
         body: formData
@@ -1129,46 +1131,24 @@ const InterviewGO: React.FC = () => {
       const result = await response.json();
       console.log('✅ 시선 추적 비디오 임시 업로드 완료:', result);
 
-      // 업로드 완료 후 gazeBlob 정리
-      setGazeBlob(null);
-      console.log('🗑️ gazeBlob 정리 완료');
-
     } catch (error) {
       console.error('❌ 시선 추적 비디오 임시 업로드 실패:', error);
-      // 임시 업로드 실패해도 답변 제출은 계속 진행
     }
   };
 
   // 답변 제출 실패 시에도 unknown 상태로 복구
   const submitAnswer = async () => {
-    if (!currentAnswer.trim()) {
-      console.log('❌ 답변이 입력되지 않았습니다.');
-      return;
-    }
-
-    if (isLoading) {
-      console.log('❌ 이미 제출 중입니다.');
-      return;
-    }
-
-    // 사용자 턴이 아니면 제출 불가
-    if (currentPhase !== 'user_turn') {
-      console.log('❌ 사용자 턴이 아닙니다.');
-      return;
-    }
+    if (!currentAnswer.trim()) { return; }
+    if (isLoading) { return; }
+    if (currentPhase !== 'user_turn') { return; }
 
     let sessionId = state.sessionId;
     if (!sessionId) {
       try {
         sessionId = await sessionApi.getLatestSessionId();
-        if (sessionId) {
-          dispatch({ type: 'SET_SESSION_ID', payload: sessionId });
-        }
-      } catch (error) {
-        console.error('❌ sessionId 조회 실패:', error);
-      }
+        if (sessionId) { dispatch({ type: 'SET_SESSION_ID', payload: sessionId }); }
+      } catch (error) { console.error('❌ sessionId 조회 실패:', error); }
     }
-
     if (!sessionId) {
       alert('세션이 만료되었습니다. 면접을 다시 시작해주세요.');
       navigate('/interview/environment-check');
@@ -1177,68 +1157,51 @@ const InterviewGO: React.FC = () => {
 
     try {
       setIsLoading(true);
-      setIsTimerActive(false); // 타이머 정지
-      setCanSubmit(false); // 제출 버튼 비활성화
-      setCanRecord(false); // 🎤 녹음 비활성화
-      // 진행 중인 녹음이 있으면 자동 중지
+      setIsTimerActive(false);
+      setCanSubmit(false);
+      setCanRecord(false);
+
       if (isRecording) {
-          stopRecording();
+        stopRecording();
       }
-      
-      console.log('🚀 답변 제출 시작:', {
-        sessionId: sessionId,
-        answer: currentAnswer,
-        answerLength: currentAnswer.length,
-        timeSpent: 120 - timeLeft
-      });
 
-      // 🆕 1단계: 시선 추적 영상 임시 업로드 (빠른 응답을 위해)
-      await uploadGazeVideoTemporary(sessionId);
-
-      // 🆕 2단계: 답변 제출 (기존 로직)
+      console.log('💬 텍스트 답변을 백엔드로 제출합니다.');
       const result = await interviewApi.submitUserAnswer(
         sessionId,
         currentAnswer.trim(),
         120 - timeLeft
       );
 
-      console.log('✅ 답변 제출 성공:', result);
-      setCurrentAnswer(''); // 답변 초기화
-      
-      // 백엔드 응답에 따른 턴 상태 업데이트 + TTS 수집
+      console.log('✅ 답변 제출 성공, 백엔드 응답 수신:', result);
+      setCurrentAnswer('');
+
       const { ttsItems, isEndInterview } = await updatePhaseFromResponse(result);
-      
-      // 🔊 TTS 확인용 주석입니다 - 수집된 TTS 항목들을 순차 처리
       await processTTSQueue(ttsItems);
-      
-      // 🔊 면접 종료 시 완료 처리
+
       if (isEndInterview) {
-        console.log('🔊 면접 종료 TTS 처리 완료 - 면접 완료 상태로 변경');
-        
-        // TTS 이력 출력
+        console.log("🏁 면접 종료 신호 수신! 지금부터 영상 처리를 시작합니다.");
+        const finalGazeBlob = await stopGazeRecording();
+
+        if (finalGazeBlob && finalGazeBlob.size > 0) {
+          console.log(`UPLOAD_CALL: 이제 uploadGazeVideoTemporary 함수를 호출합니다. sessionId: ${sessionId}`);
+          await uploadGazeVideoTemporary(sessionId, finalGazeBlob);
+        } else {
+          console.log('⚠️ 최종 gazeBlob이 없거나 크기가 0이므로 업로드를 건너뜁니다.');
+        }
+
         showTTSHistory();
-        
-        // 면접 완료 상태로 변경
         setCurrentPhase('interview_completed');
         setCurrentTurn('waiting');
         setIsTimerActive(false);
         setCanSubmit(false);
         console.log('✅ 면접 완료로 설정됨');
-
-        // ✅ 시선 분석은 백그라운드에서 처리됨 (임시 파일 -> Supabase 업로드 -> 분석)
         console.log('✅ 면접 완료 - 시선 분석은 백그라운드에서 처리됩니다.');
-
-        // 📊 면접 피드백 처리 시작
-        console.log('📊 면접 완료 - 백그라운드 피드백 처리 시작');
         setIsFeedbackProcessing(true);
         setFeedbackProcessingError(null);
-        
-        
       }
-      
+
     } catch (error: any) {
       console.error('❌ 답변 제출 오류:', error);
-      // 에러 발생 시 unknown 상태로 복구
       setCurrentPhase('unknown');
       setCurrentTurn('waiting');
       setIsTimerActive(false);
@@ -1484,12 +1447,22 @@ const InterviewGO: React.FC = () => {
   }, [currentPhase, gazeBlob, isGazeRecording, state.gazeTracking?.calibrationSessionId]);
 
   // 👁️ 시선 추적 녹화 중지
-  const stopGazeRecording = () => {
-    if (gazeMediaRecorderRef.current && isGazeRecording) {
-      gazeMediaRecorderRef.current.stop();
-      setIsGazeRecording(false);
-      console.log('👁️ 시선 추적 녹화 중지');
-    }
+  const stopGazeRecording = (): Promise<Blob | null> => {
+    return new Promise((resolve) => {
+      if (gazeMediaRecorderRef.current && isGazeRecording) {
+        gazeMediaRecorderRef.current.onstop = () => {
+          const blob = new Blob(gazeChunksRef.current, { type: 'video/webm' });
+          setGazeBlob(blob);
+          console.log('👁️ [Promise] 시선 추적 녹화 완료, 크기:', blob.size);
+          setIsGazeRecording(false);
+          resolve(blob);
+        };
+        gazeMediaRecorderRef.current.stop();
+        console.log('👁️ 시선 추적 녹화 중지 명령');
+      } else {
+        resolve(gazeBlob);
+      }
+    });
   };
 
   // 👁️ 이전 업로드 및 분석 함수는 새로운 "선-업로드, 후-분석" 아키텍처로 대체되었습니다.
@@ -1668,15 +1641,40 @@ const InterviewGO: React.FC = () => {
   // 🎤 컴포넌트 언마운트 시 정리
   useEffect(() => {
     return () => {
+      // 🎤 녹음 정리
       if (recordingTimerRef.current) {
         clearInterval(recordingTimerRef.current);
       }
       if (mediaRecorderRef.current && isRecording) {
         stopRecording();
       }
+      
       // 👁️ 시선 추적 정리
       if (gazeMediaRecorderRef.current && isGazeRecording) {
-        stopGazeRecording();
+        gazeMediaRecorderRef.current.stop();
+        setIsGazeRecording(false);
+      }
+      
+      // 🔊 TTS 오디오 정리
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+      }
+      
+      // ⏱️ 타이머 정리
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+      
+      // 👁️ 폴링 타이머들 정리
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current);
+      }
+      if (pollingMainTimeoutRef.current) {
+        clearTimeout(pollingMainTimeoutRef.current);
       }
     };
   }, []);
@@ -1706,7 +1704,7 @@ const InterviewGO: React.FC = () => {
     };
 
     startAutoGazeTracking();
-  }, [state.gazeTracking?.calibrationSessionId, isRestoring, isGazeRecording, gazeBlob, currentPhase, startGazeRecording]);
+  }, [state.gazeTracking?.calibrationSessionId, isRestoring, isGazeRecording, gazeBlob, currentPhase]);
 
   // 👁️ 시선 분석 상태 폴링 useEffect
   useEffect(() => {
