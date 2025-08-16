@@ -462,8 +462,8 @@ const InterviewGO: React.FC = () => {
     }
   };
 
-  // 🆕 텍스트를 TTS로 변환하여 재생하는 함수
-  const generateAndPlayTTS = async (text: string, label: string = ""): Promise<void> => {
+  // 🆕 텍스트를 TTS로 변환하여 재생하는 함수 (타입별 음성 지원)
+  const generateAndPlayTTS = async (text: string, type: string, label: string = ""): Promise<void> => {
     if (!text || !text.trim()) {
       console.log(`[🔊 TTS] ${label} 텍스트가 비어있음 - TTS 건너뜀`);
       return;
@@ -477,10 +477,11 @@ const InterviewGO: React.FC = () => {
     };
     setTtsList(prev => [...prev, ttsEntry]);
 
+    // 🎯 타입별 음성으로 1차 시도
     try {
-      console.log(`[🔊 TTS] ${label} TTS 생성 시작: ${text.slice(0, 50)}...`);
+      console.log(`[🔊 TTS] ${label} TTS 생성 시작 (타입: ${type}): ${text.slice(0, 50)}...`);
       
-      // 백엔드 TTS API 호출
+      // 타입별 TTS API 호출
       const response = await fetch('http://localhost:8000/interview/tts', {
         method: 'POST',
         headers: {
@@ -488,7 +489,7 @@ const InterviewGO: React.FC = () => {
         },
         body: JSON.stringify({
           text: text.trim(),
-          voice_id: "21m00Tcm4TlvDq8ikWAM" // Rachel 음성
+          voice_id: getVoiceIdByType(type)
         })
       });
 
@@ -497,7 +498,7 @@ const InterviewGO: React.FC = () => {
       }
 
       const audioData = await response.arrayBuffer();
-      console.log(`[🔊 TTS] ${label} TTS 생성 완료, 재생 시작`);
+      console.log(`[🔊 TTS] ${label} 타입별 TTS 생성 완료, 재생 시작`);
 
       // 오디오 재생
       const audioBlob = new Blob([audioData], { type: 'audio/mp3' });
@@ -507,20 +508,68 @@ const InterviewGO: React.FC = () => {
       // 재생 완료 대기
       await new Promise<void>((resolve, reject) => {
         audio.onended = () => {
-          console.log(`[🔊 TTS] ${label} TTS 재생 완료`);
+          console.log(`[🔊 TTS] ${label} 타입별 TTS 재생 완료`);
           URL.revokeObjectURL(audioUrl);
           resolve();
         };
         audio.onerror = () => {
-          console.error(`[🔊 TTS] ${label} TTS 재생 실패`);
+          console.error(`[🔊 TTS] ${label} 타입별 TTS 재생 실패`);
           URL.revokeObjectURL(audioUrl);
-          reject(new Error('TTS 재생 실패'));
+          reject(new Error('타입별 TTS 재생 실패'));
         };
         audio.play().catch(reject);
       });
 
+      return; // 성공 시 종료
+
     } catch (error) {
-      console.error(`[🔊 TTS] ${label} TTS 처리 실패:`, error);
+      console.warn(`[🔊 TTS] ${label} 타입별 TTS 실패, 기본 음성으로 폴백:`, error);
+      
+      // 🔄 기본 음성으로 2차 시도 (폴백)
+      try {
+        console.log(`[🔊 TTS] ${label} 기본 음성으로 TTS 재시도...`);
+        
+        const fallbackResponse = await fetch('http://localhost:8000/interview/tts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: text.trim(),
+            voice_id: "21m00Tcm4TlvDq8ikWAM" // Rachel 음성 (기본값)
+          })
+        });
+
+        if (!fallbackResponse.ok) {
+          throw new Error(`폴백 TTS API 오류: ${fallbackResponse.status}`);
+        }
+
+        const fallbackAudioData = await fallbackResponse.arrayBuffer();
+        console.log(`[🔊 TTS] ${label} 기본 음성 TTS 생성 완료, 재생 시작`);
+
+        // 오디오 재생
+        const audioBlob = new Blob([fallbackAudioData], { type: 'audio/mp3' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+
+        // 재생 완료 대기
+        await new Promise<void>((resolve, reject) => {
+          audio.onended = () => {
+            console.log(`[🔊 TTS] ${label} 기본 음성 TTS 재생 완료`);
+            URL.revokeObjectURL(audioUrl);
+            resolve();
+          };
+          audio.onerror = () => {
+            console.error(`[🔊 TTS] ${label} 기본 음성 TTS 재생 실패`);
+            URL.revokeObjectURL(audioUrl);
+            reject(new Error('기본 음성 TTS 재생 실패'));
+          };
+          audio.play().catch(reject);
+        });
+
+      } catch (fallbackError) {
+        console.error(`[🔊 TTS] ${label} 모든 TTS 시도 실패:`, fallbackError);
+      }
     }
   };
 
@@ -558,7 +607,7 @@ const InterviewGO: React.FC = () => {
       setCurrentTTSIndex(i);
       
       try {
-        await generateAndPlayTTS(item.content, `${item.type} ${i + 1}`);
+        await generateAndPlayTTS(item.content, item.type, `${item.type} ${i + 1}`);
         console.log(`🔊 [큐 처리] ${i + 1}/${ttsItems.length} 완료 [${item.type}]`);
       } catch (error) {
         console.error(`🔊 [큐 처리] ${i + 1}/${ttsItems.length} 실패 [${item.type}]:`, error);
@@ -579,13 +628,13 @@ const InterviewGO: React.FC = () => {
       
       // 즉시 TTS: 인트로 메시지
       if (response.intro_message) {
-        await generateAndPlayTTS(response.intro_message, "INTRO");
+        await generateAndPlayTTS(response.intro_message, "intro", "INTRO");
       }
 
       // 첫 질문은 즉시 TTS (사용자가 들어야 하니까)
       const isFirstQuestion = !state.questions || state.questions.length === 0;
       if (isFirstQuestion && response.content?.content) {
-        await generateAndPlayTTS(response.content.content, "첫 질문");
+        await generateAndPlayTTS(response.content.content, "hr", "첫 질문");
         return [] as {type: string, content: string}[]; // 첫 질문은 즉시 처리했으므로 빈 배열 반환
       } else {
         // 🔊 TTS 처리를 위한 항목들을 동기적으로 수집 (타입 정보 포함)
@@ -866,6 +915,18 @@ const InterviewGO: React.FC = () => {
     
     // 기본값
     return 'unknown';
+  };
+
+  // 🆕 타입별 voice_id 매핑 함수
+  const getVoiceIdByType = (type: string): string => {
+    const normalizedType = normalizeTTSType(type);
+    switch (normalizedType) {
+      case 'ai': return 'H8ObVvroE5JXeeUSJakg'; // AI 전용 음성 (현재는 기본값과 동일)
+      case 'tech': return 'mYk0rAapHek2oTw18z8x'; // 기술 면접관 음성 (현재는 기본값과 동일)
+      case 'collaborate': return 'ZJCNdZEjYwkOElxugmW2'; // 협업 면접관 음성 (현재는 기본값과 동일)  
+      case 'hr': return 'YBRudLRm83BV5Mazcr42'; // HR 면접관 음성 (기본값)
+      default: return 'YBRudLRm83BV5Mazcr42'; // 기본값은 HR과 동일
+    }
   };
 
   // 🎯 TTS 타입별 표시 메시지 생성 함수
