@@ -61,6 +61,8 @@ class InterviewService:
                 'COLLABORATION': {'main_question_asked': False, 'follow_up_count': 0}
             },
             "current_interviewer": None,
+            # 🆕 TTS 통합 큐: {'type': '유형', 'content': 'TTS할 텍스트'} 형태의 딕셔너리 저장
+            "tts_queue": [],
             # 🆕 중복 제거: qa_history에서 최신 데이터 추출
             **initial_settings
         }
@@ -200,7 +202,7 @@ class InterviewService:
             
             # 세션 상태 생성
             initial_settings = {
-                'total_question_limit': 1,  # 디버깅용 - 실제 운영시에는 15로 변경
+                'total_question_limit': 2,  # 디버깅용 - 실제 운영시에는 15로 변경
                 'company_id': company_code_for_persona,  # 모델/질문 생성 로직과 호환되는 문자열 코드 유지
                 'company_numeric_id': company_numeric_id,  # DB 연동을 위한 숫자 ID 별도 보관
                 'position': settings['position'],
@@ -276,7 +278,7 @@ class InterviewService:
             import os
             import glob
             interview_logger.info(f"피드백 트리거 시작: {session_id}")
-            await asyncio.sleep(1)  # CPU 사용 없이 5초 비동기 대기
+            await asyncio.sleep(5)  # CPU 사용 없이 5초 비동기 대기
             interview_logger.info(f"피드백 트리거 종료: {session_id}")
             session_state = self.session_states.get(session_id)
             if not session_state:

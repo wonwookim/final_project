@@ -577,36 +577,36 @@ const InterviewGO: React.FC = () => {
         // 🔊 TTS 처리를 위한 항목들을 동기적으로 수집
         const ttsItems: string[] = [];
         
-        // 🔊 백엔드에서 제공한 순서대로 수집
+        // 🔊 백엔드 TTS 큐를 우선적으로 처리
         if (response.tts_queue && Array.isArray(response.tts_queue)) {
-          console.log(`🔊 [백엔드 큐] ${response.tts_queue.length}개 항목을 순서대로 수집`);
+          console.log(`🔊 [TTS 큐] ${response.tts_queue.length}개 항목을 순서대로 수집`);
           response.tts_queue.forEach((item: any, index: number) => {
             if (item.content) {
-              console.log(`🔊 [백엔드 큐] ${index + 1}. ${item.type}: ${item.content.substring(0, 50)}...`);
+              console.log(`🔊 [TTS 큐] ${index + 1}. ${item.type}: ${item.content.substring(0, 50)}...`);
               ttsItems.push(item.content);
             }
           });
         } else {
-          // 🔊 기존 방식 fallback - 생성 순서대로 수집
-          console.log('🔊 [백엔드 큐] tts_queue 없음 - 기존 방식으로 수집');
+          // 🔊 Fallback: 기존 방식으로 수집 (호환성 유지)
+          console.log('🔊 [TTS 큐] tts_queue 없음 - 기존 방식으로 fallback');
           
           if (response.ai_question?.content) {
-            console.log(`🔊 [수집] AI 질문: ${response.ai_question.content.substring(0, 50)}...`);
+            console.log(`🔊 [Fallback] AI 질문: ${response.ai_question.content.substring(0, 50)}...`);
             ttsItems.push(response.ai_question.content);
           }
           if (response.ai_answer?.content) {
-            console.log(`🔊 [수집] AI 답변: ${response.ai_answer.content.substring(0, 50)}...`);
+            console.log(`🔊 [Fallback] AI 답변: ${response.ai_answer.content.substring(0, 50)}...`);
             ttsItems.push(response.ai_answer.content);
           }
           if (response.content?.content || response.content?.question) {
             const questionText = response.content.content || response.content.question;
-            console.log(`🔊 [수집] 사용자 질문: ${questionText.substring(0, 50)}...`);
+            console.log(`🔊 [Fallback] 사용자 질문: ${questionText.substring(0, 50)}...`);
             ttsItems.push(questionText);
           }
           
-          // 🔊 면접 종료 시 종료 메시지 처리 (백엔드 message 필드 사용)
+          // 🔊 면접 종료 시 종료 메시지 처리
           if (response.message && (task === 'end_interview' || status === 'completed')) {
-            console.log(`🔊 [수집] 면접 종료 메시지: ${response.message.substring(0, 50)}...`);
+            console.log(`🔊 [Fallback] 면접 종료 메시지: ${response.message.substring(0, 50)}...`);
             ttsItems.push(response.message);
           }
         }

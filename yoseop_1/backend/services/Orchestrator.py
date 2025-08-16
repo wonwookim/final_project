@@ -134,6 +134,12 @@ class Orchestrator:
             else:
                 question_text = self.session_state.get('current_question', '')
             
+            # 🆕 개별 답변 처리에서 질문은 TTS 큐에 추가하지 않음
+            # 사용자 질문: create_user_waiting_message에서 이미 추가됨
+            # AI 질문: _process_ai_task에서 추가됨 (ai_question 타입으로)
+            print(f"[DEBUG] 개별 답변 처리: answerer={from_agent}, question='{question_text[:50]}...'")
+            print(f"[DEBUG] TTS 큐 추가는 별도 로직에서 처리됨 (중복 방지)")
+            
             # qa_history에 답변 저장
             qa_entry = {
                 "question": question_text,
@@ -247,18 +253,69 @@ class Orchestrator:
         
         # 완료 조건 체크 (턴 0: 인트로 제외)
         if current_turn > self.session_state.get('total_question_limit', 15):
-            self.session_state['is_completed'] = True
-            message = self.create_agent_message(
-                session_id=self.session_id,
-                task="end_interview",
-                from_agent="orchestrator",
-                content_text="수고하셨습니다.",
-                turn_count=current_turn,
-                content_type="OUTTRO",
-                start_time=start_time
-            )
-            message["metadata"]["next_agent"] = "orchestrator"
-            return message
+            # 🆕 현재 질문에 대한 모든 답변(사용자+AI)이 완료되었는지 확인
+            current_question = self.session_state.get('current_question')
+            if current_question:
+                qa_history = self.session_state.get('qa_history', [])
+                ai_question_variant = self._format_question_for_ai(current_question)
+                current_answers = len([qa for qa in qa_history 
+                                     if qa.get('question') == current_question or qa.get('question') == ai_question_variant])
+                
+                print(f"[DEBUG] 면접 종료 조건 체크: turn={current_turn}, current_answers={current_answers}, current_question='{current_question[:50]}...'")
+                
+                # 현재 질문에 대해 사용자와 AI 모두 답변했거나, 질문이 없으면 종료
+                if current_answers < 2:
+                    print(f"[DEBUG] 마지막 질문 답변 미완료 - 면접 계속 진행 (answers: {current_answers}/2)")
+                    # 아직 답변이 완료되지 않았으면 아래 로직으로 계속 진행
+                else:
+                    print(f"[DEBUG] 마지막 질문 답변 완료 - 면접 종료")
+                    self.session_state['is_completed'] = True
+                    
+                    # 🆕 면접 종료 메시지를 TTS 큐에 추가
+                    end_message = "수고하셨습니다."
+                    tts_queue = self.session_state.get('tts_queue', [])
+                    tts_queue.append({
+                        'type': 'OUTRO',
+                        'content': end_message
+                    })
+                    print(f"[DEBUG] 면접 종료 메시지 TTS 큐 추가: {end_message}")
+                    
+                    message = self.create_agent_message(
+                        session_id=self.session_id,
+                        task="end_interview",
+                        from_agent="orchestrator",
+                        content_text=end_message,
+                        turn_count=current_turn,
+                        content_type="OUTTRO",
+                        start_time=start_time
+                    )
+                    message["metadata"]["next_agent"] = "orchestrator"
+                    return message
+            else:
+                # 현재 질문이 없으면 즉시 종료
+                print(f"[DEBUG] 현재 질문 없음 - 면접 종료")
+                self.session_state['is_completed'] = True
+                
+                # 🆕 면접 종료 메시지를 TTS 큐에 추가
+                end_message = "수고하셨습니다."
+                tts_queue = self.session_state.get('tts_queue', [])
+                tts_queue.append({
+                    'type': 'OUTRO',
+                    'content': end_message
+                })
+                print(f"[DEBUG] 면접 종료 메시지 TTS 큐 추가: {end_message}")
+                
+                message = self.create_agent_message(
+                    session_id=self.session_id,
+                    task="end_interview",
+                    from_agent="orchestrator",
+                    content_text=end_message,
+                    turn_count=current_turn,
+                    content_type="OUTTRO",
+                    start_time=start_time
+                )
+                message["metadata"]["next_agent"] = "orchestrator"
+                return message
 
         # 🆕 개별 꼬리질문 처리 로직
         current_questions = self.session_state.get('current_questions')
@@ -299,13 +356,23 @@ class Orchestrator:
         current_answers = len([qa for qa in self.session_state['qa_history']
                              if qa['question'] == user_question or (ai_question_variant and qa['question'] == ai_question_variant)])
         
-        # 첫 번째 답변: 랜덤 선택
+        # 첫 번째 답변: 마지막 질문 고려 선택
         if current_answers == 0:
             current_turn = self.session_state.get('turn_count', 0)
+            total_limit = self.session_state.get('total_question_limit', 15)
+            is_final_question = current_turn >= total_limit
+            
+            print(f"[DEBUG] 답변 선택 로직: turn={current_turn}, limit={total_limit}, is_final={is_final_question}")
+            
             if current_turn == 1:
-                selected_agent = 'user' # 첫 질문은 항상 사용자가 먼저
+                selected_agent = 'user'  # 첫 질문은 항상 사용자가 먼저
+                print(f"[DEBUG] 첫 질문 - 사용자 우선")
+            elif is_final_question or current_turn == total_limit:
+                selected_agent = 'ai'    # 🆕 마지막 질문은 AI가 먼저 (조건 강화)
+                print(f"[DEBUG] 마지막 질문 감지 - AI 우선 실행 (turn: {current_turn}, limit: {total_limit})")
             else:
-                selected_agent = 'user' if self._random_select() == -1 else 'ai'
+                selected_agent = 'user' if self._random_select() == -1 else 'ai'  # 일반 질문은 랜덤
+                print(f"[DEBUG] 일반 질문 - 랜덤 선택: {selected_agent}")
             # 에이전트별로 전달할 질문 텍스트 결정
             if selected_agent == 'ai':
                 question_text = self._format_question_for_ai(self.session_state['current_question'])
@@ -326,15 +393,48 @@ class Orchestrator:
         
         # 두 번째 답변: 반대 에이전트
         elif current_answers == 1:
-            # 첫 번째 답변자 확인
-            first_answerer = self.session_state['qa_history'][-1]['answerer']
-            selected_agent = 'ai' if first_answerer == 'user' else 'user'
-            # 에이전트별로 전달할 질문 텍스트 결정
-            if selected_agent == 'ai':
-                question_text = self._format_question_for_ai(self.session_state['current_question'])
-                self.session_state['_ai_actual_question'] = question_text
-            else:
+            # 🆕 실제 답변 존재 확인
+            qa_history = self.session_state.get('qa_history', [])
+            if not qa_history:
+                print(f"[ERROR] current_answers=1이지만 qa_history가 비어있음")
+                # 사용자 답변 대기로 처리
+                selected_agent = 'user'
                 question_text = self.session_state['current_question']
+                message = self.create_agent_message(
+                    session_id=self.session_id,
+                    task="generate_answer", 
+                    from_agent="orchestrator",
+                    content_text=question_text,
+                    turn_count=current_turn,
+                    start_time=start_time
+                )
+                message["metadata"]["next_agent"] = selected_agent
+                return message
+            
+            # 첫 번째 답변자 확인
+            first_answerer = qa_history[-1]['answerer']
+            print(f"[DEBUG] 첫 번째 답변자: {first_answerer}")
+            
+            # 🆕 사용자 답변이 실제로 제출되었는지 확인
+            if first_answerer == 'user':
+                # 🆕 실제 답변 내용이 있는지 확인
+                user_answer = qa_history[-1].get('answer', '').strip()
+                if not user_answer:
+                    print(f"[DEBUG] 사용자 답변이 비어있음 - 사용자 대기 상태 유지")
+                    selected_agent = 'user'
+                    question_text = self.session_state['current_question']
+                else:
+                    # 🆕 마지막 질문이어도 AI에게 답변 기회 제공
+                    print(f"[DEBUG] 사용자 답변 확인됨 - AI 처리 진행 (마지막 질문 포함)")
+                    selected_agent = 'ai'
+                    question_text = self._format_question_for_ai(self.session_state['current_question'])
+                    self.session_state['_ai_actual_question'] = question_text
+            else:
+                # AI가 먼저 답변했으므로 사용자 차례  
+                selected_agent = 'user'
+                question_text = self.session_state['current_question']
+                print(f"[DEBUG] AI 답변 확인됨 - 사용자 처리 진행")
+                
             message = self.create_agent_message(
                 session_id=self.session_id,
                 task="generate_answer",
@@ -408,6 +508,8 @@ class Orchestrator:
         if individual_answers == 0:
             selected_agent = 'user' if self._random_select() == -1 else 'ai'
             question_text = user_question if selected_agent == 'user' else ai_question
+            
+            print(f"[DEBUG] 개별 질문 플로우: 랜덤 선택 - {selected_agent} 선택됨")
             
             message = self.create_agent_message(
                 session_id=self.session_id,
@@ -670,8 +772,14 @@ class Orchestrator:
         """완전한 플로우를 처리하여 최종 결과 반환"""
         print(f"[TRACE] Orchestrator._process_complete_flow start: session={self.session_id}")
         
+        loop_count = 0
         while True:
-            print(f"[TRACE] turn={self.session_state.get('turn_count', 0)}")
+            loop_count += 1
+            current_turn = self.session_state.get('turn_count', 0)
+            tts_queue_size = len(self.session_state.get('tts_queue', []))
+            
+            print(f"[TRACE] === 루프 {loop_count} 시작 ===")
+            print(f"[TRACE] turn={current_turn}, tts_queue_size={tts_queue_size}")
             
             # 다음 메시지 결정
             next_message = self._decide_next_message()
@@ -679,6 +787,11 @@ class Orchestrator:
             task = next_message.get("metadata", {}).get("task")
             
             print(f"[TRACE] decide_next -> next_agent={next_agent}, task={task}")
+            
+            # 루프 무한 방지 (디버깅용)
+            if loop_count > 10:
+                print(f"[ERROR] 루프 10회 초과 - 강제 중단")
+                break
             
             # 완료 조건 체크
             if task == "end_interview":
@@ -710,13 +823,37 @@ class Orchestrator:
             # 사용자 입력 대기 상태인 경우
             if next_agent == "user":
                 print(f"[TRACE] wait for user input")
-                result = await self.create_user_waiting_message()
                 
-                print(f"[TRACE] Orchestrator -> Client (wait)")
+                # 🆕 현재 질문에 대한 사용자 답변이 없으면 루프 중단
+                current_question = self.session_state.get('current_question')
+                if current_question:
+                    qa_history = self.session_state.get('qa_history', [])
+                    user_answered = any(qa.get('question') == current_question and qa.get('answerer') == 'user' and qa.get('answer', '').strip()
+                                      for qa in qa_history)
+                    if not user_answered:
+                        print(f"[DEBUG] 사용자 답변 미완료 - 루프 중단하고 대기")
+                        # 사용자 대기 메시지 생성 전 TTS 큐 상태
+                        tts_queue_before = len(self.session_state.get('tts_queue', []))
+                        result = await self.create_user_waiting_message()
+                        tts_queue_after = len(self.session_state.get('tts_queue', []))
+                        
+                        print(f"[TRACE] TTS 큐 변화: {tts_queue_before} -> {tts_queue_after}")
+                        print(f"[TRACE] Orchestrator -> Client (wait) - 루프 종료")
+                        return result
+                
+                # 사용자 대기 메시지 생성 전 TTS 큐 상태
+                tts_queue_before = len(self.session_state.get('tts_queue', []))
+                result = await self.create_user_waiting_message()
+                tts_queue_after = len(self.session_state.get('tts_queue', []))
+                
+                print(f"[TRACE] TTS 큐 변화: {tts_queue_before} -> {tts_queue_after}")
+                print(f"[TRACE] Orchestrator -> Client (wait) - 루프 종료")
                 # JSON 출력은 create_user_waiting_message에서 이미 처리됨
                 return result
             
             # 에이전트 작업 수행 (handle_message에서 TTS 순차 처리 포함)
+            tts_queue_before_agent = len(self.session_state.get('tts_queue', []))
+            
             if next_agent == "interviewer":
                 print(f"[TRACE] interviewer task start")
                 await self._process_interviewer_task()
@@ -725,9 +862,32 @@ class Orchestrator:
                 await self._process_individual_interviewer_task()
             elif next_agent == "ai":
                 print(f"[TRACE] ai task start")
+                
+                # 🆕 AI 작업 실행 전 추가 검증 (마지막 질문 예외)
+                current_question = self.session_state.get('current_question')
+                current_turn = self.session_state.get('turn_count', 0)
+                total_limit = self.session_state.get('total_question_limit', 15)
+                is_final_question = current_turn >= total_limit
+                
+                if current_question and not is_final_question:
+                    # 일반 질문에서만 사용자 답변 확인
+                    qa_history = self.session_state.get('qa_history', [])
+                    user_answered = any(qa.get('question') == current_question and qa.get('answerer') == 'user' and qa.get('answer', '').strip()
+                                      for qa in qa_history)
+                    if not user_answered:
+                        print(f"[ERROR] AI 작업 실행 중지 - 사용자 답변이 없음")
+                        # 사용자 대기 상태로 강제 전환
+                        result = await self.create_user_waiting_message()
+                        return result
+                elif is_final_question:
+                    print(f"[DEBUG] 마지막 질문 - AI 작업 검증 건너뜀 (turn: {current_turn}, limit: {total_limit})")
+                
                 await self._process_ai_task(next_message.get("content", {}).get("content"))
             
-            print(f"[TRACE] loop end")
+            tts_queue_after_agent = len(self.session_state.get('tts_queue', []))
+            print(f"[TRACE] {next_agent} 처리 후 TTS 큐 변화: {tts_queue_before_agent} -> {tts_queue_after_agent}")
+            print(f"[TRACE] === 루프 {loop_count} 완료 - 다음 루프로 ===")
+            # 루프 계속
 
     async def _process_initial_flow(self) -> Dict[str, Any]:
         """
@@ -896,6 +1056,14 @@ class Orchestrator:
         if isinstance(question_result, dict) and 'user_question' in question_result and 'ai_question' in question_result:
             print(f"[TRACE] individual questions generated (dict)")
             
+            # 🆕 중복 방지: 개별 질문 생성 시에는 TTS 큐에 추가하지 않음
+            # 실제 질문/답변 처리 시에 TTS 큐에 추가됨
+            user_question_text = question_result.get('user_question', {}).get('question', '')
+            ai_question_text = question_result.get('ai_question', {}).get('question', '')
+            print(f"[DEBUG] 개별 질문 생성 완료 - 사용자용: {user_question_text[:50]}...")
+            print(f"[DEBUG] 개별 질문 생성 완료 - AI용: {ai_question_text[:50]}...")
+            print(f"[DEBUG] TTS 큐 추가는 실제 처리 시에 수행됨 (중복 방지)")
+            
             # 개별 질문 메시지 생성
             questions_message = self.create_agent_message(
                 session_id=self.session_id,
@@ -917,6 +1085,23 @@ class Orchestrator:
             
             # 🆕 content_type 결정
             content_type = "INTRO" if current_turn == 0 else current_interviewer or "HR"
+            
+            # 🆕 마지막 질문 감지
+            total_limit = self.session_state.get('total_question_limit', 15)
+            is_final_question = current_turn >= total_limit
+            
+            print(f"[DEBUG] 질문 생성 단계: turn={current_turn}, limit={total_limit}, is_final={is_final_question}")
+            
+            # 🆕 마지막 질문이 아닐 때만 즉시 TTS 큐 추가
+            if not is_final_question:
+                tts_queue = self.session_state.get('tts_queue', [])
+                tts_queue.append({
+                    'type': content_type,
+                    'content': question_content
+                })
+                print(f"[DEBUG] 일반 질문 TTS 큐 추가 ({content_type}): {question_content[:50]}...")
+            else:
+                print(f"[DEBUG] 마지막 질문 - 사용자용 질문 TTS 큐 추가 연기")
             
             # 현재 턴에 따라 task 결정
             task = "intro_generated" if current_turn == 0 else "question_generated"
@@ -1016,15 +1201,39 @@ class Orchestrator:
         # AI에게 전달할 질문에서 사용자 이름 호칭을 AI용으로 최소 치환
         ai_question = self._format_question_for_ai(question)
         
-        # 🆕 AI 질문을 클라이언트 전달용으로 임시 저장
-        self.session_state['latest_ai_question'] = ai_question
-        print(f"[DEBUG] AI 질문 임시 저장: {ai_question[:50]}...")
+        # 🆕 AI 질문을 TTS 큐에 추가
+        tts_queue = self.session_state.get('tts_queue', [])
+        tts_queue.append({
+            'type': 'ai_question',
+            'content': ai_question
+        })
+        print(f"[DEBUG] AI 질문 TTS 큐 추가: {ai_question[:50]}...")
         
         ai_answer = await self._request_answer_from_ai_candidate(ai_question)
         
-        # 🆕 AI 답변을 클라이언트 전달용으로 임시 저장  
-        self.session_state['latest_ai_answer'] = ai_answer
-        print(f"[DEBUG] AI 답변 임시 저장: {ai_answer[:50]}...")
+        # 🆕 AI 답변을 TTS 큐에 추가
+        tts_queue.append({
+            'type': 'ai_answer', 
+            'content': ai_answer
+        })
+        print(f"[DEBUG] AI 답변 TTS 큐 추가: {ai_answer[:50]}...")
+        
+        # 🆕 마지막 질문에서 AI 작업 완료 후 사용자용 질문 TTS 큐 추가
+        current_turn = self.session_state.get('turn_count', 0)
+        total_limit = self.session_state.get('total_question_limit', 15)
+        is_final_question = current_turn >= total_limit
+        
+        if is_final_question:
+            user_question = self.session_state.get('current_question', '')
+            current_interviewer = self.session_state.get('current_interviewer', 'HR')
+            user_content_type = current_interviewer if current_interviewer in ['HR', 'TECH', 'COLLABORATION'] else 'HR'
+            
+            if user_question:
+                tts_queue.append({
+                    'type': user_content_type,
+                    'content': user_question
+                })
+                print(f"[DEBUG] 마지막 질문 - AI 작업 완료 후 사용자용 질문 TTS 추가: {user_question[:50]}...")
         
         # 🆕 개별 질문 상태 체크
         current_questions = self.session_state.get('current_questions')
@@ -1069,6 +1278,22 @@ class Orchestrator:
         # 🆕 content_type 결정 (현재 면접관 기반)
         current_interviewer = self.session_state.get('current_interviewer', 'HR')
         content_type = current_interviewer if current_interviewer in ['HR', 'TECH', 'COLLABORATION'] else 'HR'
+        
+        # 🆕 개별 질문에서 사용자 질문을 TTS 큐에 추가
+        if is_individual_question and question_text:
+            tts_queue = self.session_state.get('tts_queue', [])
+            
+            # 중복 방지: 이미 큐에 있는지 확인
+            question_already_in_queue = any(item.get('content') == question_text for item in tts_queue)
+            
+            if not question_already_in_queue:
+                tts_queue.append({
+                    'type': f'{current_interviewer}_user_question',
+                    'content': question_text
+                })
+                print(f"[DEBUG] 사용자 대기 메시지 생성 시 사용자 질문 TTS 큐 추가: {question_text[:50]}...")
+            else:
+                print(f"[DEBUG] 사용자 질문이 이미 TTS 큐에 존재함 - 중복 추가 방지: {question_text[:50]}...")
         
         response = self.create_agent_message(
             session_id=self.session_id,
@@ -1154,34 +1379,24 @@ class Orchestrator:
             response['turn_info']['ai_question_text'] = current_questions.get('ai_question', {}).get('question', '')
             print(f"[DEBUG] 턴 정보에 개별 질문 텍스트 추가: user={bool(response['turn_info'].get('user_question_text'))}, ai={bool(response['turn_info'].get('ai_question_text'))}")
         
-        # 🆕 AI 질문과 답변을 클라이언트로 전달 (텍스트 + 오디오)
-        latest_ai_question = self.session_state.get('latest_ai_question')
-        latest_ai_answer = self.session_state.get('latest_ai_answer')
-        latest_ai_answer_audio = self.session_state.get('latest_ai_answer_audio')
+        # 🆕 TTS 통합 큐를 클라이언트로 전달
+        tts_queue = self.session_state.get('tts_queue', [])
         
-        print(f"[📝 TEXT] AI 데이터 전달 체크:")
-        print(f"  - latest_ai_question 존재: {bool(latest_ai_question)}")
-        print(f"  - latest_ai_answer 존재: {bool(latest_ai_answer)}")
+        print(f"[📝 TTS_QUEUE] TTS 큐 전달 체크:")
+        print(f"  - tts_queue 항목 수: {len(tts_queue)}")
         
-        if latest_ai_question:
-            response['ai_question'] = {
-                'content': latest_ai_question
-            }
-            print(f"[📝 TEXT] AI 질문 전달: {latest_ai_question[:50]}...")
+        if tts_queue:
+            response['tts_queue'] = tts_queue.copy()  # 복사본 전달
+            print(f"[📝 TTS_QUEUE] TTS 큐 전달 완료 - {len(tts_queue)}개 항목:")
+            for i, item in enumerate(tts_queue):
+                print(f"  {i+1}. {item.get('type', 'unknown')}: {item.get('content', '')[:50]}...")
             
-            # TTS 생성 제거 - 프론트엔드에서 처리
-            
-            # 한번 전달 후 삭제
-            del self.session_state['latest_ai_question']
-            
-        if latest_ai_answer:
-            response['ai_answer'] = {
-                'content': latest_ai_answer
-            }
-            print(f"[📝 TEXT] AI 답변 전달: {latest_ai_answer[:50]}...")
-            
-            # 한번 전달 후 삭제
-            del self.session_state['latest_ai_answer']
+            # 한 번 전달 후 큐 비우기
+            self.session_state['tts_queue'] = []
+            print(f"[📝 TTS_QUEUE] 🗑️ TTS 큐 초기화 완료 - 다음 턴을 위해 비움")
+        else:
+            print(f"[📝 TTS_QUEUE] TTS 큐 없음 - 빈 큐 전달")
+            response['tts_queue'] = []
         
         # 사용자 질문 텍스트 확인 - 오디오 제거
         if question_text and question_text.strip():
