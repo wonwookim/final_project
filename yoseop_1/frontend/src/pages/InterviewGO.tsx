@@ -217,6 +217,7 @@ const InterviewGO: React.FC = () => {
   
   // 🔊 TTS 확인용 주석입니다 - TTS 큐 시스템
   const [ttsQueue, setTtsQueue] = useState<string[]>([]);
+  const [currentTTSIndex, setCurrentTTSIndex] = useState(-1);
   
   // 🆕 AI 질문/답변 관련 상태
   const [currentAIQuestion, setCurrentAIQuestion] = useState<string>('');
@@ -541,11 +542,20 @@ const InterviewGO: React.FC = () => {
       return;
     }
     
+    // 🆕 TTS 재생 시작 - 타이머 중지
+    console.log('🔊 [큐 처리] TTS 재생 시작 - 타이머 중지');
+    setIsTTSPlaying(true);
+    setTtsQueue(ttsItems);
+    setCurrentTTSIndex(0);
+    setIsTimerActive(false); // 타이머 중지
+    
     console.log(`🔊 [큐 처리] ${ttsItems.length}개 항목 순차 처리 시작`);
     
     for (let i = 0; i < ttsItems.length; i++) {
       const text = ttsItems[i];
       console.log(`🔊 [큐 처리] ${i + 1}/${ttsItems.length} 처리 중: ${text.substring(0, 50)}...`);
+      
+      setCurrentTTSIndex(i);
       
       try {
         await generateAndPlayTTS(text, `큐 처리 ${i + 1}`);
@@ -555,7 +565,11 @@ const InterviewGO: React.FC = () => {
       }
     }
     
-    console.log('🔊 [큐 처리] 모든 TTS 처리 완료');
+    // 🆕 모든 TTS 재생 완료 - 타이머 시작
+    console.log('🔊 [큐 처리] 모든 TTS 처리 완료 - 답변 타이머 시작');
+    setIsTTSPlaying(false);
+    setCurrentTTSIndex(-1);
+    startAnswerTimer();
   };
 
   // 🆕 백엔드 응답에서 TTS 처리 (동기적 수집 방식)
@@ -802,6 +816,21 @@ const InterviewGO: React.FC = () => {
     setCanSubmit(true);
     setCanRecord(true);
     setCurrentQuestion(question);
+  };
+
+  // 🆕 답변 타이머 시작 함수 (TTS 완료 후 호출)
+  const startAnswerTimer = () => {
+    console.log('⏰ 답변 타이머 시작 - TTS 완료 후');
+    // 사용자 턴일 때만 타이머 시작
+    if (currentTurn === 'user') {
+      setIsTimerActive(true);
+      setTimeLeft(120); // 2분으로 재설정
+      setCanSubmit(true);
+      setCanRecord(true);
+      console.log('✅ 답변 타이머 활성화됨 (120초)');
+    } else {
+      console.log('⚠️ 사용자 턴이 아니어서 타이머 시작하지 않음');
+    }
   };
 
   // 🆕 초기 턴 상태 설정 (세션 로드 완료 후)
@@ -1859,7 +1888,7 @@ const InterviewGO: React.FC = () => {
           <div className={`bg-gray-900 rounded-lg overflow-hidden relative border-2 transition-all duration-300 ${
             // 사용자 턴일 때
             currentPhase === 'user_turn'
-              ? 'border-yellow-500 shadow-lg shadow-yellow-500/50 animate-pulse'
+              ? 'border-yellow-500 shadow-lg shadow-yellow-500/50'
             // 대기 상태
             : 'border-gray-600'
           }`}>
@@ -2196,7 +2225,7 @@ const InterviewGO: React.FC = () => {
           <div className={`bg-blue-900 rounded-lg overflow-hidden relative border-2 transition-all duration-300 ${
             // AI 턴일 때
             currentPhase === 'ai_processing'
-              ? 'border-green-500 shadow-lg shadow-green-500/50 animate-pulse'
+              ? 'border-green-500 shadow-lg shadow-green-500/50'
             // 대기 상태
             : 'border-gray-600'
           }`}>
