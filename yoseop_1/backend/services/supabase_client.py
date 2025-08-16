@@ -34,16 +34,13 @@ class SupabaseClient:
         try:
             # 환경변수에서 설정 로드
             supabase_url = os.getenv('SUPABASE_URL', 'https://neephzhkioahjrjmawlp.supabase.co')
-            supabase_key = os.getenv(
-                'SUPABASE_ANON_KEY', 
-                'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5lZXBoemhraW9haGpyam1hd2xwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIyMTIwODcsImV4cCI6MjA2Nzc4ODA4N30.o4uLLdGxFclnRi-FEBeaEVCUklstLPIF6JRVM1pNLBc'
-            )
+            supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
             
             if not supabase_url or not supabase_key:
-                raise ValueError("Supabase URL 또는 API 키가 설정되지 않았습니다.")
+                raise ValueError("Supabase URL 또는 SERVICE_ROLE_KEY가 설정되지 않았습니다.")
             
             self._client = create_client(supabase_url, supabase_key)
-            logger.info("✅ Supabase 클라이언트 초기화 완료")
+            logger.info("✅ Supabase 클라이언트 초기화 완료 (service_role_key 사용)")
             
         except Exception as e:
             logger.error(f"❌ Supabase 클라이언트 초기화 실패: {str(e)}")
