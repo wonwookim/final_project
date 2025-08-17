@@ -8,6 +8,7 @@ from botocore.exceptions import ClientError
 from backend.services.supabase_client import supabase_client
 from backend.schemas.user import UserResponse
 from schemas.interview import InterviewHistoryResponse, InterviewSettings, AnswerSubmission, AICompetitionAnswerSubmission, CompetitionTurnSubmission, InterviewResponse, TTSRequest, STTResponse, MemoUpdateRequest
+from backend.schemas.gaze import GazeAnalysisResponse
 from services.interview_service import InterviewService
 from services.interview_service_temp import InterviewServiceTemp
 from backend.services.auth_service import AuthService
@@ -458,21 +459,90 @@ async def get_interview_results(
         interview_logger.warning(f"⚠️ 영상 파일 조회 중 오류 (무시됨): {e}")
         # 영상 파일 조회 실패는 전체 API를 실패시키지 않음
     
+    # 다운로드 URL 생성
+    download_url = None
+    download_optimized_url = None
+    if video_url:
+        download_url = f"/interview/video/{interview_id}/download"
+        download_optimized_url = f"/interview/video/{interview_id}/download?optimize=true"
+    
     # 데이터 통합
     result = {
         "details": detail_res.data or [],
         "total_feedback": interview_res.data[0]["total_feedback"] if interview_res.data else None,
         "plans": plans_res.data[0] if plans_res.data else None,
         "video_url": video_url,
+        "download_url": download_url,
+        "download_optimized_url": download_optimized_url,
         "video_metadata": video_metadata
     }
     
     return result
 
+
+@interview_router.get("/{interview_id}/gaze-analysis", response_model=GazeAnalysisResponse, summary="[신규] 특정 면접의 시선 분석 결과 조회")
+async def get_gaze_analysis_for_interview(
+    interview_id: int,
+    current_user: UserResponse = Depends(auth_service.get_current_user)
+):
+    """특정 면접에 대한 시선 분석(비언어적 피드백) 결과를 조회합니다."""
+    try:
+        interview_logger.info(f"📈 시선 분석 결과 요청: interview_id={interview_id}")
+        
+        # 1. 해당 면접이 현재 사용자의 것인지 확인 (보안 강화)
+        interview_res = supabase_client.client.from_("interview") \
+            .select("user_id") \
+            .eq("interview_id", interview_id) \
+            .eq("user_id", current_user.user_id) \
+            .single() \
+            .execute()
+
+        if not interview_res.data:
+            raise HTTPException(status_code=403, detail="해당 면접에 접근할 권한이 없습니다.")
+
+        # 2. gaze_analysis 테이블에서 결과 조회 (테이블명은 가정)
+        # TODO: 2단계에서 실제 DB 조회 로직으로 변경해야 합니다.
+        gaze_res = supabase_client.client.from_("gaze_analysis") \
+            .select("*") \
+            .eq("interview_id", interview_id) \
+            .order("created_at", desc=True) \
+            .limit(1) \
+            .execute()
+
+        if not gaze_res.data:
+            # 🚨 중요: 현재는 데이터가 없으면 404를 반환합니다.
+            # 2단계에서 gaze.py가 DB에 데이터를 저장하도록 수정해야 합니다.
+            interview_logger.warning(f"⚠️ interview_id={interview_id}에 대한 시선 분석 데이터 없음")
+            raise HTTPException(status_code=404, detail="해당 면접의 시선 분석 데이터를 찾을 수 없습니다.")
+
+        analysis_data = gaze_res.data[0]
+        
+        # 프론트엔드가 기대하는 GazeAnalysisResponse 모델로 변환
+        return GazeAnalysisResponse(
+            gaze_id=analysis_data.get("gaze_id"),
+            interview_id=analysis_data.get("interview_id"),
+            user_id=analysis_data.get("user_id"),
+            gaze_score=analysis_data.get("gaze_score", 0),
+            jitter_score=analysis_data.get("jitter_score", 0),
+            compliance_score=analysis_data.get("compliance_score", 0),
+            stability_rating=analysis_data.get("stability_rating", "N/A"),
+            created_at=analysis_data.get("created_at"),
+            gaze_points=analysis_data.get("gaze_points"),
+            calibration_points=analysis_data.get("calibration_points"),
+            video_metadata=analysis_data.get("video_metadata"),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        interview_logger.error(f"❌ 시선 분석 결과 조회 오류: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="시선 분석 결과 조회 중 서버 오류가 발생했습니다.")
+
+
 @interview_router.get("/video/{interview_id}/stream")
-async def stream_interview_video(interview_id: int):
+async def stream_interview_video(interview_id: int, request: Request):
     """
-    면접 영상 스트리밍 엔드포인트.
+    면접 영상 스트리밍 엔드포인트 (Range 헤더 지원 - 비디오 탐색 기능).
     이 엔드포인트는 인증된 사용자에게만 노출되는 결과 페이지를 통해 접근되므로,
     엔드포인트 자체의 인증은 생략하여 비디오 플레이어 호환성을 높입니다.
     """
@@ -494,7 +564,7 @@ async def stream_interview_video(interview_id: int):
         video_file = media_res.data[0]
         s3_key = video_file["s3_key"]
         file_size = video_file.get("file_size")
-        interview_logger.info(f"✅ DB 조회 성공. S3 Key:  {s3_key}")
+        interview_logger.info(f"✅ DB 조회 성공. S3 Key: {s3_key}, File Size: {file_size}")
 
         # 2. S3 클라이언트 설정
         aws_access_key = os.getenv('AWS_ACCESS_KEY_ID')
@@ -502,17 +572,105 @@ async def stream_interview_video(interview_id: int):
         s3_client = boto3.client('s3', aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key, region_name='ap-northeast-2')
         bucket_name = 'betago-s3'
 
-        # 3. S3 객체 스트림 가져오기
-        s3_object = s3_client.get_object(Bucket=bucket_name, Key=s3_key)
-        streaming_content = s3_object['Body']
+        # 3. Range 헤더 처리
+        range_header = request.headers.get('range')
+        if range_header and file_size:
+            interview_logger.info(f"📊 Range 요청: {range_header}, 파일 크기: {file_size}")
+            
+            try:
+                # Range 헤더 파싱 개선 (예: "bytes=0-1023", "bytes=1024-", "bytes=-1000")
+                range_match = range_header.replace('bytes=', '').split('-')
+                interview_logger.info(f"📊 Range 파싱 결과: {range_match}")
+                
+                # 다양한 Range 패턴 처리
+                if len(range_match) == 2:
+                    if range_match[0] == '' and range_match[1] != '':
+                        # suffix-byte-range-spec: "bytes=-1000" (마지막 1000바이트)
+                        suffix_length = int(range_match[1])
+                        start = max(0, file_size - suffix_length)
+                        end = file_size - 1
+                    elif range_match[0] != '' and range_match[1] == '':
+                        # range from start to end: "bytes=1024-"
+                        start = int(range_match[0])
+                        end = file_size - 1
+                    elif range_match[0] != '' and range_match[1] != '':
+                        # range with both start and end: "bytes=0-1023"
+                        start = int(range_match[0])
+                        end = int(range_match[1])
+                    else:
+                        # 잘못된 Range 헤더
+                        interview_logger.warning(f"⚠️ 잘못된 Range 헤더 형식: {range_header}")
+                        start = 0
+                        end = file_size - 1
+                else:
+                    interview_logger.warning(f"⚠️ Range 헤더 파싱 실패: {range_header}")
+                    start = 0
+                    end = file_size - 1
+                
+                # 범위 검증 및 조정
+                start = max(0, min(start, file_size - 1))
+                end = max(start, min(end, file_size - 1))
+                content_length = end - start + 1
+                
+                interview_logger.info(f"📊 Range 처리 완료: {start}-{end}/{file_size} (Length: {content_length})")
+                
+            except (ValueError, IndexError) as e:
+                interview_logger.error(f"❌ Range 헤더 파싱 오류: {e}")
+                # 오류 시 전체 파일 반환
+                start = 0
+                end = file_size - 1
+                content_length = file_size
+            
+            # S3에서 Range로 객체 가져오기
+            s3_object = s3_client.get_object(
+                Bucket=bucket_name, 
+                Key=s3_key,
+                Range=f'bytes={start}-{end}'
+            )
+            streaming_content = s3_object['Body']
+            
+            # Range 응답 헤더 설정 (RFC 7233 준수)
+            response_headers = {
+                "Accept-Ranges": "bytes",
+                "Content-Range": f"bytes {start}-{end}/{file_size}",
+                "Content-Length": str(content_length),
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Expose-Headers": "Accept-Ranges, Content-Range, Content-Length",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+            
+            interview_logger.info(f"✅ Range 스트리밍 시작: {start}-{end}/{file_size} -> Content-Range: bytes {start}-{end}/{file_size}")
+            return StreamingResponse(
+                streaming_content, 
+                status_code=206,  # Partial Content
+                media_type=s3_object.get('ContentType', 'video/webm'), 
+                headers=response_headers
+            )
+        else:
+            # Range 헤더가 없는 경우 전체 파일 스트리밍
+            interview_logger.info("📊 전체 파일 스트리밍")
+            s3_object = s3_client.get_object(Bucket=bucket_name, Key=s3_key)
+            streaming_content = s3_object['Body']
 
-        # 4. 스트리밍 응답 생성
-        response_headers = {}
-        if file_size:
-            response_headers["Content-Length"] = str(file_size)
+            response_headers = {
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Expose-Headers": "Accept-Ranges, Content-Length",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+            if file_size:
+                response_headers["Content-Length"] = str(file_size)
 
-        interview_logger.info(f"✅ 스트리밍 시작:  {s3_key}")
-        return StreamingResponse(streaming_content, media_type=s3_object.get('ContentType', 'video/webm'), headers=response_headers)
+            interview_logger.info(f"✅ 전체 스트리밍 시작: {s3_key} (파일 크기: {file_size})")
+            return StreamingResponse(
+                streaming_content, 
+                media_type=s3_object.get('ContentType', 'video/webm'), 
+                headers=response_headers
+            )
 
     except ClientError as e:
         error_code = e.response.get("Error", {}).get("Code")
@@ -528,6 +686,140 @@ async def stream_interview_video(interview_id: int):
     except Exception as e:
         interview_logger.error(f"영상 스트리밍 중 알 수 없는 오류 (interview_id: {interview_id}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="영상 스트리밍 중 서버 오류가 발생했습니다.")
+
+@interview_router.get("/video/{interview_id}/download")
+async def download_interview_video(interview_id: int, optimize: bool = False):
+    """
+    면접 영상 다운로드 엔드포인트.
+    스트리밍과 달리 Range 헤더를 무시하고 전체 파일을 다운로드합니다.
+    optimize=true 시 시간 탐색에 최적화된 파일로 변환하여 제공합니다.
+    """
+    try:
+        # 1. DB에서 영상 정보 조회
+        interview_logger.info(f"📥 다운로드 요청 수신: interview_id={interview_id}, optimize={optimize}")
+        media_res = supabase_client.client.from_("media_files") \
+            .select("s3_key, file_name, file_size") \
+            .eq("interview_id", interview_id) \
+            .eq("file_type", "video") \
+            .order("created_at", desc=True) \
+            .limit(1) \
+            .execute()
+
+        if not media_res.data:
+            interview_logger.warning(f"⚠️ 다운로드할 영상 파일을 DB에서 찾을 수 없음: interview_id={interview_id}")
+            raise HTTPException(status_code=404, detail="해당 면접의 영상 파일을 DB에서 찾을 수 없습니다.")
+
+        video_file = media_res.data[0]
+        s3_key = video_file["s3_key"]
+        file_name = video_file.get("file_name", f"interview_{interview_id}_video.webm")
+        file_size = video_file.get("file_size")
+        interview_logger.info(f"✅ 다운로드 DB 조회 성공. S3 Key: {s3_key}, File Name: {file_name}")
+
+        # 2. S3 클라이언트 설정
+        aws_access_key = os.getenv('AWS_ACCESS_KEY_ID')
+        aws_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+        s3_client = boto3.client('s3', aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key, region_name='ap-northeast-2')
+        bucket_name = 'betago-s3'
+
+        # 3. S3에서 전체 파일 가져오기
+        s3_object = s3_client.get_object(Bucket=bucket_name, Key=s3_key)
+        
+        if optimize:
+            # FFmpeg 최적화 적용
+            interview_logger.info("🔧 FFmpeg 최적화 적용 중...")
+            from utils.video_optimizer import VideoOptimizer
+            
+            if not VideoOptimizer.is_ffmpeg_available():
+                interview_logger.warning("FFmpeg를 찾을 수 없어 원본 파일로 제공합니다")
+                streaming_content = s3_object['Body']
+                optimized_file_name = file_name
+            else:
+                import tempfile
+                
+                # 최적화된 파일을 위한 임시 파일 생성
+                file_extension = file_name.split('.')[-1] if '.' in file_name else 'webm'
+                optimized_file_name = file_name.replace(f'.{file_extension}', f'_optimized.{file_extension}')
+                
+                with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_extension}') as temp_output:
+                    temp_output_path = temp_output.name
+                
+                try:
+                    # FFmpeg로 최적화 수행
+                    optimization_success = VideoOptimizer.optimize_for_seeking(
+                        s3_object['Body'], 
+                        temp_output_path, 
+                        file_extension
+                    )
+                    
+                    if optimization_success and os.path.exists(temp_output_path):
+                        interview_logger.info("✅ FFmpeg 최적화 완료")
+                        
+                        # 최적화된 파일을 메모리로 읽어서 스트림으로 변환
+                        import io
+                        optimized_data = io.BytesIO()
+                        with open(temp_output_path, 'rb') as f:
+                            optimized_data.write(f.read())
+                        optimized_data.seek(0)
+                        
+                        streaming_content = optimized_data
+                        
+                        # 최적화된 파일 크기 업데이트
+                        file_size = os.path.getsize(temp_output_path)
+                    else:
+                        interview_logger.warning("FFmpeg 최적화 실패, 원본 파일로 제공합니다")
+                        # S3 객체를 다시 가져와야 함 (스트림이 이미 읽혔으므로)
+                        s3_object = s3_client.get_object(Bucket=bucket_name, Key=s3_key)
+                        streaming_content = s3_object['Body']
+                        optimized_file_name = file_name
+                        
+                except Exception as e:
+                    interview_logger.error(f"최적화 중 오류: {e}")
+                    # S3 객체를 다시 가져와야 함
+                    s3_object = s3_client.get_object(Bucket=bucket_name, Key=s3_key)
+                    streaming_content = s3_object['Body']
+                    optimized_file_name = file_name
+                finally:
+                    # 임시 파일 정리
+                    if os.path.exists(temp_output_path):
+                        try:
+                            os.unlink(temp_output_path)
+                        except Exception as cleanup_error:
+                            interview_logger.warning(f"임시 파일 정리 실패: {cleanup_error}")
+        else:
+            # 원본 파일 그대로 제공
+            streaming_content = s3_object['Body']
+            optimized_file_name = file_name
+
+        # 4. 다운로드용 응답 헤더 설정
+        response_headers = {
+            "Content-Disposition": f'attachment; filename="{optimized_file_name}"',
+            "Cache-Control": "no-cache",
+            "Content-Description": "File Transfer"
+        }
+        if file_size:
+            response_headers["Content-Length"] = str(file_size)
+
+        interview_logger.info(f"✅ 다운로드 시작: {optimized_file_name}")
+        return StreamingResponse(
+            streaming_content, 
+            media_type="application/octet-stream",  # 다운로드 강제
+            headers=response_headers
+        )
+
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code")
+        interview_logger.error(f"S3 다운로드 오류 (interview_id: {interview_id}): {error_code}")
+        if error_code == 'NoSuchKey':
+            raise HTTPException(status_code=404, detail=f"S3에 해당 파일이 없습니다: {s3_key}")
+        else:
+            raise HTTPException(status_code=500, detail=f"S3 처리 오류: {error_code}")
+
+    except HTTPException:
+        # 이미 처리된 HTTPException은 그대로 전달
+        raise
+    except Exception as e:
+        interview_logger.error(f"영상 다운로드 중 알 수 없는 오류 (interview_id: {interview_id}): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="영상 다운로드 중 서버 오류가 발생했습니다.")
 
 @interview_router.post("/memo")
 async def update_memo(memo_update: MemoUpdateRequest):

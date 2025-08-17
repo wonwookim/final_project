@@ -252,6 +252,21 @@ export interface FeedbackPlanResponse {
   };
 }
 
+// 🆕 시선 분석 응답 타입
+export interface GazeAnalysisResponse {
+  gaze_id: number;
+  interview_id: number;
+  user_id: number;
+  gaze_score: number;
+  jitter_score: number;
+  compliance_score: number;
+  stability_rating: string;
+  created_at: string;
+  gaze_points?: Array<{x: number, y: number}>;
+  calibration_points?: Array<[number, number]>;
+  video_metadata?: any;
+}
+
 // 🆕 면접 진행 응답 공통 타입 (턴 정보 포함)
 export interface InterviewSubmitResponse {
   status: string;
@@ -520,6 +535,20 @@ export const interviewApi = {
   async getInterviewDetails(interviewId: string): Promise<any> {
     const response = await apiClient.get(`/interview/history/${interviewId}`);
     return response.data;
+  },
+
+  // 비언어적 피드백 (시선 분석) 조회
+  async getGazeAnalysis(interviewId: string): Promise<GazeAnalysisResponse | null> {
+    try {
+      const response = await apiClient.get(`/interview/${interviewId}/gaze-analysis`);
+      return response.data as GazeAnalysisResponse;
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        // 시선 분석 데이터가 없는 경우
+        return null;
+      }
+      throw error;
+    }
   },
 
   // AI 경쟁 면접 시작 (Orchestrator 기반)

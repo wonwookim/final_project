@@ -47,6 +47,15 @@ interface LongTermFeedback {
   };
 }
 
+interface NonverbalFeedback {
+  gazeScore: number;
+  jitterScore: number;
+  complianceScore: number;
+  stabilityRating: string;
+  overallRating: string;
+  improvements: string[];
+}
+
 const InterviewResults: React.FC = () => {
   const navigate = useNavigate();
   const { interviewId } = useParams<{ interviewId: string }>();
@@ -79,17 +88,19 @@ const InterviewResults: React.FC = () => {
     }).catch(e => console.log('백엔드 로그 전송 실패:', e));
     
   }, [interviewId, location.pathname]);
-  const [activeTab, setActiveTab] = useState<'user' | 'ai' | 'longterm'>('user');
+  const [activeTab, setActiveTab] = useState<'user' | 'ai' | 'nonverbal' | 'longterm'>('user');
   const [isLoading, setIsLoading] = useState(true);
   const [feedbackData, setFeedbackData] = useState<FeedbackData[]>([]);
   const [userSummary, setUserSummary] = useState<SummaryData | null>(null);
   const [aiSummary, setAiSummary] = useState<SummaryData | null>(null);
   const [longTermFeedback, setLongTermFeedback] = useState<LongTermFeedback | null>(null);
+  const [nonverbalFeedback, setNonverbalFeedback] = useState<NonverbalFeedback | null>(null);
   const [interviewData, setInterviewData] = useState<any>(null);
   const [memos, setMemos] = useState<{[key: string]: {user: string, ai: string}}>({});
   
   // 영상 관련 상태 관리
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [downloadOptimizedUrl, setDownloadOptimizedUrl] = useState<string | null>(null);
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [videoMetadata, setVideoMetadata] = useState<any>(null);
@@ -297,8 +308,13 @@ const InterviewResults: React.FC = () => {
       // 영상 데이터 처리 - API 응답 기반 처리
       if (response.video_url) {
         const absoluteVideoUrl = `${API_BASE_URL}${response.video_url}`;
+        const absoluteDownloadOptimizedUrl = response.download_optimized_url ? `${API_BASE_URL}${response.download_optimized_url}` : null;
+        
         console.log('🎬 영상 파일 발견, 스트리밍 URL 설정:', absoluteVideoUrl);
+        console.log('🔧 최적화 다운로드 URL 설정:', absoluteDownloadOptimizedUrl);
+        
         setVideoUrl(absoluteVideoUrl);
+        setDownloadOptimizedUrl(absoluteDownloadOptimizedUrl);
         setVideoMetadata(response.video_metadata || null);
         setVideoError(null); // 이전 에러가 있었다면 초기화
         // 새로운 비디오가 설정되면 로딩 상태로 전환
@@ -307,6 +323,7 @@ const InterviewResults: React.FC = () => {
         // 영상이 없는 경우
         console.log('ℹ️ 이 면접에는 녹화된 영상이 없습니다');
         setVideoUrl(null);
+        setDownloadOptimizedUrl(null);
         setVideoMetadata(null);
         setVideoError(null); 
         setVideoLoading(false);
@@ -562,12 +579,54 @@ const InterviewResults: React.FC = () => {
           // plans 데이터가 없으면 기본 계획 설정
           setDefaultLongTermFeedback();
         }
+        
+        // 비언어적 피드백 데이터 처리 (api.ts 함수 사용)
+        try {
+          console.log('🔧 비언어적 피드백 데이터 조회 시작');
+          const gazeData = await interviewApi.getGazeAnalysis(interviewId);
+          console.log('🔧 비언어적 피드백 데이터:', gazeData);
+          
+          if (gazeData) {
+            // 점수에 따른 전체적인 평가 생성
+            const avgScore = (gazeData.gaze_score + gazeData.jitter_score + gazeData.compliance_score) / 3;
+            let overallRating = '';
+            let improvements = [];
+            
+            if (avgScore >= 80) {
+              overallRating = '우수';
+              improvements = ['현재 수준을 유지하세요', '더 자연스러운 시선 처리 연습'];
+            } else if (avgScore >= 60) {
+              overallRating = '보통';
+              improvements = ['시선 집중 연습', '카메라를 자연스럽게 바라보는 연습', '긴장감 완화 기법 습득'];
+            } else {
+              overallRating = '개선 필요';
+              improvements = ['면접관과 아이컨택 유지 연습', '시선 안정성 개선', '카메라 응시 연습', '자신감 향상 훈련'];
+            }
+            
+            setNonverbalFeedback({
+              gazeScore: gazeData.gaze_score,
+              jitterScore: gazeData.jitter_score,
+              complianceScore: gazeData.compliance_score,
+              stabilityRating: gazeData.stability_rating,
+              overallRating,
+              improvements
+            });
+          } else {
+            console.log('🔧 비언어적 피드백 데이터가 없음');
+            setNonverbalFeedback(null);
+          }
+        } catch (error) {
+          console.error('🔧 비언어적 피드백 데이터 조회 오류:', error);
+          setNonverbalFeedback(null);
+        }
+        
       } else {
         // 데이터가 없는 경우 빈 상태로 설정
         console.log('면접 상세 데이터가 없습니다');
         setFeedbackData([]);
         setUserSummary(null);
         setAiSummary(null);
+        setNonverbalFeedback(null);
       }
       
     } catch (error) {
@@ -740,19 +799,38 @@ const InterviewResults: React.FC = () => {
 
             {/* 다운로드 버튼 */}
             <div className="mt-3">
+              {/* 최적화 다운로드 */}
               <a
-                href={videoUrl || '#'}
-                download={`interview_${interviewId}_video.webm`}
-                aria-disabled={!videoUrl}
+                href={downloadOptimizedUrl || '#'}
+                download
+                aria-disabled={!downloadOptimizedUrl}
                 className={`block w-full text-center px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  videoUrl
-                    ? 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2'
+                  downloadOptimizedUrl
+                    ? 'bg-green-600 text-white hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2'
                     : 'bg-slate-300 text-slate-500 cursor-not-allowed'
                 }`}
-                onClick={(e) => { if (!videoUrl) e.preventDefault(); }}
+                onClick={(e) => { 
+                  if (!downloadOptimizedUrl) {
+                    e.preventDefault(); 
+                  } else {
+                    console.log('🔧 최적화 다운로드 시작:', downloadOptimizedUrl);
+                  }
+                }}
               >
-                {videoUrl ? '영상 다운로드' : '영상 없음'}
+                <div className="flex items-center justify-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  {downloadOptimizedUrl ? '영상 다운로드' : '영상 없음'}
+                </div>
               </a>
+              
+              {/* 도움말 텍스트 */}
+              {downloadOptimizedUrl && (
+                <p className="text-xs text-gray-500 text-center mt-1">
+                  💡 로컬 플레이어에서 시간 탐색이 더 빠름
+                </p>
+              )}
             </div>
           </div>
 
@@ -973,6 +1051,141 @@ const InterviewResults: React.FC = () => {
     );
   };
 
+  const renderNonverbalFeedback = () => {
+    if (!nonverbalFeedback) return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center text-gray-500">
+          <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+          <p>이 면접에는 비언어적 피드백 데이터가 없습니다.</p>
+          <p className="text-xs mt-1">시선 추적 기능이 활성화된 면접에서만 이용 가능합니다.</p>
+        </div>
+      </div>
+    );
+    
+    const getScoreColor = (score: number) => {
+      if (score >= 80) return 'text-green-600';
+      if (score >= 60) return 'text-yellow-600';
+      return 'text-red-600';
+    };
+    
+    const getScoreBgColor = (score: number) => {
+      if (score >= 80) return 'bg-green-100';
+      if (score >= 60) return 'bg-yellow-100';
+      return 'bg-red-100';
+    };
+    
+    return (
+      <div className="space-y-6">
+        {/* 전체 점수 및 평가 */}
+        <div className="bg-white rounded-lg shadow-sm p-6">
+          <h3 className="text-2xl font-bold text-gray-900 mb-6">비언어적 피드백 분석</h3>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* 점수 현황 */}
+            <div>
+              <h4 className="text-lg font-semibold text-gray-900 mb-4">시선 분석 점수</h4>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">전체 시선 점수</span>
+                  <div className="flex items-center gap-2">
+                    <div className={`px-3 py-1 rounded-full text-sm font-medium ${getScoreBgColor(nonverbalFeedback.gazeScore)} ${getScoreColor(nonverbalFeedback.gazeScore)}`}>
+                      {nonverbalFeedback.gazeScore.toFixed(0)}점
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">시선 안정성</span>
+                  <div className="flex items-center gap-2">
+                    <div className={`px-3 py-1 rounded-full text-sm font-medium ${getScoreBgColor(nonverbalFeedback.jitterScore)} ${getScoreColor(nonverbalFeedback.jitterScore)}`}>
+                      {nonverbalFeedback.jitterScore.toFixed(0)}점
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">시선 준수도</span>
+                  <div className="flex items-center gap-2">
+                    <div className={`px-3 py-1 rounded-full text-sm font-medium ${getScoreBgColor(nonverbalFeedback.complianceScore)} ${getScoreColor(nonverbalFeedback.complianceScore)}`}>
+                      {nonverbalFeedback.complianceScore.toFixed(0)}점
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="border-t pt-4 mt-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">안정성 등급</span>
+                    <span className="px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-sm font-medium">
+                      {nonverbalFeedback.stabilityRating}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-sm font-medium text-gray-700">종합 평가</span>
+                    <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                      {nonverbalFeedback.overallRating}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* 개선 사항 */}
+            <div>
+              <h4 className="text-lg font-semibold text-gray-900 mb-4">개선 추천사항</h4>
+              <div className="space-y-3">
+                {nonverbalFeedback.improvements.map((improvement, index) => (
+                  <div key={index} className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
+                    <span className="text-sm text-gray-700">{improvement}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* 상세 분석 */}
+        <div className="bg-white rounded-lg shadow-sm p-6">
+          <h4 className="text-lg font-semibold text-gray-900 mb-4">상세 분석</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="text-center">
+              <div className="text-3xl font-bold text-blue-600 mb-2">
+                {nonverbalFeedback.gazeScore.toFixed(0)}
+              </div>
+              <div className="text-sm text-gray-600 mb-1">전체 시선 점수</div>
+              <div className="text-xs text-gray-500">
+                카메라를 응시하는 전체적인 능력
+              </div>
+            </div>
+            
+            <div className="text-center">
+              <div className="text-3xl font-bold text-green-600 mb-2">
+                {nonverbalFeedback.jitterScore.toFixed(0)}
+              </div>
+              <div className="text-sm text-gray-600 mb-1">안정성 점수</div>
+              <div className="text-xs text-gray-500">
+                시선의 떨림 없이 안정적인 정도
+              </div>
+            </div>
+            
+            <div className="text-center">
+              <div className="text-3xl font-bold text-purple-600 mb-2">
+                {nonverbalFeedback.complianceScore.toFixed(0)}
+              </div>
+              <div className="text-sm text-gray-600 mb-1">준수도 점수</div>
+              <div className="text-xs text-gray-500">
+                면접관과의 아이컨택 유지 정도
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderLongTermFeedback = () => {
     if (!longTermFeedback) return null;
     
@@ -1116,6 +1329,16 @@ const InterviewResults: React.FC = () => {
                 AI 지원자 피드백
               </button>
               <button
+                onClick={() => setActiveTab('nonverbal')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'nonverbal'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                비언어적 피드백
+              </button>
+              <button
                 onClick={() => setActiveTab('longterm')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm ${
                   activeTab === 'longterm'
@@ -1133,6 +1356,7 @@ const InterviewResults: React.FC = () => {
         <div>
           {activeTab === 'user' && renderUserFeedback()}
           {activeTab === 'ai' && renderAiFeedback()}
+          {activeTab === 'nonverbal' && renderNonverbalFeedback()}
           {activeTab === 'longterm' && renderLongTermFeedback()}
         </div>
 

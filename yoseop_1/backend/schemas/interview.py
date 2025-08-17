@@ -1,6 +1,7 @@
 from pydantic import BaseModel
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from datetime import datetime
+from uuid import UUID
 
 # Pydantic 모델 정의
 class InterviewSettings(BaseModel):
@@ -58,11 +59,6 @@ class CompetitionTurnSubmission(BaseModel):
     """경쟁 면접 통합 턴 제출 모델"""
     comparison_session_id: str
     answer: str
-    
-class CompetitionTurnSubmission(BaseModel):
-    """경쟁 면접 통합 턴 제출 모델"""
-    comparison_session_id: str
-    answer: str
 
 class InterviewHistoryResponse(BaseModel):
     detail_id: int
@@ -114,4 +110,3 @@ class MemoUpdateRequest(BaseModel):
     question_index: int
     who: str
     memo: str
-    
