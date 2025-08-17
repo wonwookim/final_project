@@ -640,7 +640,14 @@ const InterviewGO: React.FC = () => {
       setCurrentTTSIndex(i);
       
       try {
-        await generateAndPlayTTS(item.content, item.type, `${item.type} ${i + 1}`);
+        // 큐의 마지막 요소이고 면접관 타입이면 사용자 질문
+        const isLastItem = (i === ttsItems.length - 1);
+        const isInterviewerType = ['hr', 'tech', 'collaborate'].includes(item.type.toLowerCase());
+        const questionText = (isLastItem) ? item.content : undefined;
+        
+        console.log(`[🔍 질문 텍스트 DEBUG] ${i + 1}/${ttsItems.length}: type="${item.type}", isLastItem=${isLastItem}, isInterviewerType=${isInterviewerType}, questionText=${questionText ? '설정됨' : '없음'}`);
+        
+        await generateAndPlayTTS(item.content, item.type, `${item.type} ${i + 1}`, questionText);
         console.log(`🔊 [큐 처리] ${i + 1}/${ttsItems.length} 완료 [${item.type}]`);
       } catch (error) {
         console.error(`🔊 [큐 처리] ${i + 1}/${ttsItems.length} 실패 [${item.type}]:`, error);
@@ -891,10 +898,10 @@ const InterviewGO: React.FC = () => {
       setCanSubmit(true);
     }
 
-    // 현재 질문 업데이트 - TTS와 동기화하기 위해 즉시 표시 제거
+    // 현재 질문 업데이트
     if (response?.question) {
-      // setCurrentQuestion(response.question); // TTS 시작 시에 표시하도록 변경
-      console.log('📝 질문 임시 저장 (TTS 동기화 예정):', response.question);
+      setCurrentQuestion(response.question);
+      console.log('📝 질문 업데이트:', response.question);
     }
   };
 
@@ -907,7 +914,7 @@ const InterviewGO: React.FC = () => {
     setTimeLeft(120);
     setCanSubmit(true);
     setCanRecord(true);
-    // setCurrentQuestion(question); // TTS와 동기화하기 위해 제거
+    setCurrentQuestion(question);
   };
 
   // 🆕 답변 타이머 시작 함수 (TTS 완료 후 호출)
@@ -1097,8 +1104,8 @@ const InterviewGO: React.FC = () => {
                         payload: questionData
                       });
                       
-                      // 질문을 즉시 표시하지 않고 TTS와 동기화하기 위해 제거
-                      console.log('✅ 질문 데이터 준비 완료 (TTS 시작 시 표시 예정):', questionData.question);
+                      setCurrentQuestion(questionData.question);
+                      console.log('✅ 질문 설정 완료:', questionData.question);
                       
                       return questionData; // questionData 반환
                       
@@ -1133,8 +1140,7 @@ const InterviewGO: React.FC = () => {
                   setCanSubmit(false); // 인트로 중에는 제출 불가
                   setCanRecord(false); // 인트로 중에는 녹음 불가
                   if (questionData) {
-                    // setCurrentQuestion(questionData.question); // TTS와 동기화하기 위해 제거
-                    console.log('📝 INTRO 중 질문 임시 저장 (TTS 동기화 예정):', questionData.question);
+                    setCurrentQuestion(questionData.question);
                   }
                   
                   // INTRO 표시 후 잠시 후 숨기기 (TTS는 백엔드에서 자동 처리됨)
