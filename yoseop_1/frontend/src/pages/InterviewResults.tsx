@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import Header from '../components/common/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import { interviewApi } from '../services/api';
+import { interviewApi, API_BASE_URL } from '../services/api';
 
 interface FeedbackData {
   question: string;
@@ -93,6 +93,7 @@ const InterviewResults: React.FC = () => {
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [videoMetadata, setVideoMetadata] = useState<any>(null);
+  const hasFetched = useRef(false);
 
   // 메모 저장 함수
   const saveMemo = async (questionIndex: number, type: 'user' | 'ai', memo: string) => {
@@ -295,9 +296,11 @@ const InterviewResults: React.FC = () => {
       
       // 영상 데이터 처리 - API 응답 기반 처리
       if (response.video_url) {
-        // 백엔드에서 제공한 스트리밍 URL 사용
-        console.log('🎬 영상 파일 발견, 스트리밍 URL 설정:', response.video_url);
-        setVideoUrl(response.video_url);
+        // 백엔드 주소를 포함한 전체 URL 생성 (인증 제거로 토큰 불필요)
+        const absoluteVideoUrl = `${API_BASE_URL}${response.video_url}`;
+
+        console.log('🎬 영상 파일 발견, 스트리밍 URL 설정:', absoluteVideoUrl);
+        setVideoUrl(absoluteVideoUrl);
         setVideoError(null);
         setVideoLoading(true);
         
@@ -611,10 +614,13 @@ const InterviewResults: React.FC = () => {
       setLongTermFeedback(mockLongTermFeedback);
       setIsLoading(false);
     } else {
-      // interview ID가 있는 경우 - 실제 데이터 로드
-      loadInterviewResults(interviewId);
+      // 중복 호출 방지
+      if (hasFetched.current === false) {
+        hasFetched.current = true;
+        loadInterviewResults(interviewId);
+      }
     }
-  }, [interviewId]); // mock 데이터는 의존성에서 제거하여 무한 루프 방지
+  }, [interviewId, loadInterviewResults]);
 
   // 중복 호출 방지: loadInterviewResults에서 이미 loadInterviewData를 호출함
 
