@@ -465,7 +465,7 @@ const InterviewGO: React.FC = () => {
   };
 
   // 🆕 텍스트를 TTS로 변환하여 재생하는 함수 (타입별 음성 지원)
-  const generateAndPlayTTS = async (text: string, type: string, label: string = ""): Promise<void> => {
+  const generateAndPlayTTS = async (text: string, type: string, label: string = "", questionText?: string): Promise<void> => {
     if (!text || !text.trim()) {
       console.log(`[🔊 TTS] ${label} 텍스트가 비어있음 - TTS 건너뜀`);
       return;
@@ -507,9 +507,17 @@ const InterviewGO: React.FC = () => {
       const audioUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(audioUrl);
 
-      // 🎯 TTS 재생 시작 - 타입 설정
+      // 🎯 TTS 재생 시작 - 타입 설정, 로딩 상태 해제, 질문 텍스트 표시
       setCurrentTTSType(type);
-      console.log(`[🎯 하이라이트] TTS 재생 시작 - 타입: ${type} 설정됨`);
+      setIsInitialLoading(false); // TTS 시작과 동시에 로딩 해제
+      
+      // 질문 텍스트를 TTS와 동기화하여 표시
+      if (questionText) {
+        setCurrentQuestion(questionText);
+        console.log(`[📝 TTS 동기화] 질문 텍스트 표시: ${questionText}`);
+      }
+      
+      console.log(`[🎯 하이라이트] TTS 재생 시작 - 타입: ${type} 설정됨, 로딩 해제됨`);
 
       // 재생 완료 대기
       await new Promise<void>((resolve, reject) => {
@@ -659,7 +667,7 @@ const InterviewGO: React.FC = () => {
       // 첫 질문은 즉시 TTS (사용자가 들어야 하니까)
       const isFirstQuestion = !state.questions || state.questions.length === 0;
       if (isFirstQuestion && response.content?.content) {
-        await generateAndPlayTTS(response.content.content, "hr", "첫 질문");
+        await generateAndPlayTTS(response.content.content, "hr", "첫 질문", response.content.content);
         return [] as {type: string, content: string}[]; // 첫 질문은 즉시 처리했으므로 빈 배열 반환
       } else {
         // 🔊 TTS 처리를 위한 항목들을 동기적으로 수집 (타입 정보 포함)
@@ -806,8 +814,9 @@ const InterviewGO: React.FC = () => {
     const question = response?.content?.content;
     
     if (question) {
-        setCurrentQuestion(question);
-        console.log('📝 질문 업데이트:', question);
+        // 질문을 즉시 표시하지 않고 TTS와 동기화하기 위해 임시 저장
+        console.log('📝 질문 임시 저장 (TTS와 동기화 예정):', question);
+        // setCurrentQuestion(question); // TTS 시작 시에 표시하도록 변경
     }
     
     // AI 질문 상태 업데이트
@@ -929,10 +938,10 @@ const InterviewGO: React.FC = () => {
       return currentInterviewerType.toLowerCase(); // hr, tech, collaborate
     }
     
-    // 질문 타입들 (HR, TECH, COLLABORATION 등을 소문자로)
-    if (backendType.includes('HR')) return 'hr';
-    if (backendType.includes('TECH')) return 'tech';
-    if (backendType.includes('COLLABORATION')) return 'collaborate';
+    // 질문 타입들 (대소문자 모두 처리)
+    if (backendType === 'hr' || backendType.includes('HR')) return 'hr';
+    if (backendType === 'tech' || backendType.includes('TECH')) return 'tech';
+    if (backendType === 'collaborate' || backendType.includes('COLLABORATION')) return 'collaborate';
     
     // 기타
     if (backendType === 'OUTRO') return 'outro';
