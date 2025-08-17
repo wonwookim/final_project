@@ -255,6 +255,8 @@ async def process_calibration_frame(session_id: str, frame_data: str = Form(...)
 
 @router.get("/calibration/result/{session_id}", response_model=CalibrationResult)
 async def get_calibration_result(session_id: str):
+    print(f"✅ [DEBUG] get_calibration_result 함수 호출됨. 찾는 세션 ID:  {session_id}")
+    print(f"✅ [DEBUG] 현재 calibration_manager가 아는 세션 목록:  {list(calibration_manager.sessions.keys())}")
     result = calibration_manager.get_calibration_result(session_id)
     if result is None or not result.get('calibration_points'):
         raise HTTPException(status_code=404, detail="캘리브레이션 결과를 찾을 수 없거나 아직 완료되지 않았습니다.")

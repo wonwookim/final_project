@@ -15,7 +15,7 @@ from llm.shared.logging_config import interview_logger
 from backend.services.Orchestrator import Orchestrator
 from backend.services.supabase_client import get_supabase_client
 from backend.services.existing_tables_service import existing_tables_service
-
+from backend.services.gaze_service import gaze_analyzer
 class InterviewService:
     def __init__(self):
         # 세션 상태 관리 (Orchestrator의 state를 여기로 이관)
@@ -219,7 +219,17 @@ class InterviewService:
                     initial_settings['user_resume_id'] = int(settings['user_resume_id'])
                 except Exception:
                     initial_settings['user_resume_id'] = None
-            
+
+            # --- ▼▼▼ 바로 이 부분을 추가해주세요! ▼▼▼ ---
+            initial_settings['calibration_data'] = settings.get('calibration_data')
+            # --- ▲▲▲ 여기까지 추가 ▲▲▲ ---
+            # 👇 [디버깅 로그 1/2] 데이터가 실제로 저장되는지 확인합니다.
+            print(f"✅ [DEBUG] 캘리브레이션 데이터 저장 시도: session_id= {session_id}")
+            if initial_settings.get('calibration_data'):
+                print(f"   - 저장된 데이터 내용: {initial_settings['calibration_data']}")
+            else:
+                print(f"   - ⚠️ 경고: 저장할 캘리브레이션 데이터가 없습니다!")
+
             session_state = self.create_session_state(session_id, initial_settings)
             
             # Orchestrator 생성 - 에이전트들도 전달
@@ -442,9 +452,40 @@ class InterviewService:
                 interview_logger.error(f"❌ 미디어 메타데이터 DB 저장 실패: {db_error}", exc_info=True)
                 return
 
-            # 6. 시선 분석 서비스 호출 (TODO)
-            interview_logger.info(f"📊 시선 분석 트리거 예정: interview_id={interview_id}, s3_path={s3_key}")
-            # await gaze_service.start_analysis(interview_id=interview_id, media_id=media_record_id, s3_path=s3_key)
+            # 6. 시선 분석 서비스 호출
+            try:
+                interview_logger.info(f"📊 시선 분석 시작: interview_id={interview_id}, s3_path={s3_key}")
+                session_state = self.session_states.get(session_id)
+                print(f"✅ [DEBUG] 분석 단계에서 세션 상태 확인: session_id= {session_id}")
+                print(f"   - 전체 세션 상태: {session_state}")
+                # 6-1. 세션에서 캘리브레이션 데이터 가져오기
+                calibration_data = session_state.get('calibration_data')
+                if not calibration_data or 'session_id' not in calibration_data:
+                    raise Exception(f"세션({session_id})에서 캘리브레이션 데이터를 찾을 수 없습니다.")
+
+                # 참고: 실제 분석에는 calibration_points와 initial_face_size가 필요합니다.
+                # 이 데이터들을 calibration_data 객체에 포함시켜 전달해야 합니다.
+                # 우선은 이 데이터가 있다고 가정하고 로직을 구성합니다.
+                calibration_points = calibration_data.get('calibration_points')
+                initial_face_size = calibration_data.get('initial_face_size')
+
+                if not calibration_points:
+                     raise Exception(f"세션({session_id})의 캘리브레이션 데이터에 points 정보가 없습니다.")
+
+                # 6-2. gaze_analyzer로 분석 실행
+                analysis_result = gaze_analyzer.analyze_video_from_s3(
+                    bucket=bucket_name,
+                    key=s3_key,
+                    calibration_points=calibration_points,
+                    initial_face_size=initial_face_size
+                )
+
+                # 6-3. 분석 결과를 DB에 저장
+                # ... (이전 프롬프트에서 제안했던 결과 저장 로직) ...
+                interview_logger.info(f"✅ 시선 분석 및 결과 저장 성공")
+
+            except Exception as analysis_error:
+                interview_logger.error(f"❌ 시선 분석 또는 결과 저장 실패: {analysis_error}", exc_info=True)
 
         except Exception as e:
             interview_logger.error(f"❌ 임시 시선 추적 파일 처리 실패: session_id={session_id}, error={str(e)}", exc_info=True)

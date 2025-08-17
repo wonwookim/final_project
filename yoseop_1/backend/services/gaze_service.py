@@ -520,9 +520,22 @@ class GazeAnalyzer(GazeCoreProcessor):
                 
                 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
                 fps = cap.get(cv2.CAP_PROP_FPS)
-                duration = total_frames / fps if fps > 0 else 0
-                
+
+                # 👇 [수정 시작] 동영상 정보 유효성 검사 및 처리
+                if total_frames <= 0:
+                    logger.warning(f"⚠️ [ANALYZE] 동영상 총 프레임 수가 유효하지 않습니다: {total_frames}. 기본값 1로 설정.")
+                    total_frames = 1 # 0으로 나누는 것을 방지
+
+                if fps <= 0:
+                    logger.warning(f"⚠️ [ANALYZE] 동영상 FPS가 유효하지 않습니다: {fps}. 기본값 30으로 설정.")
+                    fps = 30.0 # 0으로 나누는 것을 방지
+
+                duration = total_frames / fps
+
                 logger.info(f"📹 [ANALYZE] 동영상 정보: {total_frames}프레임, {fps:.1f}FPS, {duration:.1f}초")
+                # 👆 [수정 끝] 동영상 정보 유효성 검사 및 처리
+
+                # duration = total_frames / fps if fps > 0 else 0
                 
                 # 분석 변수 초기화
                 gaze_points = []
