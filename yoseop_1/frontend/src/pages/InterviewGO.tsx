@@ -203,6 +203,7 @@ const InterviewGO: React.FC = () => {
   const [isInitialLoading, setIsInitialLoading] = useState(false); // 면접 초기 시작 로딩
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false); // 답변 제출 중
   const [isRestoring, setIsRestoring] = useState(true); // 복원 상태 추가
+  const [currentTTSType, setCurrentTTSType] = useState<string | null>(null); // 현재 TTS 타입
   
   // 🆕 INTRO 메시지 관련 상태
   const [introMessage, setIntroMessage] = useState<string>('');
@@ -506,15 +507,25 @@ const InterviewGO: React.FC = () => {
       const audioUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(audioUrl);
 
+      // 🎯 TTS 재생 시작 - 타입 설정
+      setCurrentTTSType(type);
+      console.log(`[🎯 하이라이트] TTS 재생 시작 - 타입: ${type} 설정됨`);
+
       // 재생 완료 대기
       await new Promise<void>((resolve, reject) => {
         audio.onended = () => {
           console.log(`[🔊 TTS] ${label} 타입별 TTS 재생 완료`);
+          // 🎯 TTS 재생 완료 - 타입 초기화
+          setCurrentTTSType(null);
+          console.log(`[🎯 하이라이트] TTS 재생 완료 - 타입 초기화됨`);
           URL.revokeObjectURL(audioUrl);
           resolve();
         };
         audio.onerror = () => {
           console.error(`[🔊 TTS] ${label} 타입별 TTS 재생 실패`);
+          // 🎯 TTS 재생 실패 - 타입 초기화
+          setCurrentTTSType(null);
+          console.log(`[🎯 하이라이트] TTS 재생 실패 - 타입 초기화됨`);
           URL.revokeObjectURL(audioUrl);
           reject(new Error('타입별 TTS 재생 실패'));
         };
@@ -553,15 +564,25 @@ const InterviewGO: React.FC = () => {
         const audioUrl = URL.createObjectURL(audioBlob);
         const audio = new Audio(audioUrl);
 
+        // 🎯 폴백 TTS 재생 시작 - 타입 설정
+        setCurrentTTSType(type);
+        console.log(`[🎯 하이라이트] 폴백 TTS 재생 시작 - 타입: ${type} 설정됨`);
+
         // 재생 완료 대기
         await new Promise<void>((resolve, reject) => {
           audio.onended = () => {
             console.log(`[🔊 TTS] ${label} 기본 음성 TTS 재생 완료`);
+            // 🎯 폴백 TTS 재생 완료 - 타입 초기화
+            setCurrentTTSType(null);
+            console.log(`[🎯 하이라이트] 폴백 TTS 재생 완료 - 타입 초기화됨`);
             URL.revokeObjectURL(audioUrl);
             resolve();
           };
           audio.onerror = () => {
             console.error(`[🔊 TTS] ${label} 기본 음성 TTS 재생 실패`);
+            // 🎯 폴백 TTS 재생 실패 - 타입 초기화
+            setCurrentTTSType(null);
+            console.log(`[🎯 하이라이트] 폴백 TTS 재생 실패 - 타입 초기화됨`);
             URL.revokeObjectURL(audioUrl);
             reject(new Error('기본 음성 TTS 재생 실패'));
           };
@@ -570,6 +591,9 @@ const InterviewGO: React.FC = () => {
 
       } catch (fallbackError) {
         console.error(`[🔊 TTS] ${label} 모든 TTS 시도 실패:`, fallbackError);
+        // 🎯 모든 TTS 실패 시 타입 초기화
+        setCurrentTTSType(null);
+        console.log(`[🎯 하이라이트] 모든 TTS 실패 - 타입 초기화됨`);
       }
     }
   };
@@ -945,6 +969,20 @@ const InterviewGO: React.FC = () => {
     }
   };
 
+  // 🎯 TTS 타입별 하이라이트 확인 함수
+  const shouldHighlight = (componentType: 'hr' | 'tech' | 'collaborate' | 'ai'): boolean => {
+    if (!currentTTSType) return false;
+    
+    const normalizedType = normalizeTTSType(currentTTSType);
+    switch (componentType) {
+      case 'hr': return normalizedType === 'hr' || normalizedType === 'intro' || normalizedType === 'outro';
+      case 'tech': return normalizedType === 'tech';
+      case 'collaborate': return normalizedType === 'collaborate';
+      case 'ai': return normalizedType === 'ai' || normalizedType === 'ai_question';
+      default: return false;
+    }
+  };
+
   // 🆕 초기 턴 상태 설정 (세션 로드 완료 후)
   useEffect(() => {
     if (!isRestoring && state.sessionId) {
@@ -1053,9 +1091,6 @@ const InterviewGO: React.FC = () => {
                       setCurrentQuestion(questionData.question);
                       console.log('✅ 질문 설정 완료:', questionData.question);
                       
-                      // 면접 시작
-                      setUserTurnState(questionData.question, "API 로딩");
-                      
                       return questionData; // questionData 반환
                       
                     } catch (error) {
@@ -1081,6 +1116,17 @@ const InterviewGO: React.FC = () => {
                   setHasIntroMessage(true);
                   setShowIntroMessage(true);
                   
+                  // 🎯 인트로가 있을 때는 타이머 없이 질문만 설정
+                  console.log('⏰ 인트로 메시지 있음 - 타이머 없이 질문 설정');
+                  setCurrentPhase('user_turn');
+                  setCurrentTurn('user');
+                  setIsTimerActive(false); // 타이머 시작하지 않음
+                  setCanSubmit(false); // 인트로 중에는 제출 불가
+                  setCanRecord(false); // 인트로 중에는 녹음 불가
+                  if (questionData) {
+                    setCurrentQuestion(questionData.question);
+                  }
+                  
                   // INTRO 표시 후 잠시 후 숨기기 (TTS는 백엔드에서 자동 처리됨)
                   setTimeout(() => {
                     setShowIntroMessage(false);
@@ -1090,6 +1136,10 @@ const InterviewGO: React.FC = () => {
                   console.log('📢 INTRO 메시지 표시 - TTS는 백엔드에서 자동 처리');
                 } else {
                   console.log('📝 INTRO 메시지 없음 - 바로 질문 진행');
+                  // 인트로가 없으면 바로 사용자 턴으로 설정 (타이머 포함)
+                  if (questionData) {
+                    setUserTurnState(questionData.question, "API 로딩");
+                  }
                 }
                 
                 // 🆕 첫 번째 응답에서도 TTS 재생 처리
@@ -1952,7 +2002,9 @@ const InterviewGO: React.FC = () => {
         {/* 상단 면접관 영역 */}
         <div className="grid grid-cols-3 gap-4 p-4" style={{ height: '40vh' }}>
           {/* 인사 면접관 */}
-          <div className="bg-gray-900 rounded-lg overflow-hidden relative border-2 border-gray-700">
+          <div className={`bg-gray-900 rounded-lg overflow-hidden relative border-4 transition-all duration-300 ${
+            shouldHighlight('hr') ? 'border-green-500' : 'border-gray-700'
+          }`}>
             <div className="absolute top-4 left-4 font-semibold text-white">
               👔 인사 면접관
             </div>
@@ -1966,7 +2018,9 @@ const InterviewGO: React.FC = () => {
           </div>
 
           {/* 협업 면접관 */}
-          <div className="bg-gray-900 rounded-lg overflow-hidden relative border-2 border-gray-700">
+          <div className={`bg-gray-900 rounded-lg overflow-hidden relative border-4 transition-all duration-300 ${
+            shouldHighlight('collaborate') ? 'border-green-500' : 'border-gray-700'
+          }`}>
             <div className="absolute top-4 left-4 font-semibold text-white">
               🤝 협업 면접관
             </div>
@@ -1980,7 +2034,9 @@ const InterviewGO: React.FC = () => {
           </div>
 
           {/* 기술 면접관 */}
-          <div className="bg-gray-900 rounded-lg overflow-hidden relative border-2 border-gray-700">
+          <div className={`bg-gray-900 rounded-lg overflow-hidden relative border-4 transition-all duration-300 ${
+            shouldHighlight('tech') ? 'border-green-500' : 'border-gray-700'
+          }`}>
             <div className="absolute top-4 left-4 font-semibold text-white">
               💻 기술 면접관
             </div>
@@ -1998,8 +2054,8 @@ const InterviewGO: React.FC = () => {
         <div className="grid gap-4 p-4" style={{ height: '60vh', gridTemplateColumns: '2fr 1fr 2fr' }}>
           {/* 사용자 영역 */}
           <div className={`bg-gray-900 rounded-lg overflow-hidden relative border-2 transition-all duration-300 ${
-            // 사용자 턴일 때
-            currentPhase === 'user_turn'
+            // 사용자 턴이면서 타이머가 활성화되어 있을 때만
+            currentPhase === 'user_turn' && isTimerActive
               ? 'border-yellow-500 shadow-lg shadow-yellow-500/50'
             // 대기 상태
             : 'border-gray-600'
@@ -2350,9 +2406,9 @@ const InterviewGO: React.FC = () => {
           </div>
 
           {/* AI 지원자 춘식이 */}
-          <div className={`bg-blue-900 rounded-lg overflow-hidden relative border-2 transition-all duration-300 ${
-            // AI 턴일 때
-            currentPhase === 'ai_processing'
+          <div className={`bg-blue-900 rounded-lg overflow-hidden relative border-4 transition-all duration-300 ${
+            // AI 턴일 때 또는 AI TTS 재생 중일 때
+            currentPhase === 'ai_processing' || shouldHighlight('ai')
               ? 'border-green-500 shadow-lg shadow-green-500/50'
             // 대기 상태
             : 'border-gray-600'
