@@ -296,22 +296,19 @@ const InterviewResults: React.FC = () => {
       
       // 영상 데이터 처리 - API 응답 기반 처리
       if (response.video_url) {
-        // 백엔드 주소를 포함한 전체 URL 생성 (인증 제거로 토큰 불필요)
         const absoluteVideoUrl = `${API_BASE_URL}${response.video_url}`;
-
         console.log('🎬 영상 파일 발견, 스트리밍 URL 설정:', absoluteVideoUrl);
         setVideoUrl(absoluteVideoUrl);
-        setVideoError(null);
+        setVideoMetadata(response.video_metadata || null);
+        setVideoError(null); // 이전 에러가 있었다면 초기화
+        // 새로운 비디오가 설정되면 로딩 상태로 전환
         setVideoLoading(true);
-        
-        if (response.video_metadata) {
-          setVideoMetadata(response.video_metadata);
-          console.log('📄 영상 메타데이터:', response.video_metadata);
-        }
       } else {
+        // 영상이 없는 경우
         console.log('ℹ️ 이 면접에는 녹화된 영상이 없습니다');
         setVideoUrl(null);
-        setVideoError('이 면접에는 녹화된 영상이 없습니다.');
+        setVideoMetadata(null);
+        setVideoError(null); 
         setVideoLoading(false);
       }
       
@@ -657,95 +654,105 @@ const InterviewResults: React.FC = () => {
           {/* 비디오 영역 */}
           <div className="bg-white rounded-lg shadow-sm p-4">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">면접 영상</h3>
-            
-            {/* 영상 로딩 상태 */}
-            {videoLoading && (
-              <div className="relative aspect-video bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                  <p className="text-sm text-gray-600">영상을 불러오는 중...</p>
-                </div>
-              </div>
-            )}
-            
-            {/* 영상 에러 상태 */}
-            {videoError && !videoLoading && (
-              <div className="relative aspect-video bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center">
-                <div className="text-center p-4">
-                  <svg className="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  <p className="text-sm text-gray-600 mb-2">{videoError}</p>
-                  <p className="text-xs text-gray-500">면접 진행 중 녹화에 문제가 있었을 수 있습니다.</p>
-                </div>
-              </div>
-            )}
-            
-            {/* 실제 비디오 플레이어 */}
-            {videoUrl && !videoError && (
-              <div className="relative">
-                <video 
-                  className="w-full aspect-video bg-black rounded-lg"
-                  controls
-                  preload="metadata"
-                  onLoadStart={() => {
-                    console.log('🎬 비디오 로딩 시작');
-                    setVideoLoading(true);
-                  }}
-                  onLoadedData={() => {
-                    console.log('🎬 비디오 로딩 완료');
-                    setVideoLoading(false);
-                  }}
-                  onCanPlay={() => {
-                    console.log('🎬 비디오 재생 준비 완료');
-                    setVideoLoading(false);
-                  }}
-                  onError={(e) => {
-                    console.error('🎬 비디오 로딩 에러:', e);
-                    setVideoLoading(false);
-                    setVideoError('영상을 재생할 수 없습니다. S3 접근 권한을 확인해주세요.');
-                  }}
-                  onLoadedMetadata={() => {
-                    console.log('🎬 비디오 메타데이터 로딩 완료');
-                  }}
-                >
-                  <source src={videoUrl} type="video/webm" />
-                  <source src={videoUrl} type="video/mp4" />
-                  브라우저가 비디오를 지원하지 않습니다.
-                </video>
-                
-                {/* 영상 메타정보 */}
-                {videoMetadata && (
-                  <div className="mt-2 text-xs text-gray-500 flex justify-between">
-                    <span>
-                      {videoMetadata.duration ? `재생시간: ${Math.floor(videoMetadata.duration / 60)}:${String(videoMetadata.duration % 60).padStart(2, '0')}` : ''}
-                    </span>
-                    <span>
-                      {videoMetadata.file_size ? `크기: ${(videoMetadata.file_size / (1024 * 1024)).toFixed(1)}MB` : ''}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-            
-            {/* 다운로드 버튼 */}
-            <div className="mt-3 flex gap-2">
+
+            <div className="relative aspect-video bg-slate-100 rounded-lg overflow-hidden">
               {videoUrl ? (
-                <a
-                  href={videoUrl}
-                  download={`interview_${interviewId}_video.webm`}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium text-center"
-                >
-                  영상 다운로드
-                </a>
+                <>
+                  <video
+                    key={videoUrl}
+                    className="w-full h-full bg-black rounded-lg"
+                    controls
+                    preload="metadata"
+                    aria-label="면접 영상"
+                    onLoadStart={() => {
+                      console.log('🎬 비디오 로딩 시작');
+                      setVideoLoading(true);
+                    }}
+                    onLoadedData={() => {
+                      console.log('🎬 비디오 데이터 로딩 완료');
+                      setVideoLoading(false);
+                    }}
+                    onCanPlay={() => {
+                      console.log('🎬 비디오 재생 준비 완료');
+                      setVideoLoading(false);
+                    }}
+                    onLoadedMetadata={() => {
+                      console.log('🎬 비디오 메타데이터 로딩 완료');
+                    }}
+                    onError={(e) => {
+                      console.error('🎬 비디오 로딩 에러:', e);
+                      console.error('🎬 에러 상세:', e.target);
+                      setVideoLoading(false);
+                      setVideoError('영상을 재생할 수 없습니다. 서버 연결을 확인해주세요.');
+                    }}
+                  >
+                    <source src={videoUrl} type="video/webm" />
+                    <source src={videoUrl} type="video/mp4" />
+                    브라우저가 비디오 태그를 지원하지 않습니다.
+                  </video>
+                  
+                  {/* 로딩 오버레이 */}
+                  {videoLoading && (
+                    <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                      <div className="text-center text-white">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-3"></div>
+                        <p>영상을 불러오는 중...</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* 에러 오버레이 */}
+                  {videoError && (
+                    <div className="absolute inset-0 bg-red-50 flex items-center justify-center">
+                      <div className="text-center text-red-600 p-4">
+                        <svg className="w-12 h-12 text-red-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                        </svg>
+                        <p className="font-semibold mb-1">영상 로딩 오류</p>
+                        <p className="text-sm">{videoError}</p>
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
-                <button
-                  disabled
-                  className="flex-1 px-4 py-2 bg-gray-300 text-gray-500 rounded-lg cursor-not-allowed text-sm font-medium"
-                >
-                  영상 없음
-                </button>
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center text-slate-500 p-4">
+                    <svg className="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    <p>녹화된 영상이 없습니다.</p>
+                  </div>
+                </div>
               )}
+            </div>
+
+            {/* 영상 메타정보 */}
+            {videoMetadata && videoUrl && !videoError && (
+              <div className="mt-3 text-xs text-gray-500 flex justify-between bg-gray-50 px-3 py-2 rounded">
+                <span>
+                  {videoMetadata.duration ? `재생시간: ${Math.floor(videoMetadata.duration / 60)}:${String(videoMetadata.duration % 60).padStart(2, '0')}` : ''}
+                </span>
+                <span>
+                  {videoMetadata.file_size ? `크기: ${(videoMetadata.file_size / (1024 * 1024)).toFixed(1)}MB` : ''}
+                </span>
+              </div>
+            )}
+
+            {/* 다운로드 버튼 */}
+            <div className="mt-3">
+              <a
+                href={videoUrl || '#'}
+                download={`interview_${interviewId}_video.webm`}
+                aria-disabled={!videoUrl}
+                className={`block w-full text-center px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  videoUrl
+                    ? 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2'
+                    : 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                }`}
+                onClick={(e) => { if (!videoUrl) e.preventDefault(); }}
+              >
+                {videoUrl ? '영상 다운로드' : '영상 없음'}
+              </a>
             </div>
           </div>
 
