@@ -178,101 +178,58 @@ async def start_ai_competition(
     current_user: UserResponse = Depends(auth_service.get_current_user)
 ):
     """AI 지원자와의 경쟁 면접 시작"""
-    start_time = time.perf_counter()  # 시간 측정 시작
+    start_time = time.perf_counter()
     try:
-        # 🐛 디버깅: FastAPI에서 받은 설정값 로깅
         interview_logger.info(f"🐛 FastAPI DEBUG: 받은 settings = {settings.dict()}")
-        interview_logger.info(f"🐛 FastAPI DEBUG: use_interviewer_service = {settings.use_interviewer_service}")
+
+        # 1. Pydantic 모델을 딕셔너리로 변환하여 원본 데이터를 모두 보존합니다.
+        settings_dict = settings.dict()
         
-        # 🆕 user_resume_id가 없으면 DB에서 자동으로 조회
+        # 2. user_id를 추가합니다.
+        settings_dict['user_id'] = current_user.user_id
+
+        # 3. user_resume_id가 없으면 DB에서 조회하여 추가합니다.
         if not settings.user_resume_id:
             try:
                 from backend.services.existing_tables_service import existing_tables_service
                 user_resumes = await existing_tables_service.get_user_resumes(current_user.user_id)
                 if user_resumes:
-                    settings.user_resume_id = user_resumes[0].get('user_resume_id')  # 첫 번째 이력서 사용
-                    interview_logger.info(f"✅ 자동 조회된 user_resume_id: {settings.user_resume_id}")
-                else:
-                    interview_logger.warning(f"⚠️ 사용자 이력서를 찾을 수 없음: user_id={current_user.user_id}")
+                    # settings_dict를 직접 업데이트합니다.
+                    settings_dict['user_resume_id'] = user_resumes[0].get('user_resume_id')
+                    interview_logger.info(f"✅ 자동 조회된 user_resume_id: {settings_dict['user_resume_id']}")
             except Exception as e:
                 interview_logger.error(f"❌ user_resume_id 자동 조회 실패: {e}")
-        
-        # 🆕 posting_id가 있으면 DB에서 실제 채용공고 정보를 가져와서 사용
+
+        # 4. posting_id가 있으면 DB 정보를 이용해 일부 값을 덮어씁니다. (update 사용)
         if settings.posting_id:
             from backend.services.existing_tables_service import existing_tables_service
             posting_info = await existing_tables_service.get_posting_by_id(settings.posting_id)
-            
             if posting_info:
                 interview_logger.info(f"📋 실제 채용공고 사용: posting_id={settings.posting_id}")
-                interview_logger.info(f"   회사: {posting_info.get('company', {}).get('name', 'Unknown')}")
-                interview_logger.info(f"   직무: {posting_info.get('position', {}).get('position_name', 'Unknown')}")
-                
-                settings_dict = {
+                # 덮어쓸 내용만 update()를 사용하여 기존 데이터를 보존합니다.
+                settings_dict.update({
                     "company": posting_info.get('company', {}).get('name', settings.company),
                     "position": posting_info.get('position', {}).get('position_name', settings.position),
-                    "candidate_name": settings.candidate_name,
-                    "posting_id": settings.posting_id,
                     "company_id": posting_info.get('company_id'),
                     "position_id": posting_info.get('position_id'),
-                    "difficulty": settings.difficulty,  # 난이도 값 추가 (첫 번째 파일에서)
-                    "use_interviewer_service": settings.use_interviewer_service,
-                    "user_id": current_user.user_id,
-                    "user_resume_id": settings.user_resume_id
-                }
+                })
             else:
-                interview_logger.warning(f"⚠️ 채용공고를 찾을 수 없음: posting_id={settings.posting_id}, fallback to original")
-                settings_dict = {
-                    "company": settings.company,
-                    "position": settings.position,
-                    "candidate_name": settings.candidate_name,
-                    "difficulty": settings.difficulty,  # 난이도 값 추가 (첫 번째 파일에서)
-                    "use_interviewer_service": settings.use_interviewer_service,
-                    "user_id": current_user.user_id,
-                    "user_resume_id": settings.user_resume_id
-                }
-        else:
-            # 기존 방식: company/position 문자열 사용
-            settings_dict = {
-                "company": settings.company,
-                "position": settings.position,
-                "candidate_name": settings.candidate_name,
-                "difficulty": settings.difficulty,  # 난이도 값 추가 (첫 번째 파일에서)
-                "use_interviewer_service": settings.use_interviewer_service,
-                "user_id": current_user.user_id,
-                "user_resume_id": settings.user_resume_id
-            }
+                interview_logger.warning(f"⚠️ 채용공고를 찾을 수 없음: posting_id={settings.posting_id}")
         
-        # 🐛 디버깅: 서비스에 전달할 settings_dict 로깅
-        interview_logger.info(f"🐛 FastAPI DEBUG: 서비스에 전달할 settings_dict = {settings_dict}")
+        interview_logger.info(f"🐛 FastAPI DEBUG: 서비스에 전달할 최종 settings_dict = {settings_dict}")
         
         result = await service.start_ai_competition(settings_dict, start_time=start_time)
         
-        # 전체 소요 시간 로깅 (첫 번째 파일에서)
         end_time = time.perf_counter()
         elapsed_time = end_time - start_time
         interview_logger.info(f"✅ AI 경쟁 면접 시작 성공. 총 처리 시간: {elapsed_time:.4f}초")
         
-        # 🔍 DEBUG: FastAPI 라우터에서 최종 HTTP 응답 전 result 구조 확인
-        print(f"[🔍 FASTAPI_ROUTER_DEBUG] === HTTP 응답 직전 result 구조 ===")
-        print(f"[🔍 FASTAPI_ROUTER_DEBUG] result 타입: {type(result)}")
-        if isinstance(result, dict):
-            print(f"[🔍 FASTAPI_ROUTER_DEBUG] result 키들: {list(result.keys())}")
-            for key, value in result.items():
-                if key in ['intro_audio', 'first_question_audio']:
-                    print(f"[🔍 FASTAPI_ROUTER_DEBUG] {key}: {bool(value)} ({len(str(value)) if value else 0}자)")
-                else:
-                    print(f"[🔍 FASTAPI_ROUTER_DEBUG] {key}: {bool(value)}")
-                    if key == 'first_question' and value:
-                        print(f"[🔍 FASTAPI_ROUTER_DEBUG] first_question 내용: {str(value)[:50]}...")
-        print(f"[🔍 FASTAPI_ROUTER_DEBUG] === FastAPI가 HTTP 응답으로 직렬화할 데이터 ===")
-        
         return result
         
     except Exception as e:
-        # 에러 발생 시에도 소요 시간 로깅 (첫 번째 파일에서)
         end_time = time.perf_counter()
         elapsed_time = end_time - start_time
-        interview_logger.error(f"AI 경쟁 면접 시작 오류: {str(e)}. 처리 시간: {elapsed_time:.4f}초")
+        interview_logger.error(f"AI 경쟁 면접 시작 오류: {str(e)}. 처리 시간: {elapsed_time:.4f}초", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @interview_router.post("/answer")
