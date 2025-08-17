@@ -456,16 +456,12 @@ class InterviewService:
             try:
                 interview_logger.info(f"📊 시선 분석 시작: interview_id={interview_id}, s3_path={s3_key}")
                 session_state = self.session_states.get(session_id)
-                print(f"✅ [DEBUG] 분석 단계에서 세션 상태 확인: session_id= {session_id}")
-                print(f"   - 전체 세션 상태: {session_state}")
+
                 # 6-1. 세션에서 캘리브레이션 데이터 가져오기
                 calibration_data = session_state.get('calibration_data')
-                if not calibration_data or 'session_id' not in calibration_data:
+                if not calibration_data:
                     raise Exception(f"세션({session_id})에서 캘리브레이션 데이터를 찾을 수 없습니다.")
 
-                # 참고: 실제 분석에는 calibration_points와 initial_face_size가 필요합니다.
-                # 이 데이터들을 calibration_data 객체에 포함시켜 전달해야 합니다.
-                # 우선은 이 데이터가 있다고 가정하고 로직을 구성합니다.
                 calibration_points = calibration_data.get('calibration_points')
                 initial_face_size = calibration_data.get('initial_face_size')
 
@@ -480,9 +476,47 @@ class InterviewService:
                     initial_face_size=initial_face_size
                 )
 
-                # 6-3. 분석 결과를 DB에 저장
-                # ... (이전 프롬프트에서 제안했던 결과 저장 로직) ...
-                interview_logger.info(f"✅ 시선 분석 및 결과 저장 성공")
+                # 6-3. 분석 결과를 DB에 저장 (객체 속성 접근 방식으로 수정)
+                if analysis_result:
+                    try:
+                        supabase_client = get_supabase_client()
+
+                        # video_metadata JSON 객체 구성
+                        video_metadata = {
+                            "total_frames": getattr(analysis_result, 'total_frames', 0),
+                            "analyzed_frames": getattr(analysis_result, 'analyzed_frames', 0),
+                            "in_range_ratio": getattr(analysis_result, 'in_range_ratio', 0),
+                            "analysis_duration_sec": getattr(analysis_result, 'analysis_duration', 0),
+                            "feedback_summary": getattr(analysis_result, 'feedback', "N/A")
+                        }
+
+                        # DB에 저장할 데이터 구성 (사용자 테이블 스키마에 맞춤)
+                        data_to_insert = {
+                            "interview_id": interview_id,
+                            "user_id": user_id,
+                            "gaze_score": getattr(analysis_result, 'gaze_score', 0),
+                            "jitter_score": getattr(analysis_result, 'jitter_score', 0),
+                            "compliance_score": getattr(analysis_result, 'compliance_score', 0),
+                            "stability_rating": getattr(analysis_result, 'stability_rating', "Error"),
+                            "gaze_points": getattr(analysis_result, 'gaze_points', []),
+                            "calibration_points": getattr(analysis_result, 'calibration_points', []),
+                            "video_metadata": video_metadata
+                        }
+
+                        interview_logger.info(f"💾 시선 분석 결과 DB 저장 시도: interview_id={interview_id}")
+
+                        insert_res = supabase_client.table('gaze_analysis').insert(data_to_insert).execute()
+
+                        if insert_res.data:
+                            interview_logger.info(f"✅ 시선 분석 결과 DB 저장 성공. gaze_id: {insert_res.data[0].get('gaze_id')}")
+                        else:
+                            error_details = getattr(insert_res, 'error', 'Unknown error')
+                            raise Exception(f"DB insert 실패: {error_details}")
+
+                    except Exception as db_save_error:
+                        interview_logger.error(f"❌ 시선 분석 결과 DB 저장 실패: {db_save_error}", exc_info=True)
+                else:
+                    interview_logger.error(f"❌ 시선 분석 실패: analysis_result가 없습니다.")
 
             except Exception as analysis_error:
                 interview_logger.error(f"❌ 시선 분석 또는 결과 저장 실패: {analysis_error}", exc_info=True)
