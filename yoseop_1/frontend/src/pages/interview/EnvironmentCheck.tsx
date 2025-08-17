@@ -262,90 +262,80 @@ const EnvironmentCheck: React.FC = () => {
 
   const handleStartInterview = async () => {
     setIsLoading(true);
-
-    const getDifficultyFromLevel = (level: number | undefined): string => {
-      if (level === undefined) return '중간'; // 기본값
-      if (level <= 3) return '초급';
-      if (level <= 7) return '중급';
-      return '고급';
-    };
-    
-    // 4단계 플로우 데이터를 기존 InterviewActive가 기대하는 형식으로 변환
-    const finalSettings = {
-      company: state.jobPosting?.company || '',  // 회사명 사용
-      position: state.jobPosting?.position || '',
-      posting_id: state.jobPosting?.posting_id, // 🆕 posting_id 추가
-      mode: state.aiSettings?.mode || 'personalized',
-      difficulty: getDifficultyFromLevel(state.aiSettings?.aiQualityLevel),
-      candidate_name: state.resume?.name || '사용자',
-      resume: {
-        ...state.resume,  // 전체 이력서 데이터 포함
-        user_resume_id: state.resume?.user_resume_id // ✅ user_resume_id 명시적 포함
-      },
-      documents: [] as string[]
-    };
-    
-    // 기존 설정 형식으로 변환하여 저장
-    dispatch({ 
-      type: 'SET_SETTINGS', 
-      payload: finalSettings
-    });
-
-    console.log('🚀 면접 시작 요청:', {
-      settings: finalSettings,
-      hasStream: !!stream,
-      mode: finalSettings.mode
-    });
-
-    // 세션 ID 생성 (모든 모드 공통)
-    const sessionId = `session_${Date.now()}`;
-    dispatch({ 
-      type: 'SET_SESSION_ID', 
-      payload: sessionId
-    });
-    
-    // 면접 설정을 localStorage에 저장 (면접 화면에서 API 호출하도록)
-    const stateToSave = {
-      jobPosting: state.jobPosting,
-      resume: state.resume,
-      interviewMode: state.interviewMode,
-      aiSettings: state.aiSettings,
-      settings: finalSettings,
-      sessionId: sessionId,
-      interviewStatus: 'ready',
-      fromEnvironmentCheck: true,
-      needsApiCall: true, // 면접 화면에서 API 호출 필요함을 표시
-      apiCallCompleted: false // API 호출 미완료 상태
-    };
-    localStorage.setItem('interview_state', JSON.stringify(stateToSave));
-    console.log('💾 면접 설정을 localStorage에 저장 완료 - API 호출은 면접 화면에서 수행');
-    
-    // 정상적인 다음 단계로의 이동임을 명시적으로 기록
-    isNavigatingForward.current = true;
-    
-    // 카메라 스트림을 Context에 저장
-    if (stream) {
-      dispatch({
-        type: 'SET_CAMERA_STREAM',
-        payload: stream
-      });
-    }
-    
-    dispatch({ 
-      type: 'SET_INTERVIEW_STATUS', 
-      payload: 'ready'
-    });
-    
-    // 모든 모드에서 바로 면접 화면으로 이동
-    setTimeout(() => {
-      if (finalSettings.mode === 'text_competition') {
-        console.log('🎯 텍스트 경쟁 모드 - /interview/active-temp로 이동');
-        navigate('/interview/active-temp');
-      } else {
-        console.log('🎯 면접 화면으로 즉시 이동 - API 호출은 면접 화면에서 수행');
-        navigate('/interview/active');
+    try {
+      // 1. Context에서 캘리브레이션 세션 ID를 가져옵니다.
+      const calibSessionId = state.gazeTracking?.calibrationSessionId;
+      if (!calibSessionId) {
+        throw new Error("캘리브레이션 세션 ID를 찾을 수 없습니다. 캘리브레이션을 다시 진행해주세요.");
       }
-    }, 500);
+
+      // 2. 새로 만든 전용 API 함수를 사용하여 캘리브레이션 결과를 요청합니다.
+      console.log(`📊 캘리브레이션 결과 요청: ${calibSessionId}`);
+      const calibResultResponse = await interviewApi.getCalibrationResult(calibSessionId);
+      const fullCalibrationData = calibResultResponse;
+
+      // 3. 받은 데이터가 유효한지 검증합니다.
+      if (!fullCalibrationData || !fullCalibrationData.calibration_points) {
+          throw new Error("백엔드로부터 유효한 캘리브레이션 데이터를 받지 못했습니다.");
+      }
+      console.log('✅ 캘리브레이션 전체 데이터 수신 성공:', fullCalibrationData);
+
+      // 4. 받아온 전체 캘리브레이션 데이터를 finalSettings에 포함시킵니다.
+      const getDifficultyFromLevel = (level: number | undefined): string => {
+        if (level === undefined) return '중간';
+        if (level <= 3) return '초급';
+        if (level <= 7) return '중급';
+        return '고급';
+      };
+
+      const finalSettings = {
+        company: state.jobPosting?.company || '',
+        position: state.jobPosting?.position || '',
+        posting_id: state.jobPosting?.posting_id,
+        mode: state.aiSettings?.mode || 'personalized',
+        difficulty: getDifficultyFromLevel(state.aiSettings?.aiQualityLevel),
+        candidate_name: state.resume?.name || '사용자',
+        resume: { ...state.resume, user_resume_id: state.resume?.user_resume_id },
+        documents: [] as string[],
+        calibration_data: fullCalibrationData,
+      };
+
+      // 5. 이후 로직은 동일합니다.
+      const sessionId = `session_${Date.now()}`;
+      dispatch({ type: 'SET_SESSION_ID', payload: sessionId });
+
+      const stateToSave = {
+        jobPosting: state.jobPosting,
+        resume: state.resume,
+        interviewMode: state.interviewMode,
+        aiSettings: state.aiSettings,
+        settings: finalSettings,
+        sessionId: sessionId,
+        interviewStatus: 'ready',
+        fromEnvironmentCheck: true,
+        needsApiCall: true,
+        apiCallCompleted: false,
+        gazeTracking: state.gazeTracking
+      };
+      localStorage.setItem('interview_state', JSON.stringify(stateToSave));
+
+      isNavigatingForward.current = true;
+
+      if (stream) {
+        dispatch({ type: 'SET_CAMERA_STREAM', payload: stream });
+      }
+
+      dispatch({ type: 'SET_INTERVIEW_STATUS', payload: 'ready' });
+
+      setTimeout(() => {
+        navigate('/interview/active');
+      }, 500);
+
+    } catch (error) {
+      console.error("❌ 면접 시작 처리 실패:", error);
+      alert(error instanceof Error ? error.message : "캘리브레이션 결과를 가져오는 데 실패했습니다. 다시 시도해주세요.");
+      setIsLoading(false);
+    }
   };
 
   // 컴포넌트 언마운트 시 조건부 스트림 정리

@@ -95,6 +95,8 @@ export interface InterviewSettings {
   documents?: string[];
   posting_id?: number;  // 🆕 채용공고 ID 추가
   use_interviewer_service?: boolean;  // 🆕 InterviewerService 플래그 추가
+  resume?: any;
+  calibration_data?: any
 }
 
 export interface Question {
@@ -199,6 +201,19 @@ export interface STTResponse {
   text: string;
   confidence?: number;
   duration?: number;
+}
+
+// 🆕 캘리브레이션 결과 타입
+export interface CalibrationResult {
+  session_id: string;
+  calibration_points: [number, number][];
+  initial_face_size: number;
+  allowed_range: {
+    left_bound: number;
+    right_bound: number;
+    top_bound: number;
+    bottom_bound: number;
+  };
 }
 
 // 🆕 피드백 평가 응답 타입
@@ -518,7 +533,7 @@ export const interviewApi = {
     };
     
     console.log('🎯 DEBUG: 최종 전송 설정값 (InterviewerService 강제):', finalSettings);
-    
+    console.log('>>> [FRONTEND DEBUG] 최종 전송 직전 데이터:', JSON.stringify(finalSettings, null, 2));
     const response = await apiClient.post('/interview/ai/start', finalSettings);
     return response.data as AICompetitionStartResponse;
   },
@@ -849,6 +864,17 @@ export const interviewApi = {
       session_id: string;
       feedback_processing: boolean;
     };
+  },
+
+  // 캘리브레이션 결과 조회
+  async getCalibrationResult(sessionId: string): Promise<CalibrationResult> {
+    try {
+      const response = await apiClient.get<CalibrationResult>(`/test/gaze/calibration/result/${sessionId}`);
+      return response.data;
+    } catch (error) {
+      console.error(`캘리브레이션 결과 조회 API 실패 (세션 ID: ${sessionId}):`, error);
+      throw error;
+    }
   },
 };
 
