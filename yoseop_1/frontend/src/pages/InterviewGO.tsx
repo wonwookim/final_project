@@ -1331,8 +1331,9 @@ const InterviewGO: React.FC = () => {
   };
 
   // 답변 제출 실패 시에도 unknown 상태로 복구
-  const submitAnswer = async () => {
-    if (!currentAnswer.trim()) {
+  const submitAnswer = async (directText?: string) => {
+    const answerText = directText || currentAnswer.trim();
+    if (!answerText) {
       console.log('❌ 답변이 입력되지 않았습니다.');
       return;
     }
@@ -1378,8 +1379,8 @@ const InterviewGO: React.FC = () => {
       
       console.log('🚀 답변 제출 시작:', {
         sessionId: sessionId,
-        answer: currentAnswer,
-        answerLength: currentAnswer.length,
+        answer: answerText,
+        answerLength: answerText.length,
         timeSpent: 120 - timeLeft
       });
 
@@ -1389,7 +1390,7 @@ const InterviewGO: React.FC = () => {
       // 🆕 2단계: 답변 제출 (기존 로직)
       const result = await interviewApi.submitUserAnswer(
         sessionId,
-        currentAnswer.trim(),
+        answerText,
         120 - timeLeft
       );
 
@@ -1580,10 +1581,15 @@ const InterviewGO: React.FC = () => {
       
       // 인식된 텍스트를 답변란에 자동 입력
       if (transcribedText.trim()) {
+        // UI 표시용으로 currentAnswer 업데이트
         setCurrentAnswer(prev => {
           const newAnswer = prev + (prev ? ' ' : '') + transcribedText;
           return newAnswer;
         });
+        
+        // 🎯 STT 완료 후 즉시 제출 (상태 업데이트 대기 불필요)
+        console.log('🚀 STT 완료 - 자동 답변 제출 시작');
+        submitAnswer(transcribedText);
       }
       
     } catch (error) {
@@ -1838,6 +1844,19 @@ const InterviewGO: React.FC = () => {
       submitAnswer();
     } else {
       alert('답변을 녹음하시거나 입력해주세요.');
+    }
+  };
+
+  // 🎯 통합 버튼 핸들러 (녹음 + STT + 제출)
+  const handleIntegratedButton = async () => {
+    if (isRecording) {
+      // 녹음 중지 → STT → 자동 제출
+      stopRecording();
+      console.log('🎤 통합 버튼: 녹음 중지 및 STT 처리 시작');
+    } else {
+      // 녹음 시작
+      await startRecording();
+      console.log('🎤 통합 버튼: 녹음 시작');
     }
   };
 
@@ -2106,16 +2125,6 @@ const InterviewGO: React.FC = () => {
 
             {/* 답변 입력 오버레이 */}
             <div className="absolute bottom-0 left-0 right-0 bg-black/80 p-4">
-              <textarea
-                ref={answerRef}
-                value={currentAnswer}
-                onChange={(e) => setCurrentAnswer(e.target.value)}
-                disabled={currentPhase !== 'user_turn'}
-                className={`w-full h-20 p-2 bg-gray-800 text-white border border-gray-600 rounded-lg resize-none text-sm ${
-                  currentPhase !== 'user_turn' ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-                placeholder={currentPhase === 'user_turn' ? "답변을 입력해주세요..." : "대기 중..."}
-              />
               
               {/* 🎤 음성 제어 버튼들 */}
               <div className="flex items-center justify-between mt-3 gap-3">
@@ -2126,41 +2135,9 @@ const InterviewGO: React.FC = () => {
                   </div>
                 )}
                 
-                {/* 녹음 버튼 */}
-                <button
-                  onClick={isRecording ? stopRecording : startRecording}
-                  disabled={!canRecord || isSubmittingAnswer}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-                    !canRecord ? 'bg-gray-600 text-gray-400 cursor-not-allowed' :
-                    isRecording ? 'bg-red-500 text-white animate-pulse' :
-                    'bg-blue-500 text-white hover:bg-blue-600'
-                  }`}
-                  title={!canRecord ? '사용자 차례가 아닙니다' : isRecording ? '녹음 중지' : '녹음 시작'}
-                >
-                  <span className="text-lg">
-                    {!canRecord ? '🔒' : isRecording ? '🔴' : '🎤'}
-                  </span>
-                  <span className="text-sm">
-                    {!canRecord ? '대기중' : isRecording ? `녹음중 (${recordingTime}s)` : '녹음하기'}
-                  </span>
-                </button>
-                
-                {/* TTS 상태 표시 */}
-                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium ${
-                  isTTSPlaying ? 'bg-green-500 text-white animate-pulse' :
-                  'bg-green-600 text-white'
-                }`}>
-                  <span className="text-lg">
-                    {isTTSPlaying ? '🔊' : '🎵'}
-                  </span>
-                  <span className="text-xs">
-                    {isTTSPlaying ? '음성 재생 중...' : '자동 음성 재생'}
-                  </span>
-                </div>
               </div>
               
-              <div className="flex items-center justify-between mt-2">
-                <div className="text-gray-400 text-xs">{currentAnswer.length}자</div>
+              <div className="flex items-center justify-end mt-2">
                 {/* 🆕 타이머 표시 */}
                 {currentPhase === 'user_turn' && isTimerActive && (
                   <div className={`text-lg font-bold ${getTimerColor()}`}>
@@ -2368,35 +2345,57 @@ const InterviewGO: React.FC = () => {
                ) : (
                  // 면접 진행 중일 때 답변 제출 버튼 표시
                  (() => {
-                   const hasAnswer = !!currentAnswer.trim();
                    const hasSessionId = !!state.sessionId || !isRestoring;
                    const isUserTurn = currentPhase === 'user_turn';
-                   const isButtonDisabled = !hasAnswer || isSubmittingAnswer || isRestoring || !isUserTurn || !canSubmit;
+                   // 🎯 통합 버튼 활성화 조건: 사용자 턴이면서 타이머가 활성화되어 있을 때
+                   const canUseIntegratedButton = isUserTurn && isTimerActive && hasSessionId && !isRestoring;
+                   
+                   // 🎯 버튼 상태 결정
+                   let buttonText = '';
+                   let buttonClass = '';
+                   let isButtonDisabled = false;
+                   
+                   if (isSubmittingAnswer) {
+                     buttonText = '📝 답변 처리 중...';
+                     buttonClass = 'bg-orange-500';
+                     isButtonDisabled = true;
+                   } else if (isRestoring) {
+                     buttonText = '세션 로드 중...';
+                     buttonClass = 'bg-gray-600';
+                     isButtonDisabled = true;
+                   } else if (!hasSessionId) {
+                     buttonText = '세션 없음';
+                     buttonClass = 'bg-gray-600';
+                     isButtonDisabled = true;
+                   } else if (!isUserTurn) {
+                     buttonText = '대기 중...';
+                     buttonClass = 'bg-gray-600';
+                     isButtonDisabled = true;
+                   } else if (!isTimerActive) {
+                     buttonText = '타이머 대기 중...';
+                     buttonClass = 'bg-gray-600';
+                     isButtonDisabled = true;
+                   } else if (isRecording) {
+                     buttonText = `🔴 녹음 중지 (${recordingTime}s)`;
+                     buttonClass = 'bg-red-500 animate-pulse';
+                     isButtonDisabled = false;
+                   } else {
+                     buttonText = '🎤 녹음 시작';
+                     buttonClass = 'bg-blue-600 hover:bg-blue-500';
+                     isButtonDisabled = false;
+                   }
                    
                    return (
                      <button 
                        className={`w-full py-3 text-white rounded-lg font-semibold transition-colors ${
                          isButtonDisabled 
                            ? 'bg-gray-600 cursor-not-allowed' 
-                           : 'bg-green-600 hover:bg-green-500'
+                           : buttonClass
                        }`}
-                       onClick={submitAnswer}
+                       onClick={handleIntegratedButton}
                        disabled={isButtonDisabled}
                      >
-                       {isSubmittingAnswer 
-                         ? '제출 중...' 
-                         : isRestoring
-                         ? '세션 로드 중...'
-                         : !hasSessionId 
-                         ? '세션 없음' 
-                         : !isUserTurn
-                         ? '대기 중...'
-                         : !canSubmit
-                         ? '준비 중...'
-                         : !hasAnswer
-                         ? '답변을 입력해주세요'
-                         : '🚀 답변 제출'
-                       }
+                       {buttonText}
                      </button>
                    );
                  })()
