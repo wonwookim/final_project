@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, Request
 from fastapi.responses import StreamingResponse, HTMLResponse
 from typing import Optional
 import logging
 from typing import List, Union
+import boto3
+from botocore.exceptions import ClientError
 from backend.services.supabase_client import supabase_client
 from backend.schemas.user import UserResponse
 from schemas.interview import InterviewHistoryResponse, InterviewSettings, AnswerSubmission, AICompetitionAnswerSubmission, CompetitionTurnSubmission, InterviewResponse, TTSRequest, STTResponse, MemoUpdateRequest
@@ -405,7 +407,7 @@ async def get_interview_results(
     interview_id: int,
     current_user: UserResponse = Depends(auth_service.get_current_user)
 ):
-    """현재 로그인한 유저의 특정 면접 기록 조회 (상세 데이터 + 전체 피드백)"""
+    """현재 로그인한 유저의 특정 면접 기록 조회 (상세 데이터 + 전체 피드백 + 영상 URL)"""
     
     # 1. history_detail 테이블에서 질문별 상세 데이터 가져오기
     detail_res = supabase_client.client.from_("history_detail") \
@@ -425,14 +427,186 @@ async def get_interview_results(
         .eq("interview_id", interview_id) \
         .execute()
     
+    # 4. media_files 테이블에서 영상 파일 정보 확인
+    video_url = None
+    video_metadata = None
+    
+    try:
+        media_res = supabase_client.client.from_("media_files") \
+            .select("s3_key, file_name, file_size, duration, created_at") \
+            .eq("interview_id", interview_id) \
+            .eq("file_type", "video") \
+            .order("created_at", desc=True) \
+            .limit(1) \
+            .execute()
+        
+        if media_res.data and len(media_res.data) > 0:
+            video_file = media_res.data[0]
+            # 영상이 있으면 스트리밍 URL 제공
+            video_url = f"/interview/video/{interview_id}/stream"
+            video_metadata = {
+                "file_name": video_file.get("file_name"),
+                "file_size": video_file.get("file_size"),
+                "duration": video_file.get("duration"),
+                "created_at": video_file.get("created_at")
+            }
+            interview_logger.info(f"✅ 면접 {interview_id}의 영상 파일 발견: {video_file.get('file_name')}")
+        else:
+            interview_logger.info(f"ℹ️ 면접 {interview_id}에 대한 영상 파일이 없습니다")
+            
+    except Exception as e:
+        interview_logger.warning(f"⚠️ 영상 파일 조회 중 오류 (무시됨): {e}")
+        # 영상 파일 조회 실패는 전체 API를 실패시키지 않음
+    
     # 데이터 통합
     result = {
         "details": detail_res.data or [],
         "total_feedback": interview_res.data[0]["total_feedback"] if interview_res.data else None,
-        "plans": plans_res.data[0] if plans_res.data else None
+        "plans": plans_res.data[0] if plans_res.data else None,
+        "video_url": video_url,
+        "video_metadata": video_metadata
     }
     
     return result
+
+@interview_router.get("/video/{interview_id}/stream")
+async def stream_interview_video(
+    interview_id: int,
+    request: Request,
+    current_user: UserResponse = Depends(auth_service.get_current_user)
+):
+    """면접 영상 스트리밍 엔드포인트 - S3 AccessDenied 문제 해결용"""
+    
+    # 1-1. 인증 디버깅
+    interview_logger.info(f"🔐 스트리밍 인증 성공: user_id={current_user.user_id}, interview_id={interview_id}")
+    
+    # 1-2. DB에서 영상 정보 조회 및 예외 처리
+    try:
+        interview_logger.info(f"🗄️ DB 조회 시작: interview_id={interview_id}")
+        
+        media_res = supabase_client.client.from_("media_files") \
+            .select("s3_key, file_name, file_size") \
+            .eq("interview_id", interview_id) \
+            .eq("file_type", "video") \
+            .order("created_at", desc=True) \
+            .limit(1) \
+            .execute()
+        
+        interview_logger.info(f"🗄️ DB 조회 결과: {len(media_res.data) if media_res.data else 0}개 파일 발견")
+        
+        if not media_res.data:
+            interview_logger.warning(f"⚠️ 면접 {interview_id}에 대한 영상 파일이 없습니다")
+            raise HTTPException(status_code=404, detail="영상 파일을 찾을 수 없습니다")
+            
+        video_file = media_res.data[0]
+        s3_key = video_file["s3_key"]
+        file_name = video_file["file_name"]
+        file_size = video_file.get("file_size", 0)
+        
+        interview_logger.info(f"📹 영상 파일 정보: s3_key={s3_key}, file_name={file_name}, size={file_size}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        interview_logger.error(f"❌ DB 조회 오류: {e}")
+        raise HTTPException(status_code=500, detail="데이터베이스 조회 중 오류가 발생했습니다")
+    
+    # 1-3. S3 파일 스트림을 FastAPI로 반환
+    try:
+        # S3 클라이언트 설정
+        interview_logger.info("🔑 AWS S3 클라이언트 설정 중...")
+        
+        aws_access_key = os.getenv('AWS_ACCESS_KEY_ID')
+        aws_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+        aws_region = os.getenv('AWS_REGION', 'ap-northeast-2')
+        
+        if not aws_access_key or not aws_secret_key:
+            interview_logger.error("❌ AWS 자격증명이 설정되지 않았습니다")
+            raise HTTPException(status_code=500, detail="AWS 설정 오류")
+            
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=aws_access_key,
+            aws_secret_access_key=aws_secret_key,
+            region_name=aws_region
+        )
+        
+        bucket_name = 'betago-s3'
+        interview_logger.info(f"📦 S3 버킷: {bucket_name}, 키: {s3_key}")
+        
+        # S3 파일 존재 여부 확인
+        try:
+            s3_client.head_object(Bucket=bucket_name, Key=s3_key)
+            interview_logger.info(f"✅ S3 파일 존재 확인됨: {s3_key}")
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            interview_logger.error(f"❌ S3 파일 접근 실패 ({error_code}): {s3_key}")
+            if error_code == '404':
+                raise HTTPException(status_code=404, detail="영상 파일이 S3에 존재하지 않습니다")
+            else:
+                raise HTTPException(status_code=403, detail=f"S3 접근 권한 오류: {error_code}")
+        
+        # S3에서 파일 객체 가져오기 (스트림 방식)
+        s3_object = s3_client.get_object(Bucket=bucket_name, Key=s3_key)
+        file_stream = s3_object['Body']
+        content_type = s3_object.get('ContentType', 'video/webm')
+        
+        interview_logger.info(f"✅ S3 스트리밍 시작: {s3_key}, Content-Type: {content_type}")
+        
+        # 동적 Content-Type 결정
+        if file_name.endswith('.mp4'):
+            content_type = 'video/mp4'
+        elif file_name.endswith('.webm'):
+            content_type = 'video/webm'
+        elif file_name.endswith('.mov'):
+            content_type = 'video/quicktime'
+        else:
+            content_type = 'video/mp4'  # 기본값
+            
+        interview_logger.info(f"🎬 최종 Content-Type: {content_type}")
+        
+        # 스트리밍 응답 생성
+        def iterfile():
+            try:
+                # 8KB 청크 단위로 스트리밍
+                chunk_size = 8192
+                total_read = 0
+                while True:
+                    chunk = file_stream.read(chunk_size)
+                    if not chunk:
+                        break
+                    total_read += len(chunk)
+                    yield chunk
+                interview_logger.info(f"✅ 스트리밍 완료: {total_read} bytes 전송")
+            except Exception as e:
+                interview_logger.error(f"❌ 스트리밍 중 오류: {e}")
+            finally:
+                file_stream.close()
+        
+        # StreamingResponse 반환 (개선된 헤더)
+        return StreamingResponse(
+            iterfile(),
+            media_type=content_type,
+            headers={
+                "Content-Length": str(file_size) if file_size else "",
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=3600",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET",
+                "Content-Disposition": f"inline; filename={file_name}"
+            }
+        )
+        
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        interview_logger.error(f"❌ S3 오류 ({error_code}): {e}")
+        if error_code == 'NoSuchKey':
+            raise HTTPException(status_code=404, detail="영상 파일이 S3에 존재하지 않습니다")
+        else:
+            raise HTTPException(status_code=500, detail="S3에서 파일을 가져올 수 없습니다")
+    except Exception as e:
+        interview_logger.error(f"❌ 스트리밍 오류: {e}")
+        raise HTTPException(status_code=500, detail="영상 스트리밍 중 오류가 발생했습니다")
 
 @interview_router.post("/memo")
 async def update_memo(memo_update: MemoUpdateRequest):

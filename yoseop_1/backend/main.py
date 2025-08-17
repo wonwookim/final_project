@@ -114,7 +114,8 @@ async def spa_middleware(request: Request, call_next):
         request.url.path.startswith('/interview/text-competition') or
         request.url.path.startswith('/interview/comparison') or
         request.url.path.startswith('/interview/session') or
-        request.url.path.startswith('/interview/feedback')
+        request.url.path.startswith('/interview/feedback') or
+        request.url.path.startswith('/interview/video/')  # 비디오 스트리밍 API
     )
     
     # 디버깅: 면접 관련 API 호출 로깅
