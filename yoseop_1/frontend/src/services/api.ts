@@ -868,16 +868,16 @@ export const handleApiError = (error: any): string => {
         return data?.detail || '입력한 정보가 올바르지 않습니다.';
       
       case 401:
-        return '이메일 또는 비밀번호가 올바르지 않습니다.';
+        return '이메일 또는 비밀번호를 다시 확인해주세요.';
       
       case 400:
-        return data?.detail || '잘못된 요청입니다.';
+        return data?.detail || '입력하신 정보를 다시 확인해주세요.';
       
       case 404:
-        return data?.detail || '요청한 정보를 찾을 수 없습니다.';
+        return '요청한 정보를 찾을 수 없습니다.';
       
       case 500:
-        return '서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+        return '일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
       
       default:
         return data?.detail || '서버 오류가 발생했습니다.';

@@ -18,7 +18,7 @@ interface UserResume extends ResumeResponse {
 
 const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading, refreshAuthStatus } = useAuth();
   const [activeTab, setActiveTab] = useState('resume');
   const [currentView, setCurrentView] = useState<'list' | 'create' | 'edit' | 'view'>('list');
   const [editingResumeId, setEditingResumeId] = useState<number | null>(null);
@@ -257,6 +257,74 @@ const ProfilePage: React.FC = () => {
       ...prev,
       [field]: value
     }));
+  };
+
+  const handleUserInfoSave = async () => {
+    // 이름과 이메일 검증
+    if (!userInfo.name.trim()) {
+      alert('이름을 입력해주세요.');
+      return;
+    }
+    if (!userInfo.email.trim()) {
+      alert('이메일을 입력해주세요.');
+      return;
+    }
+    
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        alert('인증이 필요합니다. 다시 로그인해주세요.');
+        return;
+      }
+
+      const response = await fetch('/user/me', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: userInfo.name.trim(),
+          email: userInfo.email.trim()
+        }),
+      });
+
+      if (response.ok) {
+        const updatedUser = await response.json();
+        
+        // localStorage의 사용자 정보도 업데이트
+        const existingUser = localStorage.getItem('user_profile');
+        if (existingUser) {
+          const userData = JSON.parse(existingUser);
+          userData.name = updatedUser.name;
+          userData.email = updatedUser.email;
+          localStorage.setItem('user_profile', JSON.stringify(userData));
+        }
+        
+        // 로컬 상태도 즉시 업데이트
+        setUserInfo({
+          name: updatedUser.name,
+          email: updatedUser.email,
+          profileImage: userInfo.profileImage
+        });
+        
+        alert('정보가 성공적으로 저장되었습니다.');
+        
+        // 인증 상태 새로고침으로 사용자 정보 갱신
+        await refreshAuthStatus();
+        
+        // 잠깐 기다린 후 페이지 새로고침 (모든 컴포넌트 확실히 갱신)
+        setTimeout(() => {
+          window.location.reload();
+        }, 100);
+      } else {
+        const errorData = await response.json();
+        alert(`저장에 실패했습니다: ${errorData.detail || '알 수 없는 오류'}`);
+      }
+    } catch (error) {
+      console.error('정보 저장 오류:', error);
+      alert('네트워크 오류가 발생했습니다. 다시 시도해주세요.');
+    }
   };
 
   const getScoreColor = (score: number) => {
@@ -878,24 +946,16 @@ const ProfilePage: React.FC = () => {
               <div className="mt-6 pt-6 border-t border-slate-200">
                 <h4 className="text-lg font-semibold text-slate-900 mb-4">계정 설정</h4>
                 <div className="space-y-4">
-                  <button className="w-full md:w-auto bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                    정보 저장
-                  </button>
-                  <button className="w-full md:w-auto ml-0 md:ml-2 border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 transition-colors">
-                    비밀번호 변경
+                  <button 
+                    onClick={handleUserInfoSave}
+                    disabled={authLoading}
+                    className="w-full md:w-auto bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {authLoading ? '저장 중...' : '정보 저장'}
                   </button>
                 </div>
               </div>
 
-              <div className="mt-6 pt-6 border-t border-slate-200">
-                <h4 className="text-lg font-semibold text-red-600 mb-4">위험한 작업</h4>
-                <button className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors">
-                  계정 삭제
-                </button>
-                <p className="text-sm text-slate-500 mt-2">
-                  계정을 삭제하면 모든 데이터가 영구적으로 삭제됩니다.
-                </p>
-              </div>
             </div>
           </div>
         );
