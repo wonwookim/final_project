@@ -97,7 +97,7 @@ async def spa_middleware(request: Request, call_next):
     response = await call_next(request)
     
     # API 경로들은 그대로 반환 (더 구체적으로 지정)
-    api_paths = ['/auth', '/user', '/resume', '/company', '/posting', '/position', '/docs', '/redoc', '/openapi.json', '/health']
+    api_paths = ['/auth', '/user', '/resume', '/company', '/posting', '/position', '/gaze', '/docs', '/redoc', '/openapi.json', '/health']
     
     # /interview API 경로들 (정확한 매칭을 위해)
     is_interview_api = (
