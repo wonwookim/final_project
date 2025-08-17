@@ -200,7 +200,8 @@ const InterviewGO: React.FC = () => {
   
   // 🆕 새로운 상태들 추가
   const [currentAnswer, setCurrentAnswer] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(false); // 면접 초기 시작 로딩
+  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false); // 답변 제출 중
   const [isRestoring, setIsRestoring] = useState(true); // 복원 상태 추가
   
   // 🆕 INTRO 메시지 관련 상태
@@ -921,7 +922,7 @@ const InterviewGO: React.FC = () => {
   const getVoiceIdByType = (type: string): string => {
     const normalizedType = normalizeTTSType(type);
     switch (normalizedType) {
-      case 'ai': return 'H8ObVvroE5JXeeUSJakg'; // AI 전용 음성 (현재는 기본값과 동일)
+      case 'ai': return 'uyVNoMrVvroE5JXeeUSJakg'; // AI 전용 음성 (현재는 기본값과 동일)
       case 'tech': return 'mYk0rAapHek2oTw18z8x'; // 기술 면접관 음성 (현재는 기본값과 동일)
       case 'collaborate': return 'ZJCNdZEjYwkOElxugmW2'; // 협업 면접관 음성 (현재는 기본값과 동일)  
       case 'hr': return 'YBRudLRm83BV5Mazcr42'; // HR 면접관 음성 (기본값)
@@ -972,7 +973,7 @@ const InterviewGO: React.FC = () => {
               setCurrentQuestion("🎬 면접을 시작합니다");
               setCurrentPhase('waiting');
               setCurrentTurn('waiting');
-              setIsLoading(true);
+              setIsInitialLoading(true);
               
               // 🚦 호출 진행 상태 설정 (메모리 + 전역)
               isApiCallInProgressRef.current = true;
@@ -1105,7 +1106,7 @@ const InterviewGO: React.FC = () => {
                   setCanSubmit(false);
                 }
                 
-                setIsLoading(false);
+                setIsInitialLoading(false);
                 
                 // 🆕 즉시 API 호출 완료 상태로 업데이트 (재호출 방지)
                 markApiCallCompleted(response);
@@ -1128,7 +1129,7 @@ const InterviewGO: React.FC = () => {
                 }
                 
                 setCurrentQuestion("질문 로딩에 실패했습니다. 새로고침해주세요.");
-                setIsLoading(false);
+                setIsInitialLoading(false);
                 setCurrentPhase('unknown');
                 setCurrentTurn('waiting');
                 
@@ -1286,7 +1287,7 @@ const InterviewGO: React.FC = () => {
       return;
     }
 
-    if (isLoading) {
+    if (isSubmittingAnswer) {
       console.log('❌ 이미 제출 중입니다.');
       return;
     }
@@ -1316,7 +1317,7 @@ const InterviewGO: React.FC = () => {
     }
 
     try {
-      setIsLoading(true);
+      setIsSubmittingAnswer(true);
       setIsTimerActive(false); // 타이머 정지
       setCanSubmit(false); // 제출 버튼 비활성화
       setCanRecord(false); // 🎤 녹음 비활성화
@@ -1393,7 +1394,7 @@ const InterviewGO: React.FC = () => {
       }
       alert(`답변 제출 실패: ${errorMessage}`);
     } finally {
-      setIsLoading(false);
+      setIsSubmittingAnswer(false);
     }
   };
 
@@ -2072,7 +2073,7 @@ const InterviewGO: React.FC = () => {
                 {/* 녹음 버튼 */}
                 <button
                   onClick={isRecording ? stopRecording : startRecording}
-                  disabled={!canRecord || isLoading}
+                  disabled={!canRecord || isSubmittingAnswer}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
                     !canRecord ? 'bg-gray-600 text-gray-400 cursor-not-allowed' :
                     isRecording ? 'bg-red-500 text-white animate-pulse' :
@@ -2210,15 +2211,8 @@ const InterviewGO: React.FC = () => {
                     {isTTSPlaying ? '현재 진행 중' : '현재 질문'}
                   </div>
                   <div className="text-white text-base leading-relaxed mb-3 max-h-16 overflow-y-auto">
-                    {isLoading ? (
-                      <div className="flex items-center justify-center gap-2">
-                        <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-                        <span className="text-blue-400">
-                          {ttsQueue.length > 0 ? getTTSDisplayMessage(ttsQueue[0].type) : '🎬 면접을 시작합니다'}
-                        </span>
-                      </div>
-                    ) : isTTSPlaying && currentTTSIndex >= 0 && ttsQueue[currentTTSIndex] ? (
-                      // 🎯 TTS 재생 중일 때 타입별 메시지 표시
+                    {isTTSPlaying && currentTTSIndex >= 0 && ttsQueue[currentTTSIndex] ? (
+                      // 🎯 1순위: TTS 재생 중일 때 타입별 메시지 표시
                       <div className="flex items-center justify-center gap-2">
                         <div className="w-3 h-3 bg-purple-400 rounded-full animate-pulse"></div>
                         <span className="text-purple-400">
@@ -2226,10 +2220,30 @@ const InterviewGO: React.FC = () => {
                         </span>
                       </div>
                     ) : currentPhase === 'ai_processing' ? (
-                      "🤖 AI가 답변을 생성하고 있습니다..."
+                      // 🎯 2순위: AI 답변 생성 중
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                        <span className="text-green-400">🤖 AI가 답변을 생성하고 있습니다...</span>
+                      </div>
+                    ) : isSubmittingAnswer ? (
+                      // 🎯 3순위: 사용자 답변 제출 중
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-3 h-3 bg-orange-400 rounded-full animate-pulse"></div>
+                        <span className="text-orange-400">📝 답변을 제출하고 있습니다...</span>
+                      </div>
                     ) : currentPhase === 'interview_completed' ? (
+                      // 🎯 4순위: 면접 완료
                       "✅ 면접이 완료되었습니다"
+                    ) : isInitialLoading ? (
+                      // 🎯 5순위: 초기 로딩
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                        <span className="text-blue-400">
+                          {ttsQueue.length > 0 ? getTTSDisplayMessage(ttsQueue[0].type) : '🎬 면접을 시작합니다'}
+                        </span>
+                      </div>
                     ) : (
+                      // 🎯 6순위: 기본값 - 현재 질문 표시
                       currentQuestion || "질문을 불러오는 중..."
                     )}
                   </div>
@@ -2301,7 +2315,7 @@ const InterviewGO: React.FC = () => {
                    const hasAnswer = !!currentAnswer.trim();
                    const hasSessionId = !!state.sessionId || !isRestoring;
                    const isUserTurn = currentPhase === 'user_turn';
-                   const isButtonDisabled = !hasAnswer || isLoading || isRestoring || !isUserTurn || !canSubmit;
+                   const isButtonDisabled = !hasAnswer || isSubmittingAnswer || isRestoring || !isUserTurn || !canSubmit;
                    
                    return (
                      <button 
@@ -2313,7 +2327,7 @@ const InterviewGO: React.FC = () => {
                        onClick={submitAnswer}
                        disabled={isButtonDisabled}
                      >
-                       {isLoading 
+                       {isSubmittingAnswer 
                          ? '제출 중...' 
                          : isRestoring
                          ? '세션 로드 중...'

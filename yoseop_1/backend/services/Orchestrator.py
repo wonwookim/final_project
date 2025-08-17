@@ -362,6 +362,12 @@ class Orchestrator:
             total_limit = self.session_state.get('total_question_limit', 15)
             is_final_question = current_turn >= total_limit
             
+            print(f"[DEBUG] ===== 마지막 질문 감지 상세 로그 =====")
+            print(f"[DEBUG] current_turn: {current_turn}")
+            print(f"[DEBUG] total_limit: {total_limit}")
+            print(f"[DEBUG] is_final_question: {is_final_question}")
+            print(f"[DEBUG] current_turn >= total_limit: {current_turn >= total_limit}")
+            print(f"[DEBUG] current_turn == total_limit: {current_turn == total_limit}")
             print(f"[DEBUG] 답변 선택 로직: turn={current_turn}, limit={total_limit}, is_final={is_final_question}")
             
             if current_turn == 1:
@@ -369,7 +375,8 @@ class Orchestrator:
                 print(f"[DEBUG] 첫 질문 - 사용자 우선")
             elif is_final_question or current_turn == total_limit:
                 selected_agent = 'ai'    # 🆕 마지막 질문은 AI가 먼저 (조건 강화)
-                print(f"[DEBUG] 마지막 질문 감지 - AI 우선 실행 (turn: {current_turn}, limit: {total_limit})")
+                print(f"[DEBUG] ✅ 마지막 질문 감지 - AI 우선 실행 확정! (turn: {current_turn}, limit: {total_limit})")
+                print(f"[DEBUG] ✅ selected_agent = 'ai' 설정됨")
             else:
                 selected_agent = 'user' if self._random_select() == -1 else 'ai'  # 일반 질문은 랜덤
                 print(f"[DEBUG] 일반 질문 - 랜덤 선택: {selected_agent}")
@@ -504,12 +511,19 @@ class Orchestrator:
         
         print(f"[DEBUG] 개별 질문 플로우: 답변 수 {individual_answers}/2")
         
-        # 첫 번째 답변: 랜덤 선택
+        # 첫 번째 답변: 조건별 선택 (마지막 질문=AI 우선, 나머지=랜덤)
         if individual_answers == 0:
-            selected_agent = 'user' if self._random_select() == -1 else 'ai'
-            question_text = user_question if selected_agent == 'user' else ai_question
+            total_limit = self.session_state.get('total_question_limit', 15)
+            is_final_question = current_turn >= total_limit
             
-            print(f"[DEBUG] 개별 질문 플로우: 랜덤 선택 - {selected_agent} 선택됨")
+            if is_final_question or current_turn == total_limit:
+                selected_agent = 'ai'    # 마지막 질문은 AI 우선
+                print(f"[DEBUG] 개별 질문 플로우: 마지막 질문 감지 - AI 우선 (turn: {current_turn}, limit: {total_limit})")
+            else:
+                selected_agent = 'user' if self._random_select() == -1 else 'ai'  # 일반 질문은 랜덤
+                print(f"[DEBUG] 개별 질문 플로우: 일반 질문 - 랜덤 선택: {selected_agent}")
+                
+            question_text = user_question if selected_agent == 'user' else ai_question
             
             message = self.create_agent_message(
                 session_id=self.session_id,
@@ -869,6 +883,13 @@ class Orchestrator:
                 total_limit = self.session_state.get('total_question_limit', 15)
                 is_final_question = current_turn >= total_limit
                 
+                print(f"[DEBUG] ===== AI 작업 시작 전 마지막 질문 체크 =====")
+                print(f"[DEBUG] current_turn: {current_turn}")
+                print(f"[DEBUG] total_limit: {total_limit}")
+                print(f"[DEBUG] is_final_question: {is_final_question}")
+                print(f"[DEBUG] current_question: {current_question}")
+                print(f"[DEBUG] =========================================")
+                
                 if current_question and not is_final_question:
                     # 일반 질문에서만 사용자 답변 확인
                     qa_history = self.session_state.get('qa_history', [])
@@ -880,9 +901,12 @@ class Orchestrator:
                         result = await self.create_user_waiting_message()
                         return result
                 elif is_final_question:
-                    print(f"[DEBUG] 마지막 질문 - AI 작업 검증 건너뜀 (turn: {current_turn}, limit: {total_limit})")
+                    print(f"[DEBUG] ✅ 마지막 질문 - AI 작업 검증 건너뜀 (turn: {current_turn}, limit: {total_limit})")
+                    print(f"[DEBUG] ✅ 마지막 질문에서 AI 작업 진행 확정!")
                 
+                print(f"[DEBUG] AI 작업 시작: _process_ai_task 호출")
                 await self._process_ai_task(next_message.get("content", {}).get("content"))
+                print(f"[DEBUG] AI 작업 완료: _process_ai_task 완료")
             
             tts_queue_after_agent = len(self.session_state.get('tts_queue', []))
             print(f"[TRACE] {next_agent} 처리 후 TTS 큐 변화: {tts_queue_before_agent} -> {tts_queue_after_agent}")
