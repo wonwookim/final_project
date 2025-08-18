@@ -221,7 +221,7 @@ async def get_gaze_upload_url(
             Params={
                 'Bucket': BUCKET_NAME, 
                 'Key': s3_key,
-                'ContentType': 'video/webm'  # 시선 추적은 비디오만
+                'ContentType': request.content_type or 'video/webm'  # 실제 파일 타입 사용
             },
             ExpiresIn=3600
         )

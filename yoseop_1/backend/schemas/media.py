@@ -170,6 +170,7 @@ class GazeUploadRequest(BaseModel):
     session_id: str = Field(..., description="면접 세션 ID", min_length=1)
     file_name: str = Field(..., description="파일명", min_length=1, max_length=255)
     file_size: Optional[int] = Field(None, description="파일 크기 (바이트)", ge=0)
+    content_type: Optional[str] = Field('video/mp4', description="실제 파일 MIME 타입", pattern=r"^video/(mp4|webm|quicktime)$")
     
     @validator('file_name')
     def validate_file_name(cls, v):

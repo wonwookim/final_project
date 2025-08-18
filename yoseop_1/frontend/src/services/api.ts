@@ -1270,6 +1270,7 @@ export interface GazeUploadUrlRequest {
   file_name: string;
   file_type: 'video';
   file_size?: number;
+  content_type?: string;  // 실제 MIME 타입 추가
 }
 
 export interface GazeUploadUrlResponse {

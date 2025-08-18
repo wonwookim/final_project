@@ -71,7 +71,7 @@ async def upload_temporary_gaze_video(session_id: str, file: UploadFile = File(.
         # 임시 폴더 생성
         os.makedirs(TEMP_GAZE_FOLDER, exist_ok=True)
         
-        # 파일 확장자 추출 (보안상 webm만 허용)
+        # 파일 확장자 추출 (webm 우선 지원)
         if not file.filename or not file.filename.lower().endswith(('.webm', '.mp4')):
             raise HTTPException(status_code=400, detail="지원되지 않는 파일 형식입니다. webm 또는 mp4 파일만 업로드 가능합니다.")
         

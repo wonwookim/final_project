@@ -718,7 +718,7 @@ class GazeAnalyzer(GazeCoreProcessor):
         logger.info(f"🎬 [ANALYZE] 동영상 분석 시작: s3://{bucket}/{key}")
         analysis_start_time = time.time()
         
-        # 안전한 임시 파일 관리
+        # 안전한 임시 파일 관리 (webm 파일)
         with SecureFileManager.secure_temp_file('.webm') as video_path:
             try:
                 # === 1단계: S3에서 동영상 다운로드 ===
@@ -729,23 +729,9 @@ class GazeAnalyzer(GazeCoreProcessor):
                 if not validation['valid']:
                     raise Exception(f"동영상 파일 검증 실패: {', '.join(validation['errors'])}")
                 
-                # === 2단계: FFmpeg 필수 트랜스코딩 (webm 사용 안함) ===
-                logger.info("🔄 [ANALYZE] FFmpeg 필수 트랜스코딩 시작")
-                
-                # FFmpeg 설치 확인 (필수)
-                if not self._check_ffmpeg_availability():
-                    raise Exception("FFmpeg가 설치되지 않았거나 사용할 수 없습니다. 시선 분석을 위해 FFmpeg 설치가 필요합니다.")
-                
-                # mp4 임시 파일 경로 생성
-                transcoded_path = video_path.replace('.webm', '_transcoded.mp4')
-                
-                # webm → mp4 트랜스코딩 실행 (필수)
-                if not self._transcode_webm_to_mp4(video_path, transcoded_path):
-                    raise Exception("비디오 트랜스코딩에 실패했습니다. 파일이 손상되었거나 지원되지 않는 형식일 수 있습니다.")
-                
-                # 트랜스코딩된 mp4 파일만 사용
-                final_video_path = transcoded_path
-                logger.info(f"✅ [ANALYZE] FFmpeg 트랜스코딩 성공 - mp4 파일 사용: {transcoded_path}")
+                # === 2단계: webm 파일 직접 사용 (트랜스코딩 불필요) ===
+                logger.info("📁 [ANALYZE] S3에서 다운로드된 webm 파일 직접 사용")
+                final_video_path = video_path
                 
                 # === 3단계: 허용 시선 범위 계산 ===
                 logger.info(f"🎯 [ANALYZE] Calibration points: {calibration_points}")
@@ -870,13 +856,7 @@ class GazeAnalyzer(GazeCoreProcessor):
                 logger.info(f"✅ [ANALYZE] 분석 완료: 점수={final_score}, 소요시간={analysis_duration:.1f}초")
                 logger.info(f"🎯 [ANALYZE] Final allowed range in result: {current_allowed_range}")
                 
-                # === 11단계: 임시 파일 정리 ===
-                if transcoded_path and os.path.exists(transcoded_path):
-                    try:
-                        os.remove(transcoded_path)
-                        logger.info(f"🗑️ [CLEANUP] 트랜스코딩된 임시 파일 삭제: {transcoded_path}")
-                    except Exception as cleanup_error:
-                        logger.warning(f"⚠️ [CLEANUP] 임시 파일 삭제 실패: {cleanup_error}")
+                # === 11단계: 분석 완료 (임시 파일 정리 불필요 - webm 직접 사용) ===
                 
                 return GazeAnalysisResult(
                     gaze_score=final_score,
@@ -894,14 +874,6 @@ class GazeAnalyzer(GazeCoreProcessor):
                 )
                 
             except Exception as e:
-                # 에러 발생 시에도 임시 파일 정리
-                if 'transcoded_path' in locals() and transcoded_path and os.path.exists(transcoded_path):
-                    try:
-                        os.remove(transcoded_path)
-                        logger.info(f"🗑️ [CLEANUP] 에러 처리 중 트랜스코딩된 임시 파일 삭제: {transcoded_path}")
-                    except Exception as cleanup_error:
-                        logger.warning(f"⚠️ [CLEANUP] 에러 처리 중 임시 파일 삭제 실패: {cleanup_error}")
-                
                 logger.error(f"❌ [ANALYZE] 분석 실패: {e}")
                 raise
 

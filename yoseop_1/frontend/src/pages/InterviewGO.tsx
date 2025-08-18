@@ -1332,16 +1332,19 @@ const InterviewGO: React.FC = () => {
         throw new Error('캘리브레이션 데이터를 찾을 수 없습니다.');
       }
 
-      // 1. S3 업로드 URL 요청
+      // 1. 실제 Blob 타입에 따른 파일명 결정
       const timestamp = Date.now();
-      const fileName = `gaze-recording-${timestamp}.webm`;
+      const actualMimeType = videoBlob.type || 'video/webm'; // Blob의 실제 MIME 타입
+      const fileExtension = actualMimeType.includes('mp4') ? 'mp4' : 'webm';
+      const fileName = `gaze-recording-${timestamp}.${fileExtension}`;
       
-      console.log('📝 S3 업로드 URL 요청 중... (session_id:', sessionId, ')');
+      console.log('📝 S3 업로드 URL 요청 중... (session_id:', sessionId, ', 실제 타입:', actualMimeType, ')');
       const uploadResponse = await interviewApi.getGazeUploadUrl({
         session_id: sessionId,  // interview_id 대신 session_id 사용
         file_name: fileName,
         file_size: videoBlob.size,
-        file_type: 'video'
+        file_type: 'video',
+        content_type: actualMimeType  // 실제 Blob MIME 타입 전달
       });
 
       console.log('✅ S3 업로드 URL 받음:', uploadResponse.media_id);
@@ -1352,7 +1355,7 @@ const InterviewGO: React.FC = () => {
         method: 'PUT',
         body: videoBlob,
         headers: {
-          'Content-Type': 'video/webm'
+          'Content-Type': actualMimeType  // 실제 Blob MIME 타입 사용
         }
       });
 
