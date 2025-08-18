@@ -1751,36 +1751,6 @@ const InterviewGO: React.FC = () => {
   // 👁️ 이전 업로드 및 분석 함수는 새로운 "선-업로드, 후-분석" 아키텍처로 대체되었습니다.
   // 시선 추적 비디오는 이제 답변 제출 시 임시 업로드되고, 백그라운드에서 분석됩니다.
 
-  // 👁️ 분석 결과를 Supabase에 저장
-  const saveGazeAnalysisToDatabase = async (result: GazeAnalysisResult) => {
-    try {
-      const user = tokenManager.getUser();
-      const userId = user?.user_id;
-      const calibrationSessionId = state.gazeTracking?.calibrationSessionId;
-
-      if (!userId || !state.sessionId || !calibrationSessionId) {
-        console.error('❌ 필수 정보 누락:', { userId, sessionId: state.sessionId, calibrationSessionId });
-        return;
-      }
-
-      // Supabase gaze_analysis 테이블에 저장
-      const saveResponse = await apiClient.post('/gaze/analysis/save', {
-        interview_id: parseInt(state.sessionId),
-        user_id: userId,
-        calibration_session_id: calibrationSessionId,
-        gaze_score: result.gaze_score,
-        jitter_score: result.jitter_score,
-        compliance_score: result.compliance_score,
-        stability_rating: result.stability_rating
-      });
-
-      console.log('✅ 시선 분석 결과 DB 저장 완료:', saveResponse.data);
-
-    } catch (error) {
-      console.error('❌ 시선 분석 결과 DB 저장 실패:', error);
-      // DB 저장 실패해도 면접 진행에는 영향 없도록 처리
-    }
-  };
 
   // 🆕 필요한 데이터 추출 함수들
   const getCurrentUserId = (): number => {
@@ -2043,13 +2013,6 @@ const InterviewGO: React.FC = () => {
           setPollingError(null);
           stopPolling(); // 모든 타이머 정리
           
-          // DB에 결과 저장
-          try {
-            await saveGazeAnalysisToDatabase(statusData.result);
-          } catch (saveError) {
-            console.error('❌ DB 저장 실패:', saveError);
-            // DB 저장 실패해도 분석 결과는 유지
-          }
 
         } else if (statusData.status === 'failed') {
           // 분석 실패
@@ -2098,7 +2061,7 @@ const InterviewGO: React.FC = () => {
 
     // Cleanup function - 컴포넌트 언마운트나 의존성 변경 시
     return stopPolling;
-  }, [state.gazeTracking?.gazeAnalysisTaskId, state.gazeTracking?.gazeAnalysisStatus, saveGazeAnalysisToDatabase]);
+  }, [state.gazeTracking?.gazeAnalysisTaskId, state.gazeTracking?.gazeAnalysisStatus]);
 
   // 👁️ gazeBlob이 설정되었을 때 상태만 업데이트 (분석은 피드백 후 실행)
   useEffect(() => {
