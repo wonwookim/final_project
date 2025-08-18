@@ -303,7 +303,23 @@ class ExistingTablesService:
         except Exception as e:
             logger.error(f"전체 채용공고 조회 실패: {str(e)}")
             return []
-    
+    async def get_posting_by_company_and_position_ids(self, company_id: int, position_id: int) -> Optional[Dict[str, Any]]:
+        """company_id와 position_id로 채용공고 조회 (회사, 직무 정보 포함)"""
+        try:
+            result = self.client.table('posting').select(
+                '*, company(company_id, name), position(position_id, position_name)'
+            ).eq('company_id', company_id).eq('position_id', position_id).execute()
+            
+            if result.data and len(result.data) > 0:
+                logger.info(f"✅ 채용공고 매칭 성공: company_id={company_id}, position_id={position_id}")
+                return result.data[0]  # 첫 번째 매칭되는 채용공고 반환
+            else:
+                logger.warning(f"채용공고를 찾을 수 없음: company_id={company_id}, position_id={position_id}")
+                return None
+        except Exception as e:
+            logger.error(f"채용공고 조회 실패 (company_id: {company_id}, position_id: {position_id}): {str(e)}")
+            return None
+        
     # ===================
     # 유틸리티 함수
     # ===================

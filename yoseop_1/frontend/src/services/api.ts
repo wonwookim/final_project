@@ -958,8 +958,53 @@ export const validateFileExtension = (file: File, allowedExtensions: string[] = 
   return extension ? allowedExtensions.includes(extension) : false;
 };
 
+// 🆕 회사 정보 인터페이스
+export interface Company {
+  company_id: number;
+  name: string;
+}
+
+// 🆕 직군 정보 인터페이스
+export interface Position {
+  position_id: number;
+  position_name: string;
+}
+
 // 🆕 채용공고 관련 API 함수들
 export const postingAPI = {
+  // 모든 회사 목록 조회
+  async getAllCompanies(): Promise<Company[]> {
+    try {
+      const response = await apiClient.get('/company');
+      return response.data as Company[];
+    } catch (error) {
+      console.error('회사 목록 조회 실패:', error);
+      return [];
+    }
+  },
+
+  // 모든 직군 목록 조회
+  async getAllPositions(): Promise<Position[]> {
+    try {
+      const response = await apiClient.get('/position');
+      return response.data as Position[];
+    } catch (error) {
+      console.error('직군 목록 조회 실패:', error);
+      return [];
+    }
+  },
+
+  // 회사와 직군으로 공고 조회
+  async getPostingByCompanyAndPosition(companyId: number, positionId: number): Promise<JobPosting | null> {
+    try {
+      const response = await apiClient.get(`/posting/company/${companyId}/position/${positionId}`);
+      return response.data as JobPosting;
+    } catch (error) {
+      console.error('회사/직군별 공고 조회 실패:', error);
+      return null;
+    }
+  },
+
   // 모든 채용공고 조회
   async getAllPostings(): Promise<JobPosting[]> {
     try {
@@ -1098,11 +1143,7 @@ export const tokenManager = {
   },
 };
 
-// 🆕 Position 관련 타입 정의
-export interface Position {
-  position_id: number;
-  position_name: string;
-}
+// 🆕 Position 관련 타입 정의 (중복 제거됨 - 위의 Position 인터페이스 사용)
 
 // 🆕 Resume 관련 타입 정의 (백엔드 스키마와 일치)
 export interface ResumeCreate {
