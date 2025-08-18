@@ -90,6 +90,7 @@ export interface CalibrationStatusResponse {
 export interface CalibrationResult {
   session_id: string;
   calibration_points: [number, number][];
+  initial_face_size?: number | null; // null 값도 허용하도록 수정
   point_details: { [key: string]: CalibrationPoint };
   collection_stats: { [key: string]: number };
   completed_at: number;

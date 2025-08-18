@@ -203,12 +203,15 @@ export interface STTResponse {
   duration?: number;
 }
 
-// 🆕 캘리브레이션 결과 타입
+// 🆕 캘리브레이션 결과 타입 (기존 타입과 완전히 일치하도록 확장)
 export interface CalibrationResult {
   session_id: string;
   calibration_points: [number, number][];
-  initial_face_size: number;
-  allowed_range: {
+  initial_face_size?: number | null; // Optional[float]에 대응
+  point_details: { [key: string]: any }; // CalibrationPoint 타입
+  collection_stats: { [key: string]: number };
+  completed_at: number;
+  allowed_range?: { // Optional 필드로 수정
     left_bound: number;
     right_bound: number;
     top_bound: number;
@@ -905,6 +908,70 @@ export const interviewApi = {
       throw error;
     }
   },
+
+  // 🆕 시선 영상용 Pre-signed URL 요청
+  async getGazeUploadUrl(request: GazeUploadUrlRequest): Promise<GazeUploadUrlResponse> {
+    try {
+      // 🛡️ 요청 데이터 검증
+      if (!validateGazeUploadUrlRequest(request)) {
+        throw new Error('잘못된 시선 업로드 요청 데이터입니다');
+      }
+
+      console.log('📤 시선 업로드 URL 요청:', request);
+      const response = await apiClient.post('/media/gaze/upload-url', request);
+      
+      console.log('✅ 시선 업로드 URL 응답:', response.data);
+      return response.data as GazeUploadUrlResponse;
+    } catch (error) {
+      console.error('🚨 시선 업로드 URL 요청 실패:', error);
+      throw handleApiError(error);
+    }
+  },
+
+  // 🆕 시선 분석 백그라운드 작업 트리거
+  async triggerGazeAnalysis(request: GazeAnalysisTriggerRequest): Promise<GazeAnalysisTriggerResponse> {
+    try {
+      // 🛡️ 요청 데이터 검증
+      if (!validateGazeAnalysisTriggerRequest(request)) {
+        throw new Error('잘못된 시선 분석 트리거 요청 데이터입니다');
+      }
+
+      // 🛡️ 캘리브레이션 데이터 상세 검증
+      if (!validateCalibrationData(request.calibration_data)) {
+        throw new Error('유효하지 않은 캘리브레이션 데이터입니다');
+      }
+
+      console.log('🔍 시선 분석 트리거 요청:', {
+        session_id: request.session_id,
+        s3_key: request.s3_key,
+        calibration_points_count: request.calibration_data.calibration_points?.length,
+        has_initial_face_size: !!request.calibration_data.initial_face_size
+      });
+      console.log('DEBUG: POST /gaze/analyze/trigger 요청 전송 시도:', request); // 🆕 추가
+      const response = await apiClient.post('/gaze/analyze-trigger', request);
+      console.log('DEBUG: POST /gaze/analyze/trigger 응답 수신:', response.data); // 🆕 추가
+      
+      console.log('✅ 시선 분석 트리거 응답:', response.data);
+      return response.data as GazeAnalysisTriggerResponse;
+    } catch (error) {
+      console.error('🚨 시선 분석 트리거 실패:', error);
+      throw handleApiError(error);
+    }
+  },
+
+  // 🆕 시선 분석 상태 조회
+  async getGazeAnalysisStatus(taskId: string): Promise<any> {
+    try {
+      console.log('📊 시선 분석 상태 조회:', taskId);
+      const response = await apiClient.get(`/gaze/analyze/status/${taskId}`);
+      
+      console.log('📊 시선 분석 상태 응답:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('🚨 시선 분석 상태 조회 실패:', error);
+      throw handleApiError(error);
+    }
+  },
 };
 
 // 에러 처리 유틸리티
@@ -1196,5 +1263,65 @@ export const sessionApi = {
     }
   },
 };
+
+// 🆕 시선 추적 관련 API 타입 정의 (백엔드 스키마와 정확히 일치)
+export interface GazeUploadUrlRequest {
+  session_id: string;
+  file_name: string;
+  file_type: 'video';
+  file_size?: number;
+}
+
+export interface GazeUploadUrlResponse {
+  upload_url: string;
+  media_id: string;
+  s3_key: string;
+  expires_in: number;
+}
+
+export interface GazeAnalysisTriggerRequest {
+  session_id: string;
+  s3_key: string;
+  calibration_data: CalibrationResult;
+  media_id?: string;
+}
+
+export interface GazeAnalysisTriggerResponse {
+  task_id: string;
+  status: string;
+  message?: string;
+}
+
+// 🛡️ 타입 가드 및 검증 함수들
+const validateGazeUploadUrlRequest = (request: any): request is GazeUploadUrlRequest => {
+  return request && 
+         typeof request.session_id === 'string' && 
+         request.session_id.length > 0 && 
+         typeof request.file_name === 'string' && 
+         request.file_name.length > 0 &&
+         request.file_type === 'video';
+};
+
+const validateCalibrationData = (data: any): data is CalibrationResult => {
+  return data && 
+         typeof data.session_id === 'string' && // Add session_id check
+         data.calibration_points && 
+         Array.isArray(data.calibration_points) && 
+         data.calibration_points.length === 4 &&
+         (data.initial_face_size === undefined || data.initial_face_size === null || typeof data.initial_face_size === 'number');
+         // Removed checks for point_details, collection_stats, completed_at
+};
+
+const validateGazeAnalysisTriggerRequest = (request: any): request is GazeAnalysisTriggerRequest => {
+  return request &&
+         typeof request.session_id === 'string' &&
+         request.session_id.length > 0 &&
+         typeof request.s3_key === 'string' &&
+         request.s3_key.length > 0 &&
+         // 🆕 media_id 검증 수정: media_id가 존재할 경우에만 string 및 length 검증
+         (request.media_id === undefined || (typeof request.media_id === 'string' && request.media_id.length > 0)) &&
+         validateCalibrationData(request.calibration_data);
+};
+
 
 export default apiClient;

@@ -4,7 +4,7 @@ import Header from '../../components/common/Header';
 import StepIndicator from '../../components/interview/StepIndicator';
 import NavigationButtons from '../../components/interview/NavigationButtons';
 import { useInterview } from '../../contexts/InterviewContext';
-import { interviewApi } from '../../services/api';
+import { interviewApi, CalibrationResult } from '../../services/api';
 import VideoCalibration from '../../components/test/VideoCalibration';
 import { GAZE_CONSTANTS } from '../../constants/gazeConstants';
 
@@ -272,7 +272,7 @@ const EnvironmentCheck: React.FC = () => {
       // 2. 새로 만든 전용 API 함수를 사용하여 캘리브레이션 결과를 요청합니다.
       console.log(`📊 캘리브레이션 결과 요청: ${calibSessionId}`);
       const calibResultResponse = await interviewApi.getCalibrationResult(calibSessionId);
-      const fullCalibrationData = calibResultResponse;
+      const fullCalibrationData: CalibrationResult = calibResultResponse;
 
       // 3. 받은 데이터가 유효한지 검증합니다.
       if (!fullCalibrationData || !fullCalibrationData.calibration_points) {
@@ -280,7 +280,14 @@ const EnvironmentCheck: React.FC = () => {
       }
       console.log('✅ 캘리브레이션 전체 데이터 수신 성공:', fullCalibrationData);
 
-      // 4. 받아온 전체 캘리브레이션 데이터를 finalSettings에 포함시킵니다.
+      // 4. 캘리브레이션 데이터를 Context에 저장합니다 (S3 Pre-signed URL 플로우용)
+      dispatch({ 
+        type: 'SET_GAZE_CALIBRATION_DATA', 
+        payload: fullCalibrationData 
+      });
+      console.log('📄 캘리브레이션 데이터가 Context에 저장되었습니다');
+
+      // 5. 받아온 전체 캘리브레이션 데이터를 finalSettings에 포함시킵니다.
       const getDifficultyFromLevel = (level: number | undefined): string => {
         if (level === undefined) return '중간';
         if (level <= 3) return '초급';
@@ -300,7 +307,7 @@ const EnvironmentCheck: React.FC = () => {
         calibration_data: fullCalibrationData,
       };
 
-      // 5. 이후 로직은 동일합니다.
+      // 6. 이후 로직은 동일합니다.
       const sessionId = `session_${Date.now()}`;
       dispatch({ type: 'SET_SESSION_ID', payload: sessionId });
 

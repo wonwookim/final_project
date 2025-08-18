@@ -33,7 +33,7 @@ from schemas.gaze import (
     CalibrationStartRequest, CalibrationStartResponse, CalibrationStatusResponse,
     CalibrationResult, VideoAnalysisRequest, VideoAnalysisResponse, 
     GazeAnalysisResult, AnalysisStatusResponse, FrameFeedbackResponse,
-    ErrorResponse
+    GazeAnalysisTriggerRequest, GazeAnalysisTriggerResponse, ErrorResponse
 )
 
 # 기존 gaze 모듈들 import (서비스 레이어로 이전 전까지 임시 사용)
@@ -313,6 +313,93 @@ async def analyze_gaze(
         raise HTTPException(status_code=500, detail=f"분석 시작 오류: {str(e)}")
 
 
+@router.post("/analyze-trigger", response_model=GazeAnalysisTriggerResponse)
+async def trigger_gaze_analysis(
+    request: GazeAnalysisTriggerRequest,
+    background_tasks: BackgroundTasks,
+    current_user=Depends(auth_service.get_current_user),
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """
+    S3 업로드 완료 후 시선 분석 트리거
+    
+    프론트엔드에서 S3에 직접 업로드한 시선 추적 비디오에 대해
+    백그라운드 시선 분석을 트리거합니다.
+    interview_id는 아직 없으므로 session_id를 기반으로 처리합니다.
+    """
+    try:
+        print(f"🚀 [GAZE_TRIGGER] 분석 트리거 요청: user_id={current_user.user_id}, session_id={request.session_id}")
+        print(f"   - S3 Key: {request.s3_key}")
+        print(f"   - Calibration Session: {request.calibration_data.session_id}")
+        print(f"   - Media ID: {request.media_id}")
+        
+        if not gaze_analyzer:
+            raise HTTPException(status_code=503, detail="시선 분석 서비스를 사용할 수 없습니다")
+        
+        # S3 키 형식 검증 (session_id 기반으로 수정)
+        expected_prefix = f"gaze-videos/{current_user.user_id}/{request.session_id}/"
+        if not request.s3_key.startswith(expected_prefix):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"S3 키 형식이 올바르지 않습니다. 예상: {expected_prefix}*"
+            )
+        
+        # 캘리브레이션 데이터 검증
+        calibration_points = request.calibration_data.calibration_points
+        if len(calibration_points) != 4:
+            raise HTTPException(
+                status_code=400,
+                detail="캘리브레이션 데이터가 유효하지 않습니다. 4개 포인트가 필요합니다."
+            )
+        
+        initial_face_size = request.calibration_data.initial_face_size
+        print(f"🎯 [GAZE_TRIGGER] Calibration points: {len(calibration_points)}개")
+        print(f"🎯 [GAZE_TRIGGER] Initial face size: {initial_face_size}")
+        
+        # 분석 작업 생성 (session_id 기반으로 변경)
+        task_id = str(uuid.uuid4())
+        analysis_tasks[task_id] = {
+            'task_id': task_id,
+            'status': 'started',
+            'progress': 0.0,
+            'message': 'S3 업로드 완료 - 분석 대기열에 추가됨',
+            'started_at': datetime.now(),
+            'session_id': request.session_id,  # session_id 저장
+            'user_id': current_user.user_id,
+            's3_key': request.s3_key,
+            'temp_media_id': request.media_id,  # 임시 media_id 저장
+            'calibration_data': request.calibration_data  # 캘리브레이션 데이터 보관
+        }
+        
+        print(f"📋 [GAZE_TRIGGER] Task 생성 완료: {task_id} (session_id: {request.session_id})")
+        
+        # 백그라운드 분석 시작 (interview_id 제거)
+        background_tasks.add_task(
+            run_s3_video_analysis_with_session,
+            task_id,
+            BUCKET_NAME,
+            request.s3_key,
+            calibration_points,
+            initial_face_size,
+            current_user.user_id,
+            request.session_id  # interview_id 대신 session_id 전달
+        )
+        
+        print(f"⚡ [GAZE_TRIGGER] 백그라운드 분석 시작: {task_id}")
+        
+        return GazeAnalysisTriggerResponse(
+            task_id=task_id,
+            status="started",
+            message="시선 분석이 시작되었습니다"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ [GAZE_TRIGGER] 분석 트리거 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"시선 분석 트리거 실패: {str(e)}")
+
+
 @router.get("/analyze/status/{task_id}", response_model=AnalysisStatusResponse)
 async def get_analysis_status(task_id: str):
     """
@@ -413,6 +500,193 @@ async def run_video_analysis(
         analysis_tasks[task_id].update({
             'status': 'failed',
             'error': str(e),
+            'failed_at': datetime.now()
+        })
+
+
+async def run_s3_video_analysis(
+    task_id: str, 
+    bucket: str, 
+    s3_key: str, 
+    calibration_points: list, 
+    initial_face_size: float,
+    user_id: int,
+    interview_id: int
+):
+    """
+    S3에서 직접 업로드된 시선 추적 비디오 분석 (기존 함수 - interview_id 사용)
+    
+    기존 호환성을 위해 유지하는 함수입니다.
+    """
+    try:
+        print(f"🚀 [S3_ANALYSIS] Task ID: {task_id} - S3 직접 분석 시작")
+        print(f"   - S3 Path: s3://{bucket}/{s3_key}")
+        print(f"   - User: {user_id}, Interview: {interview_id}")
+        start_time = datetime.now()
+        
+        analysis_tasks[task_id]['progress'] = 0.1
+        analysis_tasks[task_id]['status'] = 'processing'
+        analysis_tasks[task_id]['message'] = "시선 분석 엔진 초기화 중..."
+
+        if not gaze_analyzer:
+            raise ValueError("시선 분석 엔진을 사용할 수 없습니다")
+
+        # 시선 분석 실행 (S3 키 직접 사용)
+        analysis_tasks[task_id]['progress'] = 0.3
+        analysis_tasks[task_id]['message'] = "S3에서 비디오 다운로드 중..."
+        
+        result: GazeAnalyzerResultData = gaze_analyzer.analyze_video(
+            bucket=bucket,
+            key=s3_key,
+            calibration_points=calibration_points,
+            initial_face_size=initial_face_size,
+            frame_skip=10
+        )
+        
+        end_time = datetime.now()
+        analysis_duration = (end_time - start_time).total_seconds()
+        
+        print(f"✅ [S3_ANALYSIS] Task ID: {task_id} - 분석 완료 ({analysis_duration:.2f}초)")
+
+        # 최소 데이터 검증
+        MIN_ANALYZED_FRAMES = 30
+        if result.analyzed_frames < MIN_ANALYZED_FRAMES:
+            print(f"⚠️ [S3_ANALYSIS] 데이터 부족: 분석된 프레임 {result.analyzed_frames}개 < 최소 기준 {MIN_ANALYZED_FRAMES}개")
+            raise ValueError(
+                f"분석에 사용된 데이터가 너무 적습니다({result.analyzed_frames} 프레임). "
+                f"10초 이상 선명한 영상을 다시 녹화해주세요."
+            )
+        
+        # 결과 저장
+        analysis_tasks[task_id].update({
+            'status': 'completed',
+            'progress': 1.0,
+            'message': '시선 분석이 성공적으로 완료되었습니다.',
+            'completed_at': end_time,
+            'result': GazeAnalysisResult(
+                gaze_score=result.gaze_score,
+                total_frames=result.total_frames,
+                analyzed_frames=result.analyzed_frames,
+                in_range_frames=result.in_range_frames,
+                in_range_ratio=result.in_range_ratio,
+                jitter_score=result.jitter_score,
+                compliance_score=result.compliance_score,
+                stability_rating=result.stability_rating,
+                feedback=result.feedback,
+                gaze_points=result.gaze_points,
+                analysis_duration=analysis_duration,
+                allowed_range=result.allowed_range,
+                calibration_points=result.calibration_points
+            )
+        })
+        
+        print(f"📊 [S3_ANALYSIS] 결과 저장 완료: 점수={result.gaze_score}")
+
+    except Exception as e:
+        import traceback
+        print(f"❌ [S3_ANALYSIS] Task ID: {task_id} - 분석 실패")
+        print(f"   - Error: {str(e)}")
+        traceback.print_exc()
+        
+        analysis_tasks[task_id].update({
+            'status': 'failed',
+            'error': str(e),
+            'message': f'시선 분석 실패: {str(e)}',
+            'failed_at': datetime.now()
+        })
+
+
+async def run_s3_video_analysis_with_session(
+    task_id: str, 
+    bucket: str, 
+    s3_key: str, 
+    calibration_points: list, 
+    initial_face_size: float,
+    user_id: int,
+    session_id: str
+):
+    """
+    S3에서 직접 업로드된 시선 추적 비디오 분석 (session_id 기반)
+    
+    interview_id가 아직 없는 상황에서 session_id를 기반으로 분석을 수행합니다.
+    결과는 s3_key를 기준으로 저장되며, 나중에 interview_id와 연결됩니다.
+    """
+    try:
+        print(f"🚀 [SESSION_ANALYSIS] Task ID: {task_id} - session_id 기반 분석 시작")
+        print(f"   - S3 Path: s3://{bucket}/{s3_key}")
+        print(f"   - User: {user_id}, Session: {session_id}")
+        start_time = datetime.now()
+        
+        analysis_tasks[task_id]['progress'] = 0.1
+        analysis_tasks[task_id]['status'] = 'processing'
+        analysis_tasks[task_id]['message'] = "시선 분석 엔진 초기화 중..."
+
+        if not gaze_analyzer:
+            raise ValueError("시선 분석 엔진을 사용할 수 없습니다")
+
+        # 시선 분석 실행 (S3 키 직접 사용)
+        analysis_tasks[task_id]['progress'] = 0.3
+        analysis_tasks[task_id]['message'] = "S3에서 비디오 다운로드 중..."
+        
+        result: GazeAnalyzerResultData = gaze_analyzer.analyze_video(
+            bucket=bucket,
+            key=s3_key,
+            calibration_points=calibration_points,
+            initial_face_size=initial_face_size,
+            frame_skip=10
+        )
+        
+        end_time = datetime.now()
+        analysis_duration = (end_time - start_time).total_seconds()
+        
+        print(f"✅ [SESSION_ANALYSIS] Task ID: {task_id} - 분석 완료 ({analysis_duration:.2f}초)")
+
+        # 최소 데이터 검증
+        MIN_ANALYZED_FRAMES = 30
+        if result.analyzed_frames < MIN_ANALYZED_FRAMES:
+            print(f"⚠️ [SESSION_ANALYSIS] 데이터 부족: 분석된 프레임 {result.analyzed_frames}개 < 최소 기준 {MIN_ANALYZED_FRAMES}개")
+            raise ValueError(
+                f"분석에 사용된 데이터가 너무 적습니다({result.analyzed_frames} 프레임). "
+                f"10초 이상 선명한 영상을 다시 녹화해주세요."
+            )
+        
+        # 결과 저장 (s3_key를 기준으로 임시 저장, interview_id는 나중에 연결)
+        analysis_tasks[task_id].update({
+            'status': 'completed',
+            'progress': 1.0,
+            'message': '시선 분석이 성공적으로 완료되었습니다.',
+            'completed_at': end_time,
+            'analysis_result': result,  # 원본 결과 객체 저장
+            'result': GazeAnalysisResult(
+                gaze_score=result.gaze_score,
+                total_frames=result.total_frames,
+                analyzed_frames=result.analyzed_frames,
+                in_range_frames=result.in_range_frames,
+                in_range_ratio=result.in_range_ratio,
+                jitter_score=result.jitter_score,
+                compliance_score=result.compliance_score,
+                stability_rating=result.stability_rating,
+                feedback=result.feedback,
+                gaze_points=result.gaze_points,
+                analysis_duration=analysis_duration,
+                allowed_range=result.allowed_range,
+                calibration_points=result.calibration_points
+            )
+        })
+        
+        print(f"📊 [SESSION_ANALYSIS] 결과 저장 완료: 점수={result.gaze_score}")
+        print(f"   - interview_id 연결은 면접 완료 후 지연 처리됩니다.")
+
+    except Exception as e:
+        import traceback
+        print(f"❌ [SESSION_ANALYSIS] Task ID: {task_id} - 분석 실패")
+        print(f"   - Error: {str(e)}")
+        traceback.print_exc()
+        
+        analysis_tasks[task_id].update({
+            'status': 'failed',
+            'error': str(e),
+            'message': f'시선 분석 실패: {str(e)}',
             'failed_at': datetime.now()
         })
 

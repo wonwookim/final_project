@@ -324,6 +324,9 @@ class GazeAnalyzer(GazeCoreProcessor):
                 check=False   # returncode 수동 확인
             )
             
+            logger.info(f"📊 [TRANSCODE_FFMPEG_OUTPUT] stdout: {result.stdout[:1000]}...") # 🆕 추가
+            logger.error(f"❌ [TRANSCODE_FFMPEG_OUTPUT] stderr: {result.stderr[:1000]}...") # 🆕 추가 (오류가 아니어도 로깅)
+            
             transcode_duration = time.time() - transcode_start
             
             # 트랜스코딩 성공 여부 확인
@@ -726,30 +729,23 @@ class GazeAnalyzer(GazeCoreProcessor):
                 if not validation['valid']:
                     raise Exception(f"동영상 파일 검증 실패: {', '.join(validation['errors'])}")
                 
-                # === 2단계: 조건부 트랜스코딩 (OpenCV 호환성 확보) ===
-                final_video_path = video_path  # 기본값은 원본 webm 파일
-                transcoded_path = None         # 변환된 mp4 파일 경로 (필요시)
+                # === 2단계: FFmpeg 필수 트랜스코딩 (webm 사용 안함) ===
+                logger.info("🔄 [ANALYZE] FFmpeg 필수 트랜스코딩 시작")
                 
-                # 메타데이터 검증으로 트랜스코딩 필요 여부 판단
-                if not self._validate_video_metadata(video_path):
-                    logger.info("🔄 [ANALYZE] 메타데이터 무효 - FFmpeg 트랜스코딩 시작")
-                    
-                    # FFmpeg 설치 확인
-                    if not self._check_ffmpeg_availability():
-                        logger.warning("⚠️ [ANALYZE] FFmpeg 미설치 - 원본 파일로 분석 시도")
-                    else:
-                        # mp4 임시 파일 경로 생성
-                        transcoded_path = video_path.replace('.webm', '_transcoded.mp4')
-                        
-                        # webm → mp4 트랜스코딩 실행
-                        if self._transcode_webm_to_mp4(video_path, transcoded_path):
-                            # 트랜스코딩 성공 시 변환된 파일 사용
-                            final_video_path = transcoded_path
-                            logger.info(f"✅ [ANALYZE] 트랜스코딩 성공 - mp4 파일 사용: {transcoded_path}")
-                        else:
-                            logger.warning("⚠️ [ANALYZE] 트랜스코딩 실패 - 원본 webm 파일로 진행")
-                else:
-                    logger.info("✅ [ANALYZE] 메타데이터 유효 - 원본 webm 파일 사용")
+                # FFmpeg 설치 확인 (필수)
+                if not self._check_ffmpeg_availability():
+                    raise Exception("FFmpeg가 설치되지 않았거나 사용할 수 없습니다. 시선 분석을 위해 FFmpeg 설치가 필요합니다.")
+                
+                # mp4 임시 파일 경로 생성
+                transcoded_path = video_path.replace('.webm', '_transcoded.mp4')
+                
+                # webm → mp4 트랜스코딩 실행 (필수)
+                if not self._transcode_webm_to_mp4(video_path, transcoded_path):
+                    raise Exception("비디오 트랜스코딩에 실패했습니다. 파일이 손상되었거나 지원되지 않는 형식일 수 있습니다.")
+                
+                # 트랜스코딩된 mp4 파일만 사용
+                final_video_path = transcoded_path
+                logger.info(f"✅ [ANALYZE] FFmpeg 트랜스코딩 성공 - mp4 파일 사용: {transcoded_path}")
                 
                 # === 3단계: 허용 시선 범위 계산 ===
                 logger.info(f"🎯 [ANALYZE] Calibration points: {calibration_points}")
@@ -762,10 +758,13 @@ class GazeAnalyzer(GazeCoreProcessor):
                 if not cap.isOpened():
                     raise Exception(f"동영상을 열 수 없습니다: {final_video_path}")
                 
-                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                fps = cap.get(cv2.CAP_PROP_FPS)
+                # 🆕 동영상 정보 유효성 검사 및 처리
+                raw_total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                raw_fps = cap.get(cv2.CAP_PROP_FPS)
 
-                # 👇 [수정 시작] 동영상 정보 유효성 검사 및 처리
+                total_frames = raw_total_frames
+                fps = raw_fps
+
                 if total_frames <= 0:
                     logger.warning(f"⚠️ [ANALYZE] 동영상 총 프레임 수가 유효하지 않습니다: {total_frames}. 기본값 1로 설정.")
                     total_frames = 1 # 0으로 나누는 것을 방지
@@ -776,8 +775,7 @@ class GazeAnalyzer(GazeCoreProcessor):
 
                 duration = total_frames / fps
 
-                logger.info(f"📹 [ANALYZE] 동영상 정보: {total_frames}프레임, {fps:.1f}FPS, {duration:.1f}초")
-                # 👆 [수정 끝] 동영상 정보 유효성 검사 및 처리
+                logger.info(f"📹 [ANALYZE] 동영상 정보: {total_frames}프레임, {fps:.1f}FPS, {duration:.1f}초 (원본: {raw_total_frames}프레임, {raw_fps:.1f}FPS)")
 
                 # duration = total_frames / fps if fps > 0 else 0
                 

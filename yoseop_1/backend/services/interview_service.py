@@ -69,6 +69,7 @@ class InterviewService:
             **initial_settings
         }
         self.session_states[session_id] = session_state
+        interview_logger.info(f"DEBUG: create_session_state - 세션 {session_id}이(가) self.session_states에 추가됨. 현재 self.session_states 키: {self.session_states.keys()}")
         return session_state
     
     def update_session_state(self, session_id: str, updates: Dict[str, Any]) -> bool:
@@ -89,7 +90,9 @@ class InterviewService:
     def get_session_or_error(self, session_id: str) -> tuple[Optional[Dict[str, Any]], Optional[Dict]]:
         """세션 상태를 가져오거나 에러 반환"""
         session_state = self.session_states.get(session_id)
+        interview_logger.info(f"DEBUG: get_session_or_error - self.session_states에서 {session_id} 조회 결과: {bool(session_state)}. 현재 self.session_states 키: {self.session_states.keys()}")
         if not session_state:
+            interview_logger.error(f"ERROR: get_session_or_error - 세션 {session_id}을(를) 찾을 수 없음.")
             return None, {"error": "유효하지 않은 세션 ID입니다."}
         if session_state.get('is_completed', False):
             return None, {"error": "이미 완료된 면접입니다."}
@@ -155,6 +158,7 @@ class InterviewService:
 
     async def submit_user_answer(self, session_id: str, user_answer: str, time_spent: float = None) -> Dict[str, Any]:
         try:
+            interview_logger.info(f"DEBUG: submit_user_answer - 호출됨 (session_id: {session_id}). 현재 self.session_states 키: {self.session_states.keys()}")
             session_state, error = self.get_session_or_error(session_id)
             if error: 
                 return error
@@ -173,6 +177,7 @@ class InterviewService:
             if not orchestrator:
                 return {"error": "Orchestrator를 찾을 수 없습니다."}
             
+            interview_logger.info(f"DEBUG: submit_user_answer - get_session_or_error 호출 직전 (session_id: {session_id})")
             result = await orchestrator.process_user_answer(user_answer, time_spent)
 
             # 면접이 완료되면 피드백 평가를 백그라운드로 트리거
@@ -191,7 +196,9 @@ class InterviewService:
 
     async def start_ai_competition(self, settings: Dict[str, Any], start_time: float = None) -> Dict[str, Any]:
         try:
+            interview_logger.info(f"DEBUG: start_ai_competition - 함수 시작. settings: {settings.get('candidate_name')}")
             session_id = f"comp_{uuid.uuid4().hex[:12]}"
+            interview_logger.info(f"DEBUG: start_ai_competition - 생성된 session_id: {session_id}")
             # 회사 식별자 분리: 모델/프롬프트용 문자열 코드 vs. DB용 숫자 ID
             company_code_for_persona = self.get_company_id(settings['company'])  # 예: 'naver', 'kakao'
             company_numeric_id = settings.get('company_id')  # DB의 정수 ID일 수 있음
@@ -204,7 +211,7 @@ class InterviewService:
             
             # 세션 상태 생성
             initial_settings = {
-                'total_question_limit': 3,  # 디버깅용 - 실제 운영시에는 15로 변경
+                'total_question_limit': 2,  # 디버깅용 - 실제 운영시에는 15로 변경
                 'company_id': company_code_for_persona,  # 모델/질문 생성 로직과 호환되는 문자열 코드 유지
                 'company_numeric_id': company_numeric_id,  # DB 연동을 위한 숫자 ID 별도 보관
                 'position': settings['position'],
@@ -224,15 +231,9 @@ class InterviewService:
 
             # --- ▼▼▼ 바로 이 부분을 추가해주세요! ▼▼▼ ---
             initial_settings['calibration_data'] = settings.get('calibration_data')
-            # --- ▲▲▲ 여기까지 추가 ▲▲▲ ---
-            # 👇 [디버깅 로그 1/2] 데이터가 실제로 저장되는지 확인합니다.
-            print(f"✅ [DEBUG] 캘리브레이션 데이터 저장 시도: session_id= {session_id}")
-            if initial_settings.get('calibration_data'):
-                print(f"   - 저장된 데이터 내용: {initial_settings['calibration_data']}")
-            else:
-                print(f"   - ⚠️ 경고: 저장할 캘리브레이션 데이터가 없습니다!")
-
+            interview_logger.info(f"DEBUG: start_ai_competition - create_session_state 호출 직전 (session_id: {session_id})")
             session_state = self.create_session_state(session_id, initial_settings)
+            interview_logger.info(f"DEBUG: start_ai_competition - create_session_state 호출 완료 (session_id: {session_id}, keys: {session_state.keys()})")
             
             # Orchestrator 생성 - 에이전트들도 전달
             orchestrator = Orchestrator(
@@ -242,6 +243,7 @@ class InterviewService:
                 ai_candidate_model=self.ai_candidate_model
             )
             self.active_orchestrators[session_id] = orchestrator
+            interview_logger.info(f"DEBUG: start_ai_competition - Orchestrator 활성화 완료 (session_id: {session_id}). 현재 active_orchestrators 키: {self.active_orchestrators.keys()}")
             
             interview_logger.info(f"AI 경쟁 면접 시작: {session_id}")
             
@@ -268,6 +270,7 @@ class InterviewService:
             
             print(f"[🔍 API_RESPONSE_DEBUG] === FastAPI로 전달될 result ===")
             
+            interview_logger.info(f"DEBUG: start_ai_competition - 최종 응답 반환 직전 (session_id: {session_id})")
             return result
 
         except Exception as e:
@@ -361,6 +364,8 @@ class InterviewService:
                     # 🆕 임시 시선 추적 파일 처리 (interview_id 생성 후)
                     if shared_interview_id:
                         await self._process_temporary_gaze_file(session_id, shared_interview_id)
+                        # 🆕 시선 분석 데이터 지연 처리 (Pre-signed URL 기반)
+                        await self._process_gaze_data_after_evaluation(shared_interview_id, session_id, user_id)
                     
                     # 개선 계획 생성
                     try:
@@ -533,4 +538,136 @@ class InterviewService:
                     interview_logger.info(f"🗑️ 임시 파일 삭제 완료: {temp_file_path}")
                 except Exception as cleanup_error:
                     interview_logger.error(f"⚠️ 임시 파일 정리 실패: {str(cleanup_error)}")
+
+    async def _process_gaze_data_after_evaluation(self, interview_id: int, session_id: str, user_id: int) -> None:
+        """
+        면접 평가 완료 후 시선 분석 데이터 지연 처리
+        
+        Pre-signed URL 기반 업로드 플로우에서 interview_id가 확정된 후:
+        1. analysis_tasks에서 해당 세션의 시선 분석 결과 찾기
+        2. media_files 테이블에 레코드 삽입
+        3. gaze_analysis 테이블에 분석 결과 저장
+        """
+        try:
+            from backend.routers.gaze import analysis_tasks
+            import os
+            
+            interview_logger.info(f"📊 면접 평가 후 시선 데이터 처리 시작: interview_id={interview_id}, session_id={session_id}")
+
+            # 1. analysis_tasks에서 해당 세션의 분석 결과 찾기
+            session_task_data = None
+            session_task_id = None
+            
+            for task_id, task_info in analysis_tasks.items():
+                if (task_info.get("session_id") == session_id and 
+                    task_info.get("user_id") == user_id and 
+                    task_info.get("status") == "completed"):
+                    session_task_data = task_info
+                    session_task_id = task_id
+                    break
+
+            if not session_task_data:
+                interview_logger.info(f"📝 세션 {session_id}에 대한 완료된 시선 분석 결과를 찾을 수 없습니다. Pre-signed URL 업로드가 없었거나 분석이 완료되지 않았을 수 있습니다.")
+                return
+
+            s3_key_found = session_task_data.get("s3_key")
+            temp_media_id_found = session_task_data.get("temp_media_id")
+            analysis_result = session_task_data.get("analysis_result")  # 원본 분석 결과 객체
+
+            interview_logger.info(f"✅ 시선 분석 결과 발견: task_id={session_task_id}, s3_key={s3_key_found}")
+
+            # 2. media_files 테이블에 레코드 삽입
+            try:
+                supabase_db_client = get_supabase_client()
+                
+                # S3 URL 및 파일 정보 생성
+                BUCKET_NAME = 'betago-s3'
+                AWS_REGION = os.getenv('AWS_REGION', 'ap-northeast-2')
+                file_name = os.path.basename(s3_key_found)
+                s3_url = f"https://{BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{s3_key_found}"
+
+                media_data_to_insert = {
+                    'user_id': user_id,
+                    'interview_id': interview_id,  # 확정된 interview_id 사용
+                    'file_name': file_name,
+                    'file_type': 'video',
+                    's3_url': s3_url,
+                    's3_key': s3_key_found,
+                    'media_id': temp_media_id_found,  # 임시 media_id를 최종 media_id로 사용
+                    'metadata': {
+                        'type': 'gaze_tracking',
+                        'purpose': 'gaze_analysis',
+                        'delayed_insert': True,
+                        'original_session_id': session_id
+                    }
+                }
+
+                interview_logger.info(f"💾 media_files 테이블 삽입 시도: {media_data_to_insert}")
+                insert_result = supabase_db_client.table('media_files').insert(media_data_to_insert).execute()
+
+                if insert_result.data:
+                    final_media_id = insert_result.data[0]['media_id']
+                    interview_logger.info(f"✅ media_files 레코드 삽입 완료: media_id={final_media_id}")
+                else:
+                    raise Exception(f"media_files 삽입 실패: {getattr(insert_result, 'error', 'Unknown error')}")
+
+            except Exception as e:
+                interview_logger.error(f"❌ media_files 삽입 중 오류 발생: {e}", exc_info=True)
+                return
+
+            # 3. gaze_analysis 테이블에 분석 결과 저장 (analysis_result가 있는 경우)
+            if analysis_result:
+                try:
+                    supabase_client = get_supabase_client()
+
+                    # video_metadata JSON 객체 구성
+                    video_metadata = {
+                        "total_frames": getattr(analysis_result, 'total_frames', 0),
+                        "analyzed_frames": getattr(analysis_result, 'analyzed_frames', 0),
+                        "in_range_ratio": getattr(analysis_result, 'in_range_ratio', 0),
+                        "analysis_duration_sec": getattr(analysis_result, 'analysis_duration', 0),
+                        "feedback_summary": getattr(analysis_result, 'feedback', "N/A"),
+                        "delayed_processing": True,
+                        "source_session_id": session_id
+                    }
+
+                    # DB에 저장할 데이터 구성
+                    gaze_data_to_insert = {
+                        "interview_id": interview_id,
+                        "user_id": user_id,
+                        "gaze_score": getattr(analysis_result, 'gaze_score', 0),
+                        "jitter_score": getattr(analysis_result, 'jitter_score', 0),
+                        "compliance_score": getattr(analysis_result, 'compliance_score', 0),
+                        "stability_rating": getattr(analysis_result, 'stability_rating', "Unknown"),
+                        "gaze_points": getattr(analysis_result, 'gaze_points', []),
+                        "calibration_points": getattr(analysis_result, 'calibration_points', []),
+                        "video_metadata": video_metadata
+                    }
+
+                    interview_logger.info(f"💾 gaze_analysis 테이블 삽입 시도: interview_id={interview_id}")
+                    gaze_insert_result = supabase_client.table('gaze_analysis').insert(gaze_data_to_insert).execute()
+
+                    if gaze_insert_result.data:
+                        gaze_id = gaze_insert_result.data[0].get('gaze_id')
+                        interview_logger.info(f"✅ gaze_analysis 레코드 삽입 완료: gaze_id={gaze_id}")
+                    else:
+                        error_details = getattr(gaze_insert_result, 'error', 'Unknown error')
+                        raise Exception(f"gaze_analysis 삽입 실패: {error_details}")
+
+                except Exception as e:
+                    interview_logger.error(f"❌ gaze_analysis 삽입 중 오류 발생: {e}", exc_info=True)
+
+            # 4. analysis_tasks에서 처리된 task 정리 (선택적)
+            try:
+                if session_task_id in analysis_tasks:
+                    analysis_tasks[session_task_id]['processed'] = True
+                    analysis_tasks[session_task_id]['linked_interview_id'] = interview_id
+                    interview_logger.info(f"🧹 analysis_task {session_task_id} 처리 완료 표시")
+            except Exception as cleanup_error:
+                interview_logger.warning(f"⚠️ analysis_task 정리 중 오류: {cleanup_error}")
+
+            interview_logger.info(f"✅ 시선 분석 데이터 지연 처리 완료: interview_id={interview_id}, session_id={session_id}")
+
+        except Exception as e:
+            interview_logger.error(f"❌ 시선 분석 데이터 지연 처리 실패: session_id={session_id}, interview_id={interview_id}, error={str(e)}", exc_info=True)
 

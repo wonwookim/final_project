@@ -59,6 +59,7 @@ class UploadResponse(BaseModel):
     """업로드 응답 스키마"""
     upload_url: str = Field(..., description="S3 업로드 URL")
     media_id: str = Field(..., description="미디어 파일 ID")
+    s3_key: str = Field(..., description="S3 저장 키")
     expires_in: Optional[int] = Field(3600, description="URL 만료 시간 (초)")
     
     class Config:
@@ -66,6 +67,7 @@ class UploadResponse(BaseModel):
             "example": {
                 "upload_url": "https://betago-s3.s3.amazonaws.com/...",
                 "media_id": "uuid4-generated-id",
+                "s3_key": "gaze-videos/123/456/video.webm",
                 "expires_in": 3600
             }
         }
@@ -159,6 +161,40 @@ class MediaStatsResponse(BaseModel):
                 "audio_count": 30,
                 "avg_file_size_mb": 13.66,
                 "latest_upload": "2025-08-12T10:30:00Z"
+            }
+        }
+
+
+class GazeUploadRequest(BaseModel):
+    """시선 추적 영상 업로드 요청 스키마"""
+    session_id: str = Field(..., description="면접 세션 ID", min_length=1)
+    file_name: str = Field(..., description="파일명", min_length=1, max_length=255)
+    file_size: Optional[int] = Field(None, description="파일 크기 (바이트)", ge=0)
+    
+    @validator('file_name')
+    def validate_file_name(cls, v):
+        """파일명 유효성 검증"""
+        # 위험한 문자 제거
+        dangerous_chars = ['..', '/', '\\', '<', '>', ':', '"', '|', '?', '*']
+        for char in dangerous_chars:
+            if char in v:
+                raise ValueError(f'파일명에 허용되지 않는 문자가 포함되어 있습니다: {char}')
+        return v
+    
+    @validator('file_name')
+    def validate_gaze_file_extension(cls, v):
+        """시선 추적 비디오 파일 확장자 검증"""
+        allowed_extensions = ['.webm', '.mp4', '.mov']
+        if not any(v.lower().endswith(ext) for ext in allowed_extensions):
+            raise ValueError(f'지원되지 않는 파일 형식입니다. 허용된 형식: {", ".join(allowed_extensions)}')
+        return v
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "session_id": "comp_abc123def456",
+                "file_name": "gaze_video_20250818_123456.webm",
+                "file_size": 15728640
             }
         }
 
