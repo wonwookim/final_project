@@ -201,16 +201,19 @@ class Orchestrator:
         """공통 질문 완료 시 처리"""
         # 🆕 꼬리 질문 카운트 증가 (수정된 로직)
         current_interviewer = self.session_state.get('current_interviewer')
+        current_turn = self.session_state.get('turn_count', 0)
+        
         if current_interviewer and current_interviewer in ['HR', 'TECH', 'COLLABORATION']:
             turn_state = self.session_state.get('interviewer_turn_state', {})
+            
             if current_interviewer in turn_state:
                 # 현재 질문이 메인 질문인지 꼬리 질문인지 판단
-                current_turn = self.session_state.get('turn_count', 0)
+                current_state = turn_state[current_interviewer]
                 
                 # 턴 1, 2는 고정 질문이므로 카운트하지 않음
                 if current_turn > 2:
                     # 메인 질문 완료 표시
-                    if not turn_state[current_interviewer]['main_question_asked']:
+                    if not current_state['main_question_asked']:
                         turn_state[current_interviewer]['main_question_asked'] = True
                     else:
                         # 꼬리 질문 카운트 증가
@@ -220,17 +223,28 @@ class Orchestrator:
         self.session_state['current_question'] = None
     
     def _handle_turn_completion_for_individual_questions(self):
-        """개별 꼬리질문 완료 시 처리"""
+        """개별 질문 완료 시 처리 (메인 질문 또는 꼬리 질문)"""
         current_interviewer = self.session_state.get('current_interviewer')
+        current_turn = self.session_state.get('turn_count', 0)
+        
         if current_interviewer and current_interviewer in ['HR', 'TECH', 'COLLABORATION']:
             turn_state = self.session_state.get('interviewer_turn_state', {})
+            
             if current_interviewer in turn_state:
-                # 꼬리 질문 카운트 증가
-                turn_state[current_interviewer]['follow_up_count'] += 1
+                current_state = turn_state[current_interviewer]
+                
+                # 턴 1, 2는 고정 질문이므로 카운트하지 않음
+                if current_turn > 2:
+                    # 메인 질문 vs 꼬리 질문 구분
+                    if not current_state['main_question_asked']:
+                        # 메인 질문 완료 처리
+                        turn_state[current_interviewer]['main_question_asked'] = True
+                    else:
+                        # 꼬리 질문 완료 처리
+                        turn_state[current_interviewer]['follow_up_count'] += 1
         
         self.session_state['turn_count'] += 1
         self.session_state['current_questions'] = None
-        print(f"[DEBUG] 개별 꼬리질문 턴 완료, 다음 턴으로 이동")
 
     def _decide_next_message(self) -> Dict[str, Any]:
         """다음 메시지 결정 - 실제 플로우 제어 로직"""
