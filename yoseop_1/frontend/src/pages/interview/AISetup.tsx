@@ -59,7 +59,7 @@ const AISetup: React.FC = () => {
       color: 'from-blue-500 to-blue-600'
     },
     {
-      id: 'tech',
+      id: 'tech1',
       name: '박기술',
       role: '기술 담당자',
       description: '기술 역량, 문제 해결 능력을 평가합니다.',
@@ -67,7 +67,7 @@ const AISetup: React.FC = () => {
       color: 'from-green-500 to-green-600'
     },
     {
-      id: 'team',
+      id: 'collabo1',
       name: '이협업',
       role: '협업 담당자',
       description: '소통 능력, 팀워크, 리더십을 평가합니다.',
@@ -131,7 +131,7 @@ const AISetup: React.FC = () => {
                 >
                   <div className={`w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r ${interviewer.color} flex items-center justify-center overflow-hidden border-2 border-white shadow-lg`}>
                     <img 
-                      src={`/img/interviewer_${index + 1}.jpg`}
+                      src={`/img/${interviewer.id}_interviewer.png`}
                       alt={interviewer.name}
                       className="w-full h-full object-cover"
                     />
