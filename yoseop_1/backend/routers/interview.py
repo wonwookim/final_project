@@ -1242,3 +1242,56 @@ async def process_feedback_async(session_id: str, user_id: int):
             
     except Exception as e:
         interview_logger.error(f"❌ 백그라운드 피드백 처리 실패: session_id={session_id}, error={str(e)}")
+
+# 🟢 GET /interview/global-stats – 전체 사용자 통계 조회
+@interview_router.get("/global-stats")
+async def get_global_interview_stats():
+    """전체 사용자의 면접 통계를 조회합니다."""
+    try:
+        # 전체 면접 수 조회
+        total_interviews_res = supabase_client.client.from_("interview").select("interview_id", count="exact").execute()
+        total_interviews = total_interviews_res.count if total_interviews_res.count else 0
+        
+        # 전체 평균 점수 계산 (total_feedback에서 점수 추출)
+        interviews_with_feedback = supabase_client.client.from_("interview").select("total_feedback").not_.is_("total_feedback", "null").execute()
+        
+        total_score = 0
+        score_count = 0
+        
+        for interview in interviews_with_feedback.data:
+            try:
+                if interview.get('total_feedback'):
+                    feedback_data = interview['total_feedback']
+                    if isinstance(feedback_data, str):
+                        import json
+                        feedback_data = json.loads(feedback_data)
+                    
+                    # 점수 추출 로직 (기존과 동일)
+                    score = 0
+                    if isinstance(feedback_data, dict):
+                        if feedback_data.get('user', {}).get('overall_score') is not None:
+                            score = feedback_data['user']['overall_score']
+                        elif feedback_data.get('overall_score') is not None:
+                            score = feedback_data['overall_score']
+                        elif feedback_data.get('ai_interviewer', {}).get('overall_score') is not None:
+                            score = feedback_data['ai_interviewer']['overall_score']
+                    
+                    if score > 0:
+                        total_score += score
+                        score_count += 1
+            except:
+                continue
+        
+        global_average_score = round(total_score / score_count) if score_count > 0 else 0
+        
+        return {
+            "total_interviews": total_interviews,
+            "global_average_score": global_average_score
+        }
+        
+    except Exception as e:
+        interview_logger.error(f"전체 통계 조회 실패: {str(e)}")
+        return {
+            "total_interviews": 0,
+            "global_average_score": 0
+        }

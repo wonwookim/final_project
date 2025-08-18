@@ -531,6 +531,18 @@ export const interviewApi = {
     return response.data as InterviewResponse[];
   },
 
+  // 전체 사용자 통계 조회
+  async getGlobalStats(): Promise<{
+    total_interviews: number;
+    global_average_score: number;
+  }> {
+    const response = await apiClient.get('/interview/global-stats');
+    return response.data as {
+      total_interviews: number;
+      global_average_score: number;
+    };
+  },
+
   // 면접 상세 결과 조회
   async getInterviewDetails(interviewId: string): Promise<any> {
     const response = await apiClient.get(`/interview/history/${interviewId}`);
