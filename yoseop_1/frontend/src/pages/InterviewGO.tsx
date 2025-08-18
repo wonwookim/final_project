@@ -201,7 +201,10 @@ const InterviewGO: React.FC = () => {
   // 🆕 새로운 상태들 추가
   const [currentAnswer, setCurrentAnswer] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(false); // 면접 초기 시작 로딩
+  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false); // 답변 제출 중
   const [isRestoring, setIsRestoring] = useState(true); // 복원 상태 추가
+  const [currentTTSType, setCurrentTTSType] = useState<string | null>(null); // 현재 TTS 타입
   
   // 🆕 INTRO 메시지 관련 상태
   const [introMessage, setIntroMessage] = useState<string>('');
@@ -215,8 +218,9 @@ const InterviewGO: React.FC = () => {
   // 🔊 TTS 확인용 주석입니다 - TTS 실행 이력 추적
   const [ttsList, setTtsList] = useState<{type: string, text: string, timestamp: string}[]>([]);
   
-  // 🔊 TTS 확인용 주석입니다 - TTS 큐 시스템
-  const [ttsQueue, setTtsQueue] = useState<string[]>([]);
+  // 🔊 TTS 확인용 주석입니다 - TTS 큐 시스템 (타입 정보 포함)
+  const [ttsQueue, setTtsQueue] = useState<{type: string, content: string}[]>([]);
+  const [currentTTSIndex, setCurrentTTSIndex] = useState(-1);
   
   // 🆕 AI 질문/답변 관련 상태
   const [currentAIQuestion, setCurrentAIQuestion] = useState<string>('');
@@ -471,8 +475,8 @@ const InterviewGO: React.FC = () => {
     }
   };
 
-  // 🆕 텍스트를 TTS로 변환하여 재생하는 함수
-  const generateAndPlayTTS = async (text: string, label: string = ""): Promise<void> => {
+  // 🆕 텍스트를 TTS로 변환하여 재생하는 함수 (타입별 음성 지원)
+  const generateAndPlayTTS = async (text: string, type: string, label: string = "", questionText?: string): Promise<void> => {
     if (!text || !text.trim()) {
       console.log(`[🔊 TTS] ${label} 텍스트가 비어있음 - TTS 건너뜀`);
       return;
@@ -486,10 +490,11 @@ const InterviewGO: React.FC = () => {
     };
     setTtsList(prev => [...prev, ttsEntry]);
 
+    // 🎯 타입별 음성으로 1차 시도
     try {
-      console.log(`[🔊 TTS] ${label} TTS 생성 시작: ${text.slice(0, 50)}...`);
+      console.log(`[🔊 TTS] ${label} TTS 생성 시작 (타입: ${type}): ${text.slice(0, 50)}...`);
       
-      // 백엔드 TTS API 호출
+      // 타입별 TTS API 호출
       const response = await fetch('http://localhost:8000/interview/tts', {
         method: 'POST',
         headers: {
@@ -497,7 +502,7 @@ const InterviewGO: React.FC = () => {
         },
         body: JSON.stringify({
           text: text.trim(),
-          voice_id: "21m00Tcm4TlvDq8ikWAM" // Rachel 음성
+          voice_id: getVoiceIdByType(type)
         })
       });
 
@@ -506,30 +511,109 @@ const InterviewGO: React.FC = () => {
       }
 
       const audioData = await response.arrayBuffer();
-      console.log(`[🔊 TTS] ${label} TTS 생성 완료, 재생 시작`);
+      console.log(`[🔊 TTS] ${label} 타입별 TTS 생성 완료, 재생 시작`);
 
       // 오디오 재생
       const audioBlob = new Blob([audioData], { type: 'audio/mp3' });
       const audioUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(audioUrl);
 
+      // 🎯 TTS 재생 시작 - 타입 설정, 로딩 상태 해제, 질문 텍스트 표시
+      setCurrentTTSType(type);
+      setIsInitialLoading(false); // TTS 시작과 동시에 로딩 해제
+      
+      // 질문 텍스트를 TTS와 동기화하여 표시
+      if (questionText) {
+        setCurrentQuestion(questionText);
+        console.log(`[📝 TTS 동기화] 질문 텍스트 표시: ${questionText}`);
+      }
+      
+      console.log(`[🎯 하이라이트] TTS 재생 시작 - 타입: ${type} 설정됨, 로딩 해제됨`);
+
       // 재생 완료 대기
       await new Promise<void>((resolve, reject) => {
         audio.onended = () => {
-          console.log(`[🔊 TTS] ${label} TTS 재생 완료`);
+          console.log(`[🔊 TTS] ${label} 타입별 TTS 재생 완료`);
+          // 🎯 TTS 재생 완료 - 타입 초기화
+          setCurrentTTSType(null);
+          console.log(`[🎯 하이라이트] TTS 재생 완료 - 타입 초기화됨`);
           URL.revokeObjectURL(audioUrl);
           resolve();
         };
         audio.onerror = () => {
-          console.error(`[🔊 TTS] ${label} TTS 재생 실패`);
+          console.error(`[🔊 TTS] ${label} 타입별 TTS 재생 실패`);
+          // 🎯 TTS 재생 실패 - 타입 초기화
+          setCurrentTTSType(null);
+          console.log(`[🎯 하이라이트] TTS 재생 실패 - 타입 초기화됨`);
           URL.revokeObjectURL(audioUrl);
-          reject(new Error('TTS 재생 실패'));
+          reject(new Error('타입별 TTS 재생 실패'));
         };
         audio.play().catch(reject);
       });
 
+      return; // 성공 시 종료
+
     } catch (error) {
-      console.error(`[🔊 TTS] ${label} TTS 처리 실패:`, error);
+      console.warn(`[🔊 TTS] ${label} 타입별 TTS 실패, 기본 음성으로 폴백:`, error);
+      
+      // 🔄 기본 음성으로 2차 시도 (폴백)
+      try {
+        console.log(`[🔊 TTS] ${label} 기본 음성으로 TTS 재시도...`);
+        
+        const fallbackResponse = await fetch('http://localhost:8000/interview/tts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: text.trim(),
+            voice_id: "21m00Tcm4TlvDq8ikWAM" // Rachel 음성 (기본값)
+          })
+        });
+
+        if (!fallbackResponse.ok) {
+          throw new Error(`폴백 TTS API 오류: ${fallbackResponse.status}`);
+        }
+
+        const fallbackAudioData = await fallbackResponse.arrayBuffer();
+        console.log(`[🔊 TTS] ${label} 기본 음성 TTS 생성 완료, 재생 시작`);
+
+        // 오디오 재생
+        const audioBlob = new Blob([fallbackAudioData], { type: 'audio/mp3' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+
+        // 🎯 폴백 TTS 재생 시작 - 타입 설정
+        setCurrentTTSType(type);
+        console.log(`[🎯 하이라이트] 폴백 TTS 재생 시작 - 타입: ${type} 설정됨`);
+
+        // 재생 완료 대기
+        await new Promise<void>((resolve, reject) => {
+          audio.onended = () => {
+            console.log(`[🔊 TTS] ${label} 기본 음성 TTS 재생 완료`);
+            // 🎯 폴백 TTS 재생 완료 - 타입 초기화
+            setCurrentTTSType(null);
+            console.log(`[🎯 하이라이트] 폴백 TTS 재생 완료 - 타입 초기화됨`);
+            URL.revokeObjectURL(audioUrl);
+            resolve();
+          };
+          audio.onerror = () => {
+            console.error(`[🔊 TTS] ${label} 기본 음성 TTS 재생 실패`);
+            // 🎯 폴백 TTS 재생 실패 - 타입 초기화
+            setCurrentTTSType(null);
+            console.log(`[🎯 하이라이트] 폴백 TTS 재생 실패 - 타입 초기화됨`);
+            URL.revokeObjectURL(audioUrl);
+            reject(new Error('기본 음성 TTS 재생 실패'));
+          };
+          audio.play().catch(reject);
+        });
+
+      } catch (fallbackError) {
+        console.error(`[🔊 TTS] ${label} 모든 TTS 시도 실패:`, fallbackError);
+        // 🎯 모든 TTS 실패 시 타입 초기화
+        setCurrentTTSType(null);
+        console.log(`[🎯 하이라이트] 모든 TTS 실패 - 타입 초기화됨`);
+      }
     }
   };
 
@@ -541,83 +625,103 @@ const InterviewGO: React.FC = () => {
   //   }
   // };
 
-  // 🔊 TTS 확인용 주석입니다 - 전달받은 항목들을 순차 처리
-  const processTTSQueue = async (ttsItems: string[] = []) => {
+  // 🔊 TTS 확인용 주석입니다 - 전달받은 항목들을 순차 처리 (타입 정보 포함)
+  const processTTSQueue = async (ttsItems: {type: string, content: string}[] = []) => {
     console.log(`🔊 [큐 처리] 함수 호출됨 - 처리할 항목 수: ${ttsItems.length}`);
-    console.log(`🔊 [큐 처리] 처리 항목들:`, ttsItems.map(item => item.substring(0, 50) + '...'));
+    console.log(`🔊 [큐 처리] 처리 항목들:`, ttsItems.map(item => `${item.type}: ${item.content.substring(0, 50)}...`));
     
     if (ttsItems.length === 0) {
       console.log('🔊 [큐 처리] 처리할 TTS 없음 - 종료');
       return;
     }
     
+    // 🆕 TTS 재생 시작 - 타이머 중지
+    console.log('🔊 [큐 처리] TTS 재생 시작 - 타이머 중지');
+    setIsTTSPlaying(true);
+    setTtsQueue(ttsItems);
+    setCurrentTTSIndex(0);
+    setIsTimerActive(false); // 타이머 중지
+    
     console.log(`🔊 [큐 처리] ${ttsItems.length}개 항목 순차 처리 시작`);
     
     for (let i = 0; i < ttsItems.length; i++) {
-      const text = ttsItems[i];
-      console.log(`🔊 [큐 처리] ${i + 1}/${ttsItems.length} 처리 중: ${text.substring(0, 50)}...`);
+      const item = ttsItems[i];
+      console.log(`🔊 [큐 처리] ${i + 1}/${ttsItems.length} 처리 중: [${item.type}] ${item.content.substring(0, 50)}...`);
+      
+      setCurrentTTSIndex(i);
       
       try {
-        await generateAndPlayTTS(text, `큐 처리 ${i + 1}`);
-        console.log(`🔊 [큐 처리] ${i + 1}/${ttsItems.length} 완료`);
+        // 큐의 마지막 요소이고 면접관 타입이면 사용자 질문
+        const isLastItem = (i === ttsItems.length - 1);
+        const isInterviewerType = ['hr', 'tech', 'collaborate'].includes(item.type.toLowerCase());
+        const questionText = (isLastItem) ? item.content : undefined;
+        
+        console.log(`[🔍 질문 텍스트 DEBUG] ${i + 1}/${ttsItems.length}: type="${item.type}", isLastItem=${isLastItem}, isInterviewerType=${isInterviewerType}, questionText=${questionText ? '설정됨' : '없음'}`);
+        
+        await generateAndPlayTTS(item.content, item.type, `${item.type} ${i + 1}`, questionText);
+        console.log(`🔊 [큐 처리] ${i + 1}/${ttsItems.length} 완료 [${item.type}]`);
       } catch (error) {
-        console.error(`🔊 [큐 처리] ${i + 1}/${ttsItems.length} 실패:`, error);
+        console.error(`🔊 [큐 처리] ${i + 1}/${ttsItems.length} 실패 [${item.type}]:`, error);
       }
     }
     
-    console.log('🔊 [큐 처리] 모든 TTS 처리 완료');
+    // 🆕 모든 TTS 재생 완료 - 타이머 시작
+    console.log('🔊 [큐 처리] 모든 TTS 처리 완료 - 답변 타이머 시작');
+    setIsTTSPlaying(false);
+    setCurrentTTSIndex(-1);
+    startAnswerTimer();
   };
 
   // 🆕 백엔드 응답에서 TTS 처리 (동기적 수집 방식)
-  const handleTTSFromResponse = async (response: any, task?: string, status?: string): Promise<string[]> => {
+  const handleTTSFromResponse = async (response: any, task?: string, status?: string): Promise<{type: string, content: string}[]> => {
     try {
       console.log('[🔊 TTS] 응답에서 TTS 처리 시작');
       
       // 즉시 TTS: 인트로 메시지
       if (response.intro_message) {
-        await generateAndPlayTTS(response.intro_message, "INTRO");
+        await generateAndPlayTTS(response.intro_message, "intro", "INTRO");
       }
 
       // 첫 질문은 즉시 TTS (사용자가 들어야 하니까)
       const isFirstQuestion = !state.questions || state.questions.length === 0;
       if (isFirstQuestion && response.content?.content) {
-        await generateAndPlayTTS(response.content.content, "첫 질문");
-        return []; // 첫 질문은 즉시 처리했으므로 빈 배열 반환
+        await generateAndPlayTTS(response.content.content, "hr", "첫 질문", response.content.content);
+        return [] as {type: string, content: string}[]; // 첫 질문은 즉시 처리했으므로 빈 배열 반환
       } else {
-        // 🔊 TTS 처리를 위한 항목들을 동기적으로 수집
-        const ttsItems: string[] = [];
+        // 🔊 TTS 처리를 위한 항목들을 동기적으로 수집 (타입 정보 포함)
+        const ttsItems: {type: string, content: string}[] = [];
         
-        // 🔊 백엔드에서 제공한 순서대로 수집
+        // 🔊 백엔드 TTS 큐를 우선적으로 처리
         if (response.tts_queue && Array.isArray(response.tts_queue)) {
-          console.log(`🔊 [백엔드 큐] ${response.tts_queue.length}개 항목을 순서대로 수집`);
+          console.log(`🔊 [TTS 큐] ${response.tts_queue.length}개 항목을 순서대로 수집`);
           response.tts_queue.forEach((item: any, index: number) => {
             if (item.content) {
-              console.log(`🔊 [백엔드 큐] ${index + 1}. ${item.type}: ${item.content.substring(0, 50)}...`);
-              ttsItems.push(item.content);
+              console.log(`🔊 [TTS 큐] ${index + 1}. ${item.type}: ${item.content.substring(0, 50)}...`);
+              ttsItems.push({type: item.type || 'unknown', content: item.content});
             }
           });
         } else {
-          // 🔊 기존 방식 fallback - 생성 순서대로 수집
-          console.log('🔊 [백엔드 큐] tts_queue 없음 - 기존 방식으로 수집');
+          // 🔊 Fallback: 기존 방식으로 수집 (호환성 유지)
+          console.log('🔊 [TTS 큐] tts_queue 없음 - 기존 방식으로 fallback');
           
           if (response.ai_question?.content) {
-            console.log(`🔊 [수집] AI 질문: ${response.ai_question.content.substring(0, 50)}...`);
-            ttsItems.push(response.ai_question.content);
+            console.log(`🔊 [Fallback] AI 질문: ${response.ai_question.content.substring(0, 50)}...`);
+            ttsItems.push({type: 'ai_question', content: response.ai_question.content});
           }
           if (response.ai_answer?.content) {
-            console.log(`🔊 [수집] AI 답변: ${response.ai_answer.content.substring(0, 50)}...`);
-            ttsItems.push(response.ai_answer.content);
+            console.log(`🔊 [Fallback] AI 답변: ${response.ai_answer.content.substring(0, 50)}...`);
+            ttsItems.push({type: 'ai_answer', content: response.ai_answer.content});
           }
           if (response.content?.content || response.content?.question) {
             const questionText = response.content.content || response.content.question;
-            console.log(`🔊 [수집] 사용자 질문: ${questionText.substring(0, 50)}...`);
-            ttsItems.push(questionText);
+            console.log(`🔊 [Fallback] 사용자 질문: ${questionText.substring(0, 50)}...`);
+            ttsItems.push({type: 'user_question', content: questionText});
           }
           
-          // 🔊 면접 종료 시 종료 메시지 처리 (백엔드 message 필드 사용)
+          // 🔊 면접 종료 시 종료 메시지 처리
           if (response.message && (task === 'end_interview' || status === 'completed')) {
-            console.log(`🔊 [수집] 면접 종료 메시지: ${response.message.substring(0, 50)}...`);
-            ttsItems.push(response.message);
+            console.log(`🔊 [Fallback] 면접 종료 메시지: ${response.message.substring(0, 50)}...`);
+            ttsItems.push({type: 'end_message', content: response.message});
           }
         }
         
@@ -627,7 +731,7 @@ const InterviewGO: React.FC = () => {
       
     } catch (error) {
       console.error('[🔊 TTS] 응답 TTS 처리 중 오류:', error);
-      return [];
+      return [] as {type: string, content: string}[];
     }
   };
 
@@ -643,7 +747,7 @@ const InterviewGO: React.FC = () => {
 
 
   // 🆕 백엔드 응답에 따른 currentPhase 업데이트 함수 + TTS 처리
-  const updatePhaseFromResponse = async (response: any): Promise<{ ttsItems: string[], isEndInterview: boolean }> => {
+  const updatePhaseFromResponse = async (response: any): Promise<{ ttsItems: {type: string, content: string}[], isEndInterview: boolean }> => {
     console.log('🔄 === 전체 응답 구조 분석 START ===');
     console.log('📋 응답 객체 전체:', JSON.stringify(response, null, 2));
     console.log('🔍 메타데이터 분석:');
@@ -663,10 +767,19 @@ const InterviewGO: React.FC = () => {
     const status = response?.status;
     
     // 🆕 TTS 처리 - 하이브리드 방식 (즉시 + 수집)
-    const collectedTTSItems = await handleTTSFromResponse(response, task, status);
+    const collectedTTSItems: {type: string, content: string}[] = await handleTTSFromResponse(response, task, status);
     const turnInfo = response?.turn_info;
 
-    console.log('🔍 Phase 판단:', { nextAgent, task, status, turnInfo });
+    // 🔍 현재 면접관 타입 업데이트 (metadata에서 추출)
+    const interviewerType = response?.metadata?.interviewer_type || 
+                           response?.content?.metadata?.interviewer_type || 
+                           currentInterviewerType; // 기본값
+    if (interviewerType && interviewerType !== currentInterviewerType) {
+      console.log(`🔍 면접관 타입 업데이트: ${currentInterviewerType} → ${interviewerType}`);
+      setCurrentInterviewerType(interviewerType);
+    }
+
+    console.log('🔍 Phase 판단:', { nextAgent, task, status, turnInfo, interviewerType });
 
     if (task === 'end_interview' || status === 'completed') {
         // 🔊 end_interview 시에는 TTS 처리 후 면접 완료 처리를 submitAnswer에서 수행
@@ -719,8 +832,9 @@ const InterviewGO: React.FC = () => {
     const question = response?.content?.content;
     
     if (question) {
-        setCurrentQuestion(question);
-        console.log('📝 질문 업데이트:', question);
+        // 질문을 즉시 표시하지 않고 TTS와 동기화하기 위해 임시 저장
+        console.log('📝 질문 임시 저장 (TTS와 동기화 예정):', question);
+        // setCurrentQuestion(question); // TTS 시작 시에 표시하도록 변경
     }
     
     // AI 질문 상태 업데이트
@@ -814,6 +928,88 @@ const InterviewGO: React.FC = () => {
     setCurrentQuestion(question);
   };
 
+  // 🆕 답변 타이머 시작 함수 (TTS 완료 후 호출)
+  const startAnswerTimer = () => {
+    console.log('⏰ 답변 타이머 시작 - TTS 완료 후');
+    // 사용자 턴일 때만 타이머 시작
+    if (currentTurn === 'user') {
+      setIsTimerActive(true);
+      setTimeLeft(120); // 2분으로 재설정
+      setCanSubmit(true);
+      setCanRecord(true);
+      console.log('✅ 답변 타이머 활성화됨 (120초)');
+    } else {
+      console.log('⚠️ 사용자 턴이 아니어서 타이머 시작하지 않음');
+    }
+  };
+
+  // 🔍 현재 면접관 타입 추출 함수 (최근 응답 기반)
+  const [currentInterviewerType, setCurrentInterviewerType] = useState<string>('hr');
+
+  // 🔄 백엔드 TTS 타입을 프론트엔드 표준 타입으로 정규화
+  const normalizeTTSType = (backendType: string): string => {
+    // AI 답변은 그대로
+    if (backendType.includes('ai_answer')) return 'ai';
+    
+    // AI 질문은 현재 면접관 타입으로 변환
+    if (backendType.includes('ai_question')) {
+      return currentInterviewerType.toLowerCase(); // hr, tech, collaborate
+    }
+    
+    // 질문 타입들 (대소문자 모두 처리)
+    if (backendType === 'hr' || backendType.includes('HR')) return 'hr';
+    if (backendType === 'tech' || backendType.includes('TECH')) return 'tech';
+    if (backendType === 'collaborate' || backendType.includes('COLLABORATION')) return 'collaborate';
+    
+    // 기타
+    if (backendType === 'OUTRO') return 'outro';
+    if (backendType.includes('intro')) return 'intro';
+    
+    // 기본값
+    return 'unknown';
+  };
+
+  // 🆕 타입별 voice_id 매핑 함수
+  const getVoiceIdByType = (type: string): string => {
+    const normalizedType = normalizeTTSType(type);
+    switch (normalizedType) {
+      case 'ai': return 'uyVNoMrVvroE5JXeeUSJakg'; // AI 전용 음성 (현재는 기본값과 동일)
+      case 'tech': return 'mYk0rAapHek2oTw18z8x'; // 기술 면접관 음성 (현재는 기본값과 동일)
+      case 'collaborate': return 'ZJCNdZEjYwkOElxugmW2'; // 협업 면접관 음성 (현재는 기본값과 동일)  
+      case 'hr': return 'YBRudLRm83BV5Mazcr42'; // HR 면접관 음성 (기본값)
+      default: return 'YBRudLRm83BV5Mazcr42'; // 기본값은 HR과 동일
+    }
+  };
+
+  // 🎯 TTS 타입별 표시 메시지 생성 함수
+  const getTTSDisplayMessage = (type: string): string => {
+    const normalizedType = normalizeTTSType(type);
+    switch (normalizedType) {
+      case 'intro': return '🎬 면접을 시작합니다';
+      case 'hr': return '💼 HR 질문이 진행됩니다';
+      case 'tech': return '💻 기술 질문이 진행됩니다';
+      case 'collaborate': return '🤝 협업 질문이 진행됩니다';
+      case 'ai_question': return '🤖 AI 질문이 재생됩니다';
+      case 'ai': return '🤖 AI가 답변 중입니다';
+      case 'outro': return '✅ 면접이 완료되었습니다';
+      default: return '🔊 음성이 재생됩니다';
+    }
+  };
+
+  // 🎯 TTS 타입별 하이라이트 확인 함수
+  const shouldHighlight = (componentType: 'hr' | 'tech' | 'collaborate' | 'ai'): boolean => {
+    if (!currentTTSType) return false;
+    
+    const normalizedType = normalizeTTSType(currentTTSType);
+    switch (componentType) {
+      case 'hr': return normalizedType === 'hr' || normalizedType === 'intro' || normalizedType === 'outro';
+      case 'tech': return normalizedType === 'tech';
+      case 'collaborate': return normalizedType === 'collaborate';
+      case 'ai': return normalizedType === 'ai' || normalizedType === 'ai_question';
+      default: return false;
+    }
+  };
+
   // 🆕 초기 턴 상태 설정 (세션 로드 완료 후)
   useEffect(() => {
     if (!isRestoring && state.sessionId) {
@@ -839,10 +1035,10 @@ const InterviewGO: React.FC = () => {
               }
               
               console.log('🚀 환경 체크에서 온 새로운 면접 - 첫 질문 로딩 시작');
-              setCurrentQuestion("첫 번째 질문을 준비하고 있습니다...");
+              setCurrentQuestion("🎬 면접을 시작합니다");
               setCurrentPhase('waiting');
               setCurrentTurn('waiting');
-              setIsLoading(true);
+              setIsInitialLoading(true);
               
               // 🚦 호출 진행 상태 설정 (메모리 + 전역)
               isApiCallInProgressRef.current = true;
@@ -922,9 +1118,6 @@ const InterviewGO: React.FC = () => {
                       setCurrentQuestion(questionData.question);
                       console.log('✅ 질문 설정 완료:', questionData.question);
                       
-                      // 면접 시작
-                      setUserTurnState(questionData.question, "API 로딩");
-                      
                       return questionData; // questionData 반환
                       
                     } catch (error) {
@@ -950,6 +1143,17 @@ const InterviewGO: React.FC = () => {
                   setHasIntroMessage(true);
                   setShowIntroMessage(true);
                   
+                  // 🎯 인트로가 있을 때는 타이머 없이 질문만 설정
+                  console.log('⏰ 인트로 메시지 있음 - 타이머 없이 질문 설정');
+                  setCurrentPhase('user_turn');
+                  setCurrentTurn('user');
+                  setIsTimerActive(false); // 타이머 시작하지 않음
+                  setCanSubmit(false); // 인트로 중에는 제출 불가
+                  setCanRecord(false); // 인트로 중에는 녹음 불가
+                  if (questionData) {
+                    setCurrentQuestion(questionData.question);
+                  }
+                  
                   // INTRO 표시 후 잠시 후 숨기기 (TTS는 백엔드에서 자동 처리됨)
                   setTimeout(() => {
                     setShowIntroMessage(false);
@@ -959,6 +1163,10 @@ const InterviewGO: React.FC = () => {
                   console.log('📢 INTRO 메시지 표시 - TTS는 백엔드에서 자동 처리');
                 } else {
                   console.log('📝 INTRO 메시지 없음 - 바로 질문 진행');
+                  // 인트로가 없으면 바로 사용자 턴으로 설정 (타이머 포함)
+                  if (questionData) {
+                    setUserTurnState(questionData.question, "API 로딩");
+                  }
                 }
                 
                 // 🆕 첫 번째 응답에서도 TTS 재생 처리
@@ -975,7 +1183,7 @@ const InterviewGO: React.FC = () => {
                   setCanSubmit(false);
                 }
                 
-                setIsLoading(false);
+                setIsInitialLoading(false);
                 
                 // 🆕 즉시 API 호출 완료 상태로 업데이트 (재호출 방지)
                 markApiCallCompleted(response);
@@ -998,7 +1206,7 @@ const InterviewGO: React.FC = () => {
                 }
                 
                 setCurrentQuestion("질문 로딩에 실패했습니다. 새로고침해주세요.");
-                setIsLoading(false);
+                setIsInitialLoading(false);
                 setCurrentPhase('unknown');
                 setCurrentTurn('waiting');
                 
@@ -1137,10 +1345,23 @@ const InterviewGO: React.FC = () => {
   };
 
   // 답변 제출 실패 시에도 unknown 상태로 복구
-  const submitAnswer = async () => {
-    if (!currentAnswer.trim()) { return; }
-    if (isLoading) { return; }
-    if (currentPhase !== 'user_turn') { return; }
+  const submitAnswer = async (directText?: string) => {
+    const answerText = directText || currentAnswer.trim();
+    if (!answerText) {
+      console.log('❌ 답변이 입력되지 않았습니다.');
+      return;
+    }
+
+    if (isSubmittingAnswer) {
+      console.log('❌ 이미 제출 중입니다.');
+      return;
+    }
+
+    // 사용자 턴이 아니면 제출 불가
+    if (currentPhase !== 'user_turn') {
+      console.log('❌ 사용자 턴이 아닙니다.');
+      return;
+    }
 
     let sessionId = state.sessionId;
     if (!sessionId) {
@@ -1168,7 +1389,7 @@ const InterviewGO: React.FC = () => {
       console.log('💬 텍스트 답변을 백엔드로 제출합니다.');
       const result = await interviewApi.submitUserAnswer(
         sessionId,
-        currentAnswer.trim(),
+        answerText,
         120 - timeLeft
       );
 
@@ -1216,7 +1437,7 @@ const InterviewGO: React.FC = () => {
       }
       alert(`답변 제출 실패: ${errorMessage}`);
     } finally {
-      setIsLoading(false);
+      setIsSubmittingAnswer(false);
     }
   };
 
@@ -1352,10 +1573,15 @@ const InterviewGO: React.FC = () => {
       
       // 인식된 텍스트를 답변란에 자동 입력
       if (transcribedText.trim()) {
+        // UI 표시용으로 currentAnswer 업데이트
         setCurrentAnswer(prev => {
           const newAnswer = prev + (prev ? ' ' : '') + transcribedText;
           return newAnswer;
         });
+        
+        // 🎯 STT 완료 후 즉시 제출 (상태 업데이트 대기 불필요)
+        console.log('🚀 STT 완료 - 자동 답변 제출 시작');
+        submitAnswer(transcribedText);
       }
       
     } catch (error) {
@@ -1623,6 +1849,19 @@ const InterviewGO: React.FC = () => {
     }
   };
 
+  // 🎯 통합 버튼 핸들러 (녹음 + STT + 제출)
+  const handleIntegratedButton = async () => {
+    if (isRecording) {
+      // 녹음 중지 → STT → 자동 제출
+      stopRecording();
+      console.log('🎤 통합 버튼: 녹음 중지 및 STT 처리 시작');
+    } else {
+      // 녹음 시작
+      await startRecording();
+      console.log('🎤 통합 버튼: 녹음 시작');
+    }
+  };
+
   // 🎤 useEffect: 사용자 턴 변경 시 녹음 상태 업데이트
   useEffect(() => {
     if (currentTurn === 'user' && currentPhase === 'user_turn') {
@@ -1809,7 +2048,9 @@ const InterviewGO: React.FC = () => {
         {/* 상단 면접관 영역 */}
         <div className="grid grid-cols-3 gap-4 p-4" style={{ height: '40vh' }}>
           {/* 인사 면접관 */}
-          <div className="bg-gray-900 rounded-lg overflow-hidden relative border-2 border-gray-700">
+          <div className={`bg-gray-900 rounded-lg overflow-hidden relative border-4 transition-all duration-300 ${
+            shouldHighlight('hr') ? 'border-green-500' : 'border-gray-700'
+          }`}>
             <div className="absolute top-4 left-4 font-semibold text-white">
               👔 인사 면접관
             </div>
@@ -1823,7 +2064,9 @@ const InterviewGO: React.FC = () => {
           </div>
 
           {/* 협업 면접관 */}
-          <div className="bg-gray-900 rounded-lg overflow-hidden relative border-2 border-gray-700">
+          <div className={`bg-gray-900 rounded-lg overflow-hidden relative border-4 transition-all duration-300 ${
+            shouldHighlight('collaborate') ? 'border-green-500' : 'border-gray-700'
+          }`}>
             <div className="absolute top-4 left-4 font-semibold text-white">
               🤝 협업 면접관
             </div>
@@ -1837,7 +2080,9 @@ const InterviewGO: React.FC = () => {
           </div>
 
           {/* 기술 면접관 */}
-          <div className="bg-gray-900 rounded-lg overflow-hidden relative border-2 border-gray-700">
+          <div className={`bg-gray-900 rounded-lg overflow-hidden relative border-4 transition-all duration-300 ${
+            shouldHighlight('tech') ? 'border-green-500' : 'border-gray-700'
+          }`}>
             <div className="absolute top-4 left-4 font-semibold text-white">
               💻 기술 면접관
             </div>
@@ -1855,9 +2100,9 @@ const InterviewGO: React.FC = () => {
         <div className="grid gap-4 p-4" style={{ height: '60vh', gridTemplateColumns: '2fr 1fr 2fr' }}>
           {/* 사용자 영역 */}
           <div className={`bg-gray-900 rounded-lg overflow-hidden relative border-2 transition-all duration-300 ${
-            // 사용자 턴일 때
-            currentPhase === 'user_turn'
-              ? 'border-yellow-500 shadow-lg shadow-yellow-500/50 animate-pulse'
+            // 사용자 턴이면서 타이머가 활성화되어 있을 때만
+            currentPhase === 'user_turn' && isTimerActive
+              ? 'border-yellow-500 shadow-lg shadow-yellow-500/50'
             // 대기 상태
             : 'border-gray-600'
           }`}>
@@ -1907,16 +2152,6 @@ const InterviewGO: React.FC = () => {
 
             {/* 답변 입력 오버레이 */}
             <div className="absolute bottom-0 left-0 right-0 bg-black/80 p-4">
-              <textarea
-                ref={answerRef}
-                value={currentAnswer}
-                onChange={(e) => setCurrentAnswer(e.target.value)}
-                disabled={currentPhase !== 'user_turn'}
-                className={`w-full h-20 p-2 bg-gray-800 text-white border border-gray-600 rounded-lg resize-none text-sm ${
-                  currentPhase !== 'user_turn' ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-                placeholder={currentPhase === 'user_turn' ? "답변을 입력해주세요..." : "대기 중..."}
-              />
               
               {/* 🎤 음성 제어 버튼들 */}
               <div className="flex items-center justify-between mt-3 gap-3">
@@ -1927,41 +2162,9 @@ const InterviewGO: React.FC = () => {
                   </div>
                 )}
                 
-                {/* 녹음 버튼 */}
-                <button
-                  onClick={isRecording ? stopRecording : startRecording}
-                  disabled={!canRecord || isLoading}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-                    !canRecord ? 'bg-gray-600 text-gray-400 cursor-not-allowed' :
-                    isRecording ? 'bg-red-500 text-white animate-pulse' :
-                    'bg-blue-500 text-white hover:bg-blue-600'
-                  }`}
-                  title={!canRecord ? '사용자 차례가 아닙니다' : isRecording ? '녹음 중지' : '녹음 시작'}
-                >
-                  <span className="text-lg">
-                    {!canRecord ? '🔒' : isRecording ? '🔴' : '🎤'}
-                  </span>
-                  <span className="text-sm">
-                    {!canRecord ? '대기중' : isRecording ? `녹음중 (${recordingTime}s)` : '녹음하기'}
-                  </span>
-                </button>
-                
-                {/* TTS 상태 표시 */}
-                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium ${
-                  isTTSPlaying ? 'bg-green-500 text-white animate-pulse' :
-                  'bg-green-600 text-white'
-                }`}>
-                  <span className="text-lg">
-                    {isTTSPlaying ? '🔊' : '🎵'}
-                  </span>
-                  <span className="text-xs">
-                    {isTTSPlaying ? '음성 재생 중...' : '자동 음성 재생'}
-                  </span>
-                </div>
               </div>
               
-              <div className="flex items-center justify-between mt-2">
-                <div className="text-gray-400 text-xs">{currentAnswer.length}자</div>
+              <div className="flex items-center justify-end mt-2">
                 {/* 🆕 타이머 표시 */}
                 {currentPhase === 'user_turn' && isTimerActive && (
                   <div className={`text-lg font-bold ${getTimerColor()}`}>
@@ -1978,19 +2181,6 @@ const InterviewGO: React.FC = () => {
             <div className="flex-1 overflow-y-auto">
               {/* 🆕 현재 턴 상태 표시 */}
               <div className="text-center mb-4">
-              <div className={`text-sm font-bold mb-2 ${
-                isTTSPlaying ? 'text-purple-400' :
-                currentPhase === 'user_turn' ? 'text-yellow-400' : 
-                currentPhase === 'ai_processing' ? 'text-green-400' : 
-                currentPhase === 'interview_completed' ? 'text-blue-400' :
-                'text-gray-400'
-              }`}>
-                {isTTSPlaying ? '🔊 음성 재생 중...' :
-                 currentPhase === 'user_turn' ? '🎯 사용자 답변 차례' :
-                 currentPhase === 'ai_processing' ? '🤖 AI 답변 중' :
-                 currentPhase === 'interview_completed' ? '✅ 면접 완료' :
-                 '⏳ 대기 중'}
-              </div>
               
               {/* 🆕 타이머 표시 */}
               {currentPhase === 'user_turn' && isTimerActive && (
@@ -2077,14 +2267,43 @@ const InterviewGO: React.FC = () => {
               ) : (
                 // 일반 질문 표시
                 <div>
-                  <div className="text-gray-400 text-sm mb-2">현재 질문</div>
+                  <div className="text-gray-400 text-sm mb-2">
+                    {isTTSPlaying ? '현재 진행 중' : '현재 질문'}
+                  </div>
                   <div className="text-white text-base leading-relaxed mb-3 max-h-16 overflow-y-auto">
-                    {isLoading ? (
+                    {isTTSPlaying && currentTTSIndex >= 0 && ttsQueue[currentTTSIndex] ? (
+                      // 🎯 1순위: TTS 재생 중일 때 타입별 메시지 표시
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-3 h-3 bg-purple-400 rounded-full animate-pulse"></div>
+                        <span className="text-purple-400">
+                          {getTTSDisplayMessage(ttsQueue[currentTTSIndex].type)}
+                        </span>
+                      </div>
+                    ) : currentPhase === 'ai_processing' ? (
+                      // 🎯 2순위: AI 답변 생성 중
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                        <span className="text-green-400">🤖 AI가 답변을 생성하고 있습니다...</span>
+                      </div>
+                    ) : isSubmittingAnswer ? (
+                      // 🎯 3순위: 사용자 답변 제출 중
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-3 h-3 bg-orange-400 rounded-full animate-pulse"></div>
+                        <span className="text-orange-400">📝 답변을 제출하고 있습니다...</span>
+                      </div>
+                    ) : currentPhase === 'interview_completed' ? (
+                      // 🎯 4순위: 면접 완료
+                      "✅ 면접이 완료되었습니다"
+                    ) : isInitialLoading ? (
+                      // 🎯 5순위: 초기 로딩
                       <div className="flex items-center justify-center gap-2">
                         <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-                        <span className="text-blue-400">첫 번째 질문을 준비하고 있습니다...</span>
+                        <span className="text-blue-400">
+                          {ttsQueue.length > 0 ? getTTSDisplayMessage(ttsQueue[0].type) : '🎬 면접을 시작합니다'}
+                        </span>
                       </div>
                     ) : (
+                      // 🎯 6순위: 기본값 - 현재 질문 표시
                       currentQuestion || "질문을 불러오는 중..."
                     )}
                   </div>
@@ -2153,35 +2372,57 @@ const InterviewGO: React.FC = () => {
                ) : (
                  // 면접 진행 중일 때 답변 제출 버튼 표시
                  (() => {
-                   const hasAnswer = !!currentAnswer.trim();
                    const hasSessionId = !!state.sessionId || !isRestoring;
                    const isUserTurn = currentPhase === 'user_turn';
-                   const isButtonDisabled = !hasAnswer || isLoading || isRestoring || !isUserTurn || !canSubmit;
+                   // 🎯 통합 버튼 활성화 조건: 사용자 턴이면서 타이머가 활성화되어 있을 때
+                   const canUseIntegratedButton = isUserTurn && isTimerActive && hasSessionId && !isRestoring;
+                   
+                   // 🎯 버튼 상태 결정
+                   let buttonText = '';
+                   let buttonClass = '';
+                   let isButtonDisabled = false;
+                   
+                   if (isSubmittingAnswer) {
+                     buttonText = '📝 답변 처리 중...';
+                     buttonClass = 'bg-orange-500';
+                     isButtonDisabled = true;
+                   } else if (isRestoring) {
+                     buttonText = '세션 로드 중...';
+                     buttonClass = 'bg-gray-600';
+                     isButtonDisabled = true;
+                   } else if (!hasSessionId) {
+                     buttonText = '세션 없음';
+                     buttonClass = 'bg-gray-600';
+                     isButtonDisabled = true;
+                   } else if (!isUserTurn) {
+                     buttonText = '대기 중...';
+                     buttonClass = 'bg-gray-600';
+                     isButtonDisabled = true;
+                   } else if (!isTimerActive) {
+                     buttonText = '타이머 대기 중...';
+                     buttonClass = 'bg-gray-600';
+                     isButtonDisabled = true;
+                   } else if (isRecording) {
+                     buttonText = `🔴 녹음 중지 (${recordingTime}s)`;
+                     buttonClass = 'bg-red-500 animate-pulse';
+                     isButtonDisabled = false;
+                   } else {
+                     buttonText = '🎤 녹음 시작';
+                     buttonClass = 'bg-blue-600 hover:bg-blue-500';
+                     isButtonDisabled = false;
+                   }
                    
                    return (
                      <button 
                        className={`w-full py-3 text-white rounded-lg font-semibold transition-colors ${
                          isButtonDisabled 
                            ? 'bg-gray-600 cursor-not-allowed' 
-                           : 'bg-green-600 hover:bg-green-500'
+                           : buttonClass
                        }`}
-                       onClick={submitAnswer}
+                       onClick={handleIntegratedButton}
                        disabled={isButtonDisabled}
                      >
-                       {isLoading 
-                         ? '제출 중...' 
-                         : isRestoring
-                         ? '세션 로드 중...'
-                         : !hasSessionId 
-                         ? '세션 없음' 
-                         : !isUserTurn
-                         ? '대기 중...'
-                         : !canSubmit
-                         ? '준비 중...'
-                         : !hasAnswer
-                         ? '답변을 입력해주세요'
-                         : '🚀 답변 제출'
-                       }
+                       {buttonText}
                      </button>
                    );
                  })()
@@ -2191,10 +2432,10 @@ const InterviewGO: React.FC = () => {
           </div>
 
           {/* AI 지원자 춘식이 */}
-          <div className={`bg-blue-900 rounded-lg overflow-hidden relative border-2 transition-all duration-300 ${
-            // AI 턴일 때
-            currentPhase === 'ai_processing'
-              ? 'border-green-500 shadow-lg shadow-green-500/50 animate-pulse'
+          <div className={`bg-blue-900 rounded-lg overflow-hidden relative border-4 transition-all duration-300 ${
+            // AI 턴일 때 또는 AI TTS 재생 중일 때
+            currentPhase === 'ai_processing' || shouldHighlight('ai')
+              ? 'border-green-500 shadow-lg shadow-green-500/50'
             // 대기 상태
             : 'border-gray-600'
           }`}>
