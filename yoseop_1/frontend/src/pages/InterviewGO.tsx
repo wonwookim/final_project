@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInterview } from '../contexts/InterviewContext';
+import { useAuth } from '../hooks/useAuth';
 import { sessionApi, interviewApi, tokenManager } from '../services/api';
 import apiClient, { handleApiError } from '../services/api';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -52,6 +53,7 @@ interface FeedbackEvaluationResponse {
 const InterviewGO: React.FC = () => {
   const navigate = useNavigate();
   const { state, dispatch } = useInterview();
+  const { user } = useAuth();
 
   // sessionId를 InterviewService 상태에서 가져오기
   React.useEffect(() => {
@@ -2110,7 +2112,7 @@ const InterviewGO: React.FC = () => {
             : 'border-gray-600'
           }`}>
             <div className="absolute top-4 left-4 text-yellow-400 font-semibold z-10">
-              사용자: {state.settings?.candidate_name || 'You'}
+              사용자: {user?.name || state.settings?.candidate_name || 'You'}
             </div>
             
             {/* 🆕 턴 상태 표시 */}
