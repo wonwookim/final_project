@@ -729,9 +729,51 @@ class GazeAnalyzer(GazeCoreProcessor):
                 if not validation['valid']:
                     raise Exception(f"동영상 파일 검증 실패: {', '.join(validation['errors'])}")
                 
-                # === 2단계: webm 파일 직접 사용 (트랜스코딩 불필요) ===
-                logger.info("📁 [ANALYZE] S3에서 다운로드된 webm 파일 직접 사용")
-                final_video_path = video_path
+                # === 2단계: FFmpeg 트랜스코딩 (ValidationError 근본 해결) ===
+                # 메타데이터 검증 및 FFmpeg 가용성 확인
+                metadata_valid = self._validate_video_metadata(video_path)
+                ffmpeg_available = self._check_ffmpeg_availability()
+                
+                final_video_path = video_path  # 기본값: 원본 webm 파일
+                transcoded_success = False
+                
+                if ffmpeg_available:
+                    # FFmpeg 사용 가능한 경우 트랜스코딩 시도
+                    if not metadata_valid:
+                        logger.info("🔄 [ANALYZE] 메타데이터 오류로 FFmpeg 트랜스코딩 시작")
+                    else:
+                        logger.info("🔄 [ANALYZE] 안정성을 위한 FFmpeg 트랜스코딩 실행")
+                    
+                    # 임시 MP4 파일 경로 생성
+                    import tempfile
+                    mp4_path = video_path.replace('.webm', '_transcoded.mp4')
+                    
+                    try:
+                        if self._transcode_webm_to_mp4(video_path, mp4_path):
+                            # 트랜스코딩 성공 - MP4 파일 메타데이터 검증
+                            if self._validate_video_metadata(mp4_path):
+                                logger.info("✅ [ANALYZE] FFmpeg 트랜스코딩 성공 - 메타데이터 유효")
+                                final_video_path = mp4_path
+                                transcoded_success = True
+                            else:
+                                logger.warning("⚠️ [ANALYZE] 트랜스코딩은 성공했으나 MP4 메타데이터 여전히 문제")
+                                # MP4 파일 정리
+                                if os.path.exists(mp4_path):
+                                    os.remove(mp4_path)
+                        else:
+                            logger.warning("⚠️ [ANALYZE] FFmpeg 트랜스코딩 실패")
+                    except Exception as e:
+                        logger.error(f"❌ [ANALYZE] 트랜스코딩 중 오류 발생: {e}")
+                        if os.path.exists(mp4_path):
+                            os.remove(mp4_path)
+                else:
+                    logger.warning("⚠️ [ANALYZE] FFmpeg를 사용할 수 없음")
+                
+                # 결과 로깅
+                if transcoded_success:
+                    logger.info("📁 [ANALYZE] 트랜스코딩된 MP4 파일 사용")
+                else:
+                    logger.info("📁 [ANALYZE] 원본 WebM 파일 사용 (메타데이터 보정 적용 예정)")
                 
                 # === 3단계: 허용 시선 범위 계산 ===
                 logger.info(f"🎯 [ANALYZE] Calibration points: {calibration_points}")
@@ -856,7 +898,7 @@ class GazeAnalyzer(GazeCoreProcessor):
                 logger.info(f"✅ [ANALYZE] 분석 완료: 점수={final_score}, 소요시간={analysis_duration:.1f}초")
                 logger.info(f"🎯 [ANALYZE] Final allowed range in result: {current_allowed_range}")
                 
-                # === 11단계: 분석 완료 (임시 파일 정리 불필요 - webm 직접 사용) ===
+                # === 11단계: 분석 완료 ===
                 
                 return GazeAnalysisResult(
                     gaze_score=final_score,
@@ -876,6 +918,15 @@ class GazeAnalyzer(GazeCoreProcessor):
             except Exception as e:
                 logger.error(f"❌ [ANALYZE] 분석 실패: {e}")
                 raise
+            finally:
+                # 트랜스코딩된 임시 파일 정리
+                if 'transcoded_success' in locals() and transcoded_success and 'mp4_path' in locals():
+                    try:
+                        if os.path.exists(mp4_path):
+                            os.remove(mp4_path)
+                            logger.debug(f"🗑️ [CLEANUP] 트랜스코딩된 임시 파일 정리: {mp4_path}")
+                    except Exception as cleanup_error:
+                        logger.warning(f"⚠️ [CLEANUP] 임시 파일 정리 실패: {cleanup_error}")
 
 
 # 싱글톤 인스턴스 생성 (기존 API 호환성 유지)
