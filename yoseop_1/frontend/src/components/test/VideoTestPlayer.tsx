@@ -17,7 +17,7 @@ const VideoTestPlayer: React.FC<PlayerProps> = ({ testId, onError }) => {
       console.log('🎥 비디오 로드 시작:', { testId });
 
       const response = await apiClient.get(`/video/play/${testId}`);
-      const data: TestPlayResponse = response.data;
+      const data = response.data as TestPlayResponse;
       console.log('✅ 비디오 데이터 받음:', {
         play_url: data.play_url ? `${data.play_url.substring(0, 100)}...` : 'null',
         file_name: data.file_name,

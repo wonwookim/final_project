@@ -18,6 +18,7 @@
 from pydantic import BaseModel, Field, validator
 from typing import List, Dict, Optional, Tuple, Any
 from datetime import datetime
+from uuid import UUID
 
 
 class CalibrationStartRequest(BaseModel):
@@ -363,4 +364,21 @@ class CalibrationQualityCheck(BaseModel):
                 "recommendations": ["조명을 밝게 하고 다시 시도해보세요"]
             }
         }
+
+class GazeAnalysisResponse(BaseModel):
+    """시선 분석 결과 응답 스키마"""
+    gaze_id: UUID
+    interview_id: int
+    user_id: int
+    gaze_score: float
+    jitter_score: float
+    compliance_score: float
+    stability_rating: str
+    created_at: datetime
+    gaze_points: Optional[Any] = None
+    calibration_points: Optional[Any] = None
+    video_metadata: Optional[Dict[str, Any]] = None
+
+    class Config:
+        orm_mode = True
 # === 김원우 작성 끝 ===

@@ -27,7 +27,7 @@ const VideoGazeAnalysis: React.FC<GazeAnalysisProps> = ({
         session_id: calibrationSessionId
       });
 
-      const data = response.data;
+      const data = response.data as { task_id: string };
       console.log('✅ 분석 작업 시작됨:', data);
       
       setTaskId(data.task_id);
@@ -53,7 +53,7 @@ const VideoGazeAnalysis: React.FC<GazeAnalysisProps> = ({
       try {
         // 🚀 apiClient 사용
         const response = await apiClient.get(`/test/gaze/analyze/status/${taskId}`);
-        const statusData: AnalysisStatusResponse = response.data;
+        const statusData = response.data as AnalysisStatusResponse;
 
         console.log('📊 분석 상태:', statusData);
         

@@ -27,6 +27,8 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional
 import time
 import logging
+import subprocess
+import shutil
 
 # 새로운 모듈 import
 from .gaze_core import GazeCoreProcessor, GazeConfig
@@ -136,6 +138,223 @@ class GazeAnalyzer(GazeCoreProcessor):
         except Exception as e:
             logger.error(f"❌ [GAZE_ANALYZER] S3 클라이언트 초기화 실패: {e}")
             raise RuntimeError(f"S3 클라이언트 초기화 실패: {e}")
+    
+    def _check_ffmpeg_availability(self) -> bool:
+        """
+        FFmpeg 설치 및 사용 가능 여부 확인
+        
+        시스템에 ffmpeg가 설치되어 있고 실행 가능한지 확인합니다.
+        비디오 트랜스코딩 기능 사용 전 필수 체크입니다.
+        
+        Returns:
+            bool: FFmpeg 사용 가능 여부
+            
+        실제 면접 서비스 고려사항:
+        - 서버 초기화 시 1회 체크하여 결과 캐싱 권장
+        - FFmpeg 버전 호환성 확인 (4.0 이상 권장)
+        - 필요한 코덱 지원 여부 확인 (libx264)
+        """
+        try:
+            # ffmpeg 명령어 실행 가능 여부 확인
+            result = subprocess.run(
+                ['ffmpeg', '-version'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode == 0:
+                # 버전 정보에서 libx264 지원 확인
+                if 'libx264' in result.stdout:
+                    logger.info("✅ [FFMPEG] FFmpeg 사용 가능 (libx264 지원)")
+                    return True
+                else:
+                    logger.warning("⚠️ [FFMPEG] FFmpeg는 설치되어 있지만 libx264 코덱이 지원되지 않음")
+                    return False
+            else:
+                logger.warning("⚠️ [FFMPEG] FFmpeg 실행 실패")
+                return False
+                
+        except subprocess.TimeoutExpired:
+            logger.error("❌ [FFMPEG] FFmpeg 버전 확인 시 타임아웃 발생")
+            return False
+        except FileNotFoundError:
+            logger.warning("⚠️ [FFMPEG] FFmpeg가 설치되어 있지 않거나 PATH에 없습니다")
+            return False
+        except Exception as e:
+            logger.error(f"❌ [FFMPEG] FFmpeg 확인 중 오류 발생: {e}")
+            return False
+    
+    def _validate_video_metadata(self, video_path: str) -> bool:
+        """
+        OpenCV로 읽은 비디오 메타데이터 유효성 검증
+        
+        webm 파일에서 OpenCV가 부정확한 메타데이터를 읽는 경우를 감지합니다.
+        트랜스코딩 필요 여부를 판단하는 핵심 함수입니다.
+        
+        Args:
+            video_path: 검증할 비디오 파일 경로
+            
+        Returns:
+            bool: 메타데이터가 유효한 경우 True, 트랜스코딩이 필요한 경우 False
+            
+        검증 기준:
+        - 총 프레임 수: 1 이상의 유효한 값
+        - FPS: 1 이상 120 이하의 합리적인 값
+        - 비디오 스트림 존재 여부
+        - 기본적인 프레임 읽기 가능 여부
+        
+        실제 면접 서비스 고려사항:
+        - 엄격한 검증: 정확한 분석을 위한 높은 기준
+        - 성능: 빠른 검증을 위해 첫 몇 프레임만 확인
+        - 로깅: 문제가 되는 파일 패턴 추적
+        """
+        try:
+            cap = cv2.VideoCapture(video_path)
+            if not cap.isOpened():
+                logger.warning(f"⚠️ [METADATA] 비디오 파일을 열 수 없음: {video_path}")
+                return False
+            
+            # 기본 메타데이터 읽기
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            
+            # 메타데이터 유효성 검사
+            is_valid = True
+            validation_issues = []
+            
+            # 프레임 수 검증 (1 이상의 합리적인 값)
+            if total_frames <= 0 or total_frames > 1000000:  # 1백만 프레임 = 약 9시간 (30fps 기준)
+                is_valid = False
+                validation_issues.append(f"비정상적인 프레임 수: {total_frames}")
+            
+            # FPS 검증 (1-120 fps 범위)
+            if fps <= 0 or fps > 120:
+                is_valid = False
+                validation_issues.append(f"비정상적인 FPS: {fps}")
+            
+            # 해상도 검증 (최소 160x120, 최대 4K)
+            if width <= 0 or height <= 0 or width > 3840 or height > 2160:
+                is_valid = False
+                validation_issues.append(f"비정상적인 해상도: {width}x{height}")
+            
+            # 실제 프레임 읽기 테스트 (첫 프레임만)
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                is_valid = False
+                validation_issues.append("첫 프레임 읽기 실패")
+            
+            cap.release()
+            
+            if is_valid:
+                logger.info(f"✅ [METADATA] 비디오 메타데이터 유효: {total_frames}프레임, {fps:.1f}FPS, {width}x{height}")
+                return True
+            else:
+                logger.warning(f"⚠️ [METADATA] 비디오 메타데이터 무효: {', '.join(validation_issues)}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ [METADATA] 메타데이터 검증 중 오류: {e}")
+            return False
+    
+    def _transcode_webm_to_mp4(self, input_path: str, output_path: str) -> bool:
+        """
+        FFmpeg을 사용하여 webm 파일을 mp4로 트랜스코딩
+        
+        시선 분석에 최적화된 설정으로 webm을 mp4(H.264)로 변환합니다.
+        OpenCV 호환성 문제를 해결하는 핵심 기능입니다.
+        
+        Args:
+            input_path: 입력 webm 파일 경로
+            output_path: 출력 mp4 파일 경로
+            
+        Returns:
+            bool: 트랜스코딩 성공 여부
+            
+        FFmpeg 옵션 설명:
+        - c:v libx264: H.264 비디오 코덱 (OpenCV 호환성 최고)
+        - preset faster: 빠른 인코딩 (품질 vs 속도 균형)
+        - crf 28: 적절한 품질 (시선 분석용, 18-32 범위)
+        - s 640x480: 해상도 최적화 (시선 분석 충분)
+        - r 15: 프레임레이트 제한 (처리 속도 향상)
+        - an: 오디오 제거 (시선 분석 불필요)
+        - movflags +faststart: 웹 스트리밍 최적화
+        
+        실제 면접 서비스 고려사항:
+        - 변환 시간: 1분 영상 기준 10-30초 소요
+        - 파일 크기: 원본의 30-50% 수준
+        - CPU 사용: 멀티코어 활용 최적화
+        - 메모리: 피크 시 200-500MB 사용
+        """
+        try:
+            transcode_start = time.time()
+            logger.info(f"🔄 [TRANSCODE] webm → mp4 변환 시작: {input_path}")
+            
+            # 최적화된 FFmpeg 명령어 구성
+            ffmpeg_command = [
+                'ffmpeg',
+                '-y',  # 출력 파일 덮어쓰기
+                '-i', input_path,  # 입력 파일
+                
+                # 비디오 인코딩 옵션
+                '-c:v', 'libx264',     # H.264 코덱
+                '-preset', 'faster',    # 인코딩 속도 우선
+                '-crf', '28',          # 품질 설정 (시선 분석용)
+                
+                # 해상도 및 프레임레이트 최적화
+                '-s', '640x480',       # 시선 분석 충분 해상도
+                '-r', '15',            # 프레임레이트 제한 (처리 속도)
+                
+                # 오디오 및 기타 옵션
+                '-an',                 # 오디오 제거
+                '-movflags', '+faststart',  # 웹 최적화
+                
+                # 출력 파일
+                output_path
+            ]
+            
+            # FFmpeg 실행 (타임아웃 포함)
+            result = subprocess.run(
+                ffmpeg_command,
+                capture_output=True,
+                text=True,
+                timeout=120,  # 2분 타임아웃 (대용량 파일 고려)
+                check=False   # returncode 수동 확인
+            )
+            
+            transcode_duration = time.time() - transcode_start
+            
+            # 트랜스코딩 성공 여부 확인
+            if result.returncode == 0:
+                # 출력 파일 존재 및 크기 확인
+                if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                    input_size = SecureFileManager.get_file_size_mb(input_path)
+                    output_size = SecureFileManager.get_file_size_mb(output_path)
+                    compression_ratio = (output_size / input_size) * 100 if input_size > 0 else 0
+                    
+                    logger.info(f"✅ [TRANSCODE] 변환 성공 - {transcode_duration:.1f}초 소요")
+                    logger.info(f"📊 [TRANSCODE] 크기 변화: {input_size:.1f}MB → {output_size:.1f}MB ({compression_ratio:.1f}%)")
+                    return True
+                else:
+                    logger.error("❌ [TRANSCODE] 출력 파일이 생성되지 않았거나 비어있음")
+                    return False
+            else:
+                # FFmpeg 오류 메시지 로깅
+                logger.error(f"❌ [TRANSCODE] FFmpeg 실행 실패 (코드: {result.returncode})")
+                logger.error(f"❌ [TRANSCODE] stderr: {result.stderr[:500]}...")  # 처음 500자만
+                return False
+                
+        except subprocess.TimeoutExpired:
+            logger.error("❌ [TRANSCODE] 트랜스코딩 시간 초과 (2분)")
+            return False
+        except FileNotFoundError:
+            logger.error("❌ [TRANSCODE] FFmpeg를 찾을 수 없습니다")
+            return False
+        except Exception as e:
+            logger.error(f"❌ [TRANSCODE] 트랜스코딩 중 예상치 못한 오류: {e}")
+            return False
     
     def download_video_from_s3(self, bucket: str, key: str, local_path: str) -> None:
         """
@@ -507,22 +726,60 @@ class GazeAnalyzer(GazeCoreProcessor):
                 if not validation['valid']:
                     raise Exception(f"동영상 파일 검증 실패: {', '.join(validation['errors'])}")
                 
-                # === 2단계: 허용 시선 범위 계산 ===
+                # === 2단계: 조건부 트랜스코딩 (OpenCV 호환성 확보) ===
+                final_video_path = video_path  # 기본값은 원본 webm 파일
+                transcoded_path = None         # 변환된 mp4 파일 경로 (필요시)
+                
+                # 메타데이터 검증으로 트랜스코딩 필요 여부 판단
+                if not self._validate_video_metadata(video_path):
+                    logger.info("🔄 [ANALYZE] 메타데이터 무효 - FFmpeg 트랜스코딩 시작")
+                    
+                    # FFmpeg 설치 확인
+                    if not self._check_ffmpeg_availability():
+                        logger.warning("⚠️ [ANALYZE] FFmpeg 미설치 - 원본 파일로 분석 시도")
+                    else:
+                        # mp4 임시 파일 경로 생성
+                        transcoded_path = video_path.replace('.webm', '_transcoded.mp4')
+                        
+                        # webm → mp4 트랜스코딩 실행
+                        if self._transcode_webm_to_mp4(video_path, transcoded_path):
+                            # 트랜스코딩 성공 시 변환된 파일 사용
+                            final_video_path = transcoded_path
+                            logger.info(f"✅ [ANALYZE] 트랜스코딩 성공 - mp4 파일 사용: {transcoded_path}")
+                        else:
+                            logger.warning("⚠️ [ANALYZE] 트랜스코딩 실패 - 원본 webm 파일로 진행")
+                else:
+                    logger.info("✅ [ANALYZE] 메타데이터 유효 - 원본 webm 파일 사용")
+                
+                # === 3단계: 허용 시선 범위 계산 ===
                 logger.info(f"🎯 [ANALYZE] Calibration points: {calibration_points}")
                 original_allowed_range = self.calculate_allowed_gaze_range(calibration_points)
                 current_allowed_range = original_allowed_range.copy()
                 logger.info(f"🎯 [ANALYZE] Calculated allowed range: {original_allowed_range}")
                 
-                # === 3단계: 동영상 프레임 분석 ===
-                cap = cv2.VideoCapture(video_path)
+                # === 4단계: 동영상 프레임 분석 (최종 결정된 파일 사용) ===
+                cap = cv2.VideoCapture(final_video_path)
                 if not cap.isOpened():
-                    raise Exception(f"동영상을 열 수 없습니다: {video_path}")
+                    raise Exception(f"동영상을 열 수 없습니다: {final_video_path}")
                 
                 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
                 fps = cap.get(cv2.CAP_PROP_FPS)
-                duration = total_frames / fps if fps > 0 else 0
-                
+
+                # 👇 [수정 시작] 동영상 정보 유효성 검사 및 처리
+                if total_frames <= 0:
+                    logger.warning(f"⚠️ [ANALYZE] 동영상 총 프레임 수가 유효하지 않습니다: {total_frames}. 기본값 1로 설정.")
+                    total_frames = 1 # 0으로 나누는 것을 방지
+
+                if fps <= 0:
+                    logger.warning(f"⚠️ [ANALYZE] 동영상 FPS가 유효하지 않습니다: {fps}. 기본값 30으로 설정.")
+                    fps = 30.0 # 0으로 나누는 것을 방지
+
+                duration = total_frames / fps
+
                 logger.info(f"📹 [ANALYZE] 동영상 정보: {total_frames}프레임, {fps:.1f}FPS, {duration:.1f}초")
+                # 👆 [수정 끝] 동영상 정보 유효성 검사 및 처리
+
+                # duration = total_frames / fps if fps > 0 else 0
                 
                 # 분석 변수 초기화
                 gaze_points = []
@@ -615,6 +872,14 @@ class GazeAnalyzer(GazeCoreProcessor):
                 logger.info(f"✅ [ANALYZE] 분석 완료: 점수={final_score}, 소요시간={analysis_duration:.1f}초")
                 logger.info(f"🎯 [ANALYZE] Final allowed range in result: {current_allowed_range}")
                 
+                # === 11단계: 임시 파일 정리 ===
+                if transcoded_path and os.path.exists(transcoded_path):
+                    try:
+                        os.remove(transcoded_path)
+                        logger.info(f"🗑️ [CLEANUP] 트랜스코딩된 임시 파일 삭제: {transcoded_path}")
+                    except Exception as cleanup_error:
+                        logger.warning(f"⚠️ [CLEANUP] 임시 파일 삭제 실패: {cleanup_error}")
+                
                 return GazeAnalysisResult(
                     gaze_score=final_score,
                     total_frames=total_frames,
@@ -631,6 +896,14 @@ class GazeAnalyzer(GazeCoreProcessor):
                 )
                 
             except Exception as e:
+                # 에러 발생 시에도 임시 파일 정리
+                if 'transcoded_path' in locals() and transcoded_path and os.path.exists(transcoded_path):
+                    try:
+                        os.remove(transcoded_path)
+                        logger.info(f"🗑️ [CLEANUP] 에러 처리 중 트랜스코딩된 임시 파일 삭제: {transcoded_path}")
+                    except Exception as cleanup_error:
+                        logger.warning(f"⚠️ [CLEANUP] 에러 처리 중 임시 파일 삭제 실패: {cleanup_error}")
+                
                 logger.error(f"❌ [ANALYZE] 분석 실패: {e}")
                 raise
 

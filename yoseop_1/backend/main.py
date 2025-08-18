@@ -97,7 +97,7 @@ async def spa_middleware(request: Request, call_next):
     response = await call_next(request)
     
     # API 경로들은 그대로 반환 (더 구체적으로 지정)
-    api_paths = ['/auth', '/user', '/resume', '/company', '/posting', '/position', '/docs', '/redoc', '/openapi.json', '/health']
+    api_paths = ['/auth', '/user', '/resume', '/company', '/posting', '/position', '/gaze', '/docs', '/redoc', '/openapi.json', '/health']
     
     # /interview API 경로들 (정확한 매칭을 위해)
     is_interview_api = (
@@ -114,7 +114,9 @@ async def spa_middleware(request: Request, call_next):
         request.url.path.startswith('/interview/text-competition') or
         request.url.path.startswith('/interview/comparison') or
         request.url.path.startswith('/interview/session') or
-        request.url.path.startswith('/interview/feedback')
+        request.url.path.startswith('/interview/feedback') or
+        request.url.path.startswith('/interview/video/') or # 비디오 스트리밍 API
+                '/gaze-analysis' in request.url.path  # 시선 분석 결과 API  # 시선 분석 결과 API
     )
     
     # 디버깅: 면접 관련 API 호출 로깅

@@ -1,6 +1,7 @@
 from pydantic import BaseModel
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from datetime import datetime
+from uuid import UUID
 
 # Pydantic 모델 정의
 class InterviewSettings(BaseModel):
@@ -11,10 +12,11 @@ class InterviewSettings(BaseModel):
     difficulty: str = "중간"
     candidate_name: str
     documents: Optional[List[str]] = None
-    resume: Optional[Dict] = None  # 🆕 사용자 이력서 데이터
-    posting_id: Optional[int] = None  # 🆕 채용공고 ID - 지정되면 실제 DB 데이터 사용
-    user_resume_id: Optional[int] = None  # 🆕 사용자 이력서 ID
-    use_interviewer_service: Optional[bool] = False  # 🎯 InterviewerService 사용 플래그
+    resume: Optional[Dict] = None
+    posting_id: Optional[int] = None
+    user_resume_id: Optional[int] = None
+    use_interviewer_service: Optional[bool] = False
+    calibration_data: Optional[Dict] = None
 
 class QuestionRequest(BaseModel):
     """질문 요청 모델"""
@@ -52,11 +54,6 @@ class AITurnRequest(BaseModel):
     """AI 턴 처리 요청 모델"""
     comparison_session_id: str
     step: str = "question"  # "question" 또는 "answer"
-    
-class CompetitionTurnSubmission(BaseModel):
-    """경쟁 면접 통합 턴 제출 모델"""
-    comparison_session_id: str
-    answer: str
     
 class CompetitionTurnSubmission(BaseModel):
     """경쟁 면접 통합 턴 제출 모델"""
@@ -113,4 +110,3 @@ class MemoUpdateRequest(BaseModel):
     question_index: int
     who: str
     memo: str
-    

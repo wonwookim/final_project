@@ -4,6 +4,8 @@ from typing import Dict, Any, List, Optional
 import asyncio
 import uuid
 import time
+import boto3
+import os
 from llm.interviewer.question_generator import QuestionGenerator
 from llm.candidate.model import AICandidateModel, CandidatePersona
 from llm.shared.models import AnswerRequest, QuestionType, LLMProvider
@@ -13,7 +15,7 @@ from llm.shared.logging_config import interview_logger
 from backend.services.Orchestrator import Orchestrator
 from backend.services.supabase_client import get_supabase_client
 from backend.services.existing_tables_service import existing_tables_service
-
+from backend.services.gaze_service import gaze_analyzer
 class InterviewService:
     def __init__(self):
         # 세션 상태 관리 (Orchestrator의 state를 여기로 이관)
@@ -217,7 +219,17 @@ class InterviewService:
                     initial_settings['user_resume_id'] = int(settings['user_resume_id'])
                 except Exception:
                     initial_settings['user_resume_id'] = None
-            
+
+            # --- ▼▼▼ 바로 이 부분을 추가해주세요! ▼▼▼ ---
+            initial_settings['calibration_data'] = settings.get('calibration_data')
+            # --- ▲▲▲ 여기까지 추가 ▲▲▲ ---
+            # 👇 [디버깅 로그 1/2] 데이터가 실제로 저장되는지 확인합니다.
+            print(f"✅ [DEBUG] 캘리브레이션 데이터 저장 시도: session_id= {session_id}")
+            if initial_settings.get('calibration_data'):
+                print(f"   - 저장된 데이터 내용: {initial_settings['calibration_data']}")
+            else:
+                print(f"   - ⚠️ 경고: 저장할 캘리브레이션 데이터가 없습니다!")
+
             session_state = self.create_session_state(session_id, initial_settings)
             
             # Orchestrator 생성 - 에이전트들도 전달
@@ -275,7 +287,9 @@ class InterviewService:
             from llm.feedback.api_service import InterviewEvaluationService
             import os
             import glob
-
+            interview_logger.info(f"피드백 트리거 시작: {session_id}")
+            await asyncio.sleep(5)  # CPU 사용 없이 5초 비동기 대기
+            interview_logger.info(f"피드백 트리거 종료: {session_id}")
             session_state = self.session_states.get(session_id)
             if not session_state:
                 return
@@ -362,67 +376,159 @@ class InterviewService:
             return
 
     async def _process_temporary_gaze_file(self, session_id: str, interview_id: int) -> None:
-        """임시 시선 추적 파일을 Supabase에 업로드하고 분석을 트리거"""
+        """임시 파일을 Boto3로 S3에 업로드하고, 그 메타데이터를 Supabase DB에 저장한 후, 분석을 트리거"""
         try:
-            import os
-            import glob
             from datetime import datetime
+            import glob
 
+            # 1. 임시 파일 찾기
             temp_folder = "backend/uploads/temp_gaze"
-            
-            # session_id로 임시 파일 찾기
             temp_files = glob.glob(os.path.join(temp_folder, f"{session_id}.*"))
-            
+
             if not temp_files:
                 interview_logger.info(f"🔍 세션 {session_id}에 대한 임시 시선 추적 파일이 없습니다.")
                 return
-            
-            temp_file_path = temp_files[0]  # 첫 번째 매칭 파일 사용
+
+            temp_file_path = temp_files[0]
             interview_logger.info(f"📁 임시 파일 발견: {temp_file_path}")
-            
-            # Supabase 클라이언트 가져오기
-            supabase_client = get_supabase_client()
-            
-            # 파일 확장자 추출
+
+            # 2. Boto3 S3 클라이언트 생성
+            access_key = os.getenv('AWS_ACCESS_KEY_ID')
+            secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+            region = os.getenv('AWS_REGION', 'ap-northeast-2')
+            bucket_name = 'betago-s3'
+
+            if not access_key or not secret_key:
+                interview_logger.error("❌ AWS 자격증명이 .env 파일에 설정되지 않았습니다.")
+                return
+
+            s3_client = boto3.client('s3', aws_access_key_id=access_key, aws_secret_access_key=secret_key, region_name=region)
+
+            # 3. S3에 업로드할 경로 및 파일명 결정
             file_extension = os.path.splitext(temp_file_path)[1]
-            
-            # Supabase Storage에 업로드할 경로 생성
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            storage_path = f"gaze_tracking/{interview_id}/gaze_video_{timestamp}{file_extension}"
-            
-            # 파일을 Supabase Storage에 업로드
-            with open(temp_file_path, 'rb') as file:
-                file_data = file.read()
-                
-                result = supabase_client.storage.from_('betago-s3').upload(
-                    path=storage_path,
-                    file=file_data,
-                    file_options={
-                        "content-type": "video/webm" if file_extension == ".webm" else "video/mp4"
-                    }
+            s3_key = f"gaze_tracking/{interview_id}/gaze_video_{timestamp}{file_extension}"
+
+            # 4. S3에 파일 업로드
+            interview_logger.info(f"📤 S3에 파일 업로드 시작: Bucket={bucket_name}, Key={s3_key}")
+            s3_client.upload_file(temp_file_path, bucket_name, s3_key)
+            interview_logger.info(f"✅ S3 업로드 성공: {s3_key}")
+
+            # 5. Supabase DB에 메타데이터 저장
+            try:
+                supabase_db_client = get_supabase_client()
+
+                # 세션에서 user_id 가져오기
+                session_state = self.session_states.get(session_id)
+                user_id = session_state.get('user_id') if session_state else None
+                if not user_id:
+                    raise Exception(f"세션({session_id})에서 user_id를 찾을 수 없습니다.")
+
+                # S3 URL 및 파일 크기 계산
+                s3_url = f"https://{bucket_name}.s3.{region}.amazonaws.com/{s3_key}"
+                file_size = os.path.getsize(temp_file_path)
+
+                # DB 스키마에 맞는 데이터 구성
+                media_data_to_insert = {
+                    'user_id': user_id,
+                    'interview_id': interview_id,
+                    'file_name': os.path.basename(s3_key),
+                    'file_type': 'video',
+                    's3_url': s3_url,
+                    's3_key': s3_key,
+                    'file_size': file_size,
+                }
+
+                interview_logger.info(f"💾 DB에 저장할 메타데이터: {media_data_to_insert}")
+                insert_result = supabase_db_client.table('media_files').insert(media_data_to_insert).execute()
+
+                if insert_result.data:
+                    media_record_id = insert_result.data[0]['media_id']
+                    interview_logger.info(f"✅ Supabase DB에 미디어 메타데이터 저장 성공. media_id: {media_record_id}")
+                else:
+                    raise Exception(f"DB insert 실패: {getattr(insert_result, 'error', 'Unknown error')}")
+
+            except Exception as db_error:
+                interview_logger.error(f"❌ 미디어 메타데이터 DB 저장 실패: {db_error}", exc_info=True)
+                return
+
+            # 6. 시선 분석 서비스 호출
+            try:
+                interview_logger.info(f"📊 시선 분석 시작: interview_id={interview_id}, s3_path={s3_key}")
+                session_state = self.session_states.get(session_id)
+
+                # 6-1. 세션에서 캘리브레이션 데이터 가져오기
+                calibration_data = session_state.get('calibration_data')
+                if not calibration_data:
+                    raise Exception(f"세션({session_id})에서 캘리브레이션 데이터를 찾을 수 없습니다.")
+
+                calibration_points = calibration_data.get('calibration_points')
+                initial_face_size = calibration_data.get('initial_face_size')
+
+                if not calibration_points:
+                     raise Exception(f"세션({session_id})의 캘리브레이션 데이터에 points 정보가 없습니다.")
+
+                # 6-2. gaze_analyzer로 분석 실행
+                analysis_result = gaze_analyzer.analyze_video_from_s3(
+                    bucket=bucket_name,
+                    key=s3_key,
+                    calibration_points=calibration_points,
+                    initial_face_size=initial_face_size
                 )
-                
-                if result.error:
-                    raise Exception(f"Supabase 업로드 실패: {result.error}")
-                
-                interview_logger.info(f"✅ Supabase 업로드 성공: {storage_path}")
-            
-            # TODO: 여기서 시선 분석 API 호출 (기존 /gaze/analyze 엔드포인트 활용)
-            # 현재는 파일 업로드까지만 구현
-            interview_logger.info(f"📊 시선 분석 트리거 예정: interview_id={interview_id}, file_path={storage_path}")
-            
+
+                # 6-3. 분석 결과를 DB에 저장 (객체 속성 접근 방식으로 수정)
+                if analysis_result:
+                    try:
+                        supabase_client = get_supabase_client()
+
+                        # video_metadata JSON 객체 구성
+                        video_metadata = {
+                            "total_frames": getattr(analysis_result, 'total_frames', 0),
+                            "analyzed_frames": getattr(analysis_result, 'analyzed_frames', 0),
+                            "in_range_ratio": getattr(analysis_result, 'in_range_ratio', 0),
+                            "analysis_duration_sec": getattr(analysis_result, 'analysis_duration', 0),
+                            "feedback_summary": getattr(analysis_result, 'feedback', "N/A")
+                        }
+
+                        # DB에 저장할 데이터 구성 (사용자 테이블 스키마에 맞춤)
+                        data_to_insert = {
+                            "interview_id": interview_id,
+                            "user_id": user_id,
+                            "gaze_score": getattr(analysis_result, 'gaze_score', 0),
+                            "jitter_score": getattr(analysis_result, 'jitter_score', 0),
+                            "compliance_score": getattr(analysis_result, 'compliance_score', 0),
+                            "stability_rating": getattr(analysis_result, 'stability_rating', "Error"),
+                            "gaze_points": getattr(analysis_result, 'gaze_points', []),
+                            "calibration_points": getattr(analysis_result, 'calibration_points', []),
+                            "video_metadata": video_metadata
+                        }
+
+                        interview_logger.info(f"💾 시선 분석 결과 DB 저장 시도: interview_id={interview_id}")
+
+                        insert_res = supabase_client.table('gaze_analysis').insert(data_to_insert).execute()
+
+                        if insert_res.data:
+                            interview_logger.info(f"✅ 시선 분석 결과 DB 저장 성공. gaze_id: {insert_res.data[0].get('gaze_id')}")
+                        else:
+                            error_details = getattr(insert_res, 'error', 'Unknown error')
+                            raise Exception(f"DB insert 실패: {error_details}")
+
+                    except Exception as db_save_error:
+                        interview_logger.error(f"❌ 시선 분석 결과 DB 저장 실패: {db_save_error}", exc_info=True)
+                else:
+                    interview_logger.error(f"❌ 시선 분석 실패: analysis_result가 없습니다.")
+
+            except Exception as analysis_error:
+                interview_logger.error(f"❌ 시선 분석 또는 결과 저장 실패: {analysis_error}", exc_info=True)
+
         except Exception as e:
             interview_logger.error(f"❌ 임시 시선 추적 파일 처리 실패: session_id={session_id}, error={str(e)}", exc_info=True)
         finally:
-            # 임시 파일 정리
-            try:
-                temp_folder = "backend/uploads/temp_gaze"
-                temp_files = glob.glob(os.path.join(temp_folder, f"{session_id}.*"))
-                
-                for temp_file in temp_files:
-                    if os.path.exists(temp_file):
-                        os.remove(temp_file)
-                        interview_logger.info(f"🗑️ 임시 파일 삭제 완료: {temp_file}")
-            except Exception as cleanup_error:
-                interview_logger.error(f"⚠️ 임시 파일 정리 실패: {str(cleanup_error)}")
+            # 7. 임시 파일 정리
+            if 'temp_file_path' in locals() and os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                    interview_logger.info(f"🗑️ 임시 파일 삭제 완료: {temp_file_path}")
+                except Exception as cleanup_error:
+                    interview_logger.error(f"⚠️ 임시 파일 정리 실패: {str(cleanup_error)}")
 

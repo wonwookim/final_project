@@ -247,8 +247,8 @@ const VideoGazeResult: React.FC<GazeResultProps> = ({ result, onRestart }) => {
 
   // 허용 범위 내/외 시선 포인트 통계 계산
   const getRangeStatistics = () => {
-    if (!result.allowed_range || !result.gaze_points) {
-      return { inRangePoints: 0, outOfRangePoints: 0, totalPoints: 0 };
+    if (!result.allowed_range || !result.gaze_points || result.gaze_points.length === 0) {
+      return { inRangePoints: 0, outOfRangePoints: 0, totalPoints: 0, rangeCompliancePercent: 0 };
     }
 
     const allowedRange = result.allowed_range;

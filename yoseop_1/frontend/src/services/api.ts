@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+export const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 // API 클라이언트 설정
 const apiClient = axios.create({
@@ -95,6 +95,8 @@ export interface InterviewSettings {
   documents?: string[];
   posting_id?: number;  // 🆕 채용공고 ID 추가
   use_interviewer_service?: boolean;  // 🆕 InterviewerService 플래그 추가
+  resume?: any;
+  calibration_data?: any
 }
 
 export interface Question {
@@ -201,6 +203,19 @@ export interface STTResponse {
   duration?: number;
 }
 
+// 🆕 캘리브레이션 결과 타입
+export interface CalibrationResult {
+  session_id: string;
+  calibration_points: [number, number][];
+  initial_face_size: number;
+  allowed_range: {
+    left_bound: number;
+    right_bound: number;
+    top_bound: number;
+    bottom_bound: number;
+  };
+}
+
 // 🆕 피드백 평가 응답 타입
 export interface FeedbackEvaluationResponse {
   success: boolean;
@@ -237,9 +252,25 @@ export interface FeedbackPlanResponse {
   };
 }
 
+// 🆕 시선 분석 응답 타입
+export interface GazeAnalysisResponse {
+  gaze_id: number;
+  interview_id: number;
+  user_id: number;
+  gaze_score: number;
+  jitter_score: number;
+  compliance_score: number;
+  stability_rating: string;
+  created_at: string;
+  gaze_points?: Array<{x: number, y: number}>;
+  calibration_points?: Array<[number, number]>;
+  video_metadata?: any;
+}
+
 // 🆕 면접 진행 응답 공통 타입 (턴 정보 포함)
 export interface InterviewSubmitResponse {
   status: string;
+  flow_state?: string;
   content?: {
     content: string;
     type?: string;
@@ -506,6 +537,20 @@ export const interviewApi = {
     return response.data;
   },
 
+  // 비언어적 피드백 (시선 분석) 조회
+  async getGazeAnalysis(interviewId: string): Promise<GazeAnalysisResponse | null> {
+    try {
+      const response = await apiClient.get(`/interview/${interviewId}/gaze-analysis`);
+      return response.data as GazeAnalysisResponse;
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        // 시선 분석 데이터가 없는 경우
+        return null;
+      }
+      throw error;
+    }
+  },
+
   // AI 경쟁 면접 시작 (Orchestrator 기반)
   async startAICompetition(settings: InterviewSettings): Promise<AICompetitionStartResponse> {
     // 🎯 무조건 InterviewerService 사용하도록 하드코딩
@@ -517,7 +562,7 @@ export const interviewApi = {
     };
     
     console.log('🎯 DEBUG: 최종 전송 설정값 (InterviewerService 강제):', finalSettings);
-    
+    console.log('>>> [FRONTEND DEBUG] 최종 전송 직전 데이터:', JSON.stringify(finalSettings, null, 2));
     const response = await apiClient.post('/interview/ai/start', finalSettings);
     return response.data as AICompetitionStartResponse;
   },
@@ -848,6 +893,17 @@ export const interviewApi = {
       session_id: string;
       feedback_processing: boolean;
     };
+  },
+
+  // 캘리브레이션 결과 조회
+  async getCalibrationResult(sessionId: string): Promise<CalibrationResult> {
+    try {
+      const response = await apiClient.get<CalibrationResult>(`/test/gaze/calibration/result/${sessionId}`);
+      return response.data;
+    } catch (error) {
+      console.error(`캘리브레이션 결과 조회 API 실패 (세션 ID: ${sessionId}):`, error);
+      throw error;
+    }
   },
 };
 

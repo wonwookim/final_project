@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { UploaderProps, TestUploadResponse } from './types';
 import apiClient, { handleApiError } from '../../services/api';
 import { GAZE_CONSTANTS, GAZE_ERROR_MESSAGES } from '../../constants/gazeConstants';
+import { tokenManager } from '../../services/api';
 
 // 다양한 완료 API 패턴 시도 함수
 const tryCompleteUpload = async (mediaId: string, fileSize: number): Promise<void> => {
@@ -25,6 +26,8 @@ const tryCompleteUpload = async (mediaId: string, fileSize: number): Promise<voi
     { method: 'PATCH', url: `/video/test/media/${mediaId}/complete?file_size=${fileSize}` },
     { method: 'POST', url: `/video/test/media/${mediaId}/complete?file_size=${fileSize}` }
   ];
+
+  const token = tokenManager.getToken();
 
   for (const endpoint of completeEndpoints) {
     try {
@@ -133,6 +136,7 @@ const VideoTestUploader: React.FC<UploaderProps> = ({
       setUploadStatus('업로드 URL 요청 중...');
       onUploadProgress(10);
 
+      const token = tokenManager.getToken();
       const headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
@@ -147,7 +151,7 @@ const VideoTestUploader: React.FC<UploaderProps> = ({
         content_type: normalizedContentType
       });
 
-      const { upload_url, media_id, test_id }: TestUploadResponse = response.data;
+      const { upload_url, media_id, test_id } = response.data as TestUploadResponse;
       
       console.log('✅ Presigned URL 받음:', {
         upload_url: upload_url.substring(0, 100) + '...',
