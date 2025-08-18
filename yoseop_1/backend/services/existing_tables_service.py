@@ -6,8 +6,7 @@
 from .supabase_client import get_supabase_client
 from typing import List, Optional, Dict, Any
 import logging
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +78,7 @@ class ExistingTablesService:
                 'company_id': company_id,
                 'position_id': position_id,
                 'posting_id': posting_id,
-                'date': datetime.now(ZoneInfo('Asia/Seoul')).isoformat()
+                'date': (datetime.now(timezone.utc) + timedelta(hours=9)).isoformat()
             }
             result = self.client.table('interview').insert(interview_data).execute()
             return result.data[0] if result.data else None
@@ -169,8 +168,8 @@ class ExistingTablesService:
                 'user_id': user_id,
                 'title': title,
                 'content': content,
-                'created_date': datetime.now(ZoneInfo('Asia/Seoul')).isoformat(),
-                'updated_date': datetime.now(ZoneInfo('Asia/Seoul')).isoformat()
+                'created_date': (datetime.now(timezone.utc) + timedelta(hours=9)).isoformat(),
+                'updated_date': (datetime.now(timezone.utc) + timedelta(hours=9)).isoformat()
             }
             result = self.client.table('user_resume').insert(resume_data).execute()
             return result.data[0] if result.data else None

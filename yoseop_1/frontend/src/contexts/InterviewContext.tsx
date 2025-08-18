@@ -572,7 +572,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       const interviews = await interviewApi.getInterviewHistory();
       console.log(interviews)
       const processedInterviews: InterviewRecord[] = interviews.map(interview => {
-        // DB에서 받은 시간이 이제 한국 시간대로 저장되므로 직접 사용
+        // DB에서 받은 시간이 한국시간으로 저장되어 있으므로 직접 사용
         const date = new Date(interview.date);
         // total_feedback에서 점수 추출 (통합 구조 지원)
         let score = 0; // 기본값
@@ -609,8 +609,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
           date: date.toLocaleDateString('ko-KR'),
           time: date.toLocaleTimeString('ko-KR', { 
             hour: '2-digit', 
-            minute: '2-digit',
-            timeZone: 'Asia/Seoul'
+            minute: '2-digit'
           }),
           duration: `${Math.floor(Math.random() * 20 + 15)}분 ${Math.floor(Math.random() * 60)}초`,
           score: score,
