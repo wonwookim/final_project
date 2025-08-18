@@ -973,7 +973,7 @@ const InterviewGO: React.FC = () => {
   const getVoiceIdByType = (type: string): string => {
     const normalizedType = normalizeTTSType(type);
     switch (normalizedType) {
-      case 'ai': return 'uyVNoMrVvroE5JXeeUSJakg'; // AI 전용 음성 (현재는 기본값과 동일)
+      case 'ai': return 'H8ObVvroE5JXeeUSJakg'; // AI 전용 음성 (현재는 기본값과 동일)
       case 'tech': return 'mYk0rAapHek2oTw18z8x'; // 기술 면접관 음성 (현재는 기본값과 동일)
       case 'collaborate': return 'ZJCNdZEjYwkOElxugmW2'; // 협업 면접관 음성 (현재는 기본값과 동일)  
       case 'hr': return 'YBRudLRm83BV5Mazcr42'; // HR 면접관 음성 (기본값)
