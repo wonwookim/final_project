@@ -748,20 +748,20 @@ class GazeAnalyzer(GazeCoreProcessor):
                 raw_total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
                 raw_fps = cap.get(cv2.CAP_PROP_FPS)
 
-                total_frames = raw_total_frames
-                fps = raw_fps
+                corrected_total_frames = raw_total_frames
+                corrected_fps = raw_fps
 
-                if total_frames <= 0:
-                    logger.warning(f"⚠️ [ANALYZE] 동영상 총 프레임 수가 유효하지 않습니다: {total_frames}. 기본값 1로 설정.")
-                    total_frames = 1 # 0으로 나누는 것을 방지
+                if corrected_total_frames <= 0:
+                    logger.warning(f"⚠️ [ANALYZE] 동영상 총 프레임 수가 유효하지 않습니다: {corrected_total_frames}. 기본값 1로 설정.")
+                    corrected_total_frames = 1 # Corrected value
 
-                if fps <= 0:
-                    logger.warning(f"⚠️ [ANALYZE] 동영상 FPS가 유효하지 않습니다: {fps}. 기본값 30으로 설정.")
-                    fps = 30.0 # 0으로 나누는 것을 방지
+                if corrected_fps <= 0:
+                    logger.warning(f"⚠️ [ANALYZE] 동영상 FPS가 유효하지 않습니다: {corrected_fps}. 기본값 30으로 설정.")
+                    corrected_fps = 30.0 # Corrected value
 
-                duration = total_frames / fps
+                duration = corrected_total_frames / corrected_fps
 
-                logger.info(f"📹 [ANALYZE] 동영상 정보: {total_frames}프레임, {fps:.1f}FPS, {duration:.1f}초 (원본: {raw_total_frames}프레임, {raw_fps:.1f}FPS)")
+                logger.info(f"📹 [ANALYZE] 동영상 정보: {corrected_total_frames}프레임, {corrected_fps:.1f}FPS, {duration:.1f}초 (원본: {raw_total_frames}프레임, {raw_fps:.1f}FPS)")
 
                 # duration = total_frames / fps if fps > 0 else 0
                 
@@ -860,7 +860,7 @@ class GazeAnalyzer(GazeCoreProcessor):
                 
                 return GazeAnalysisResult(
                     gaze_score=final_score,
-                    total_frames=total_frames,
+                    total_frames=corrected_total_frames,
                     analyzed_frames=analyzed_count,
                     in_range_frames=in_range_count,
                     in_range_ratio=in_range_ratio,
