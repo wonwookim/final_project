@@ -617,21 +617,6 @@ const ProfilePage: React.FC = () => {
                 <h2 className="text-2xl font-bold text-slate-900">
                   {currentView === 'create' ? '이력서 작성' : '이력서 수정'}
                 </h2>
-                <div className="flex-1" />
-                <button
-                  onClick={handleResumeSave}
-                  disabled={resumesLoading}
-                  className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {resumesLoading ? (
-                    <div className="flex items-center gap-2">
-                      <LoadingSpinner size="sm" color="white" />
-                      저장 중...
-                    </div>
-                  ) : (
-                    '💾 저장하기'
-                  )}
-                </button>
               </div>
 
               <div className="bg-white rounded-lg border border-slate-200 p-6 space-y-6">
@@ -759,6 +744,24 @@ const ProfilePage: React.FC = () => {
 
               <div className="text-sm text-slate-500 text-center">
                 * 표시된 항목은 필수 입력 사항입니다.
+              </div>
+
+              {/* 저장 버튼 */}
+              <div className="flex justify-center pt-6">
+                <button
+                  onClick={handleResumeSave}
+                  disabled={resumesLoading}
+                  className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-lg font-medium"
+                >
+                  {resumesLoading ? (
+                    <div className="flex items-center gap-2">
+                      <LoadingSpinner size="sm" color="white" />
+                      저장 중...
+                    </div>
+                  ) : (
+                    '💾 저장하기'
+                  )}
+                </button>
               </div>
             </div>
           );

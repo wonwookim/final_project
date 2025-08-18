@@ -8,6 +8,9 @@ import SpeechIndicator from '../components/voice/SpeechIndicator';
 import { getInterviewState, markApiCallCompleted, debugInterviewState, setApiCallInProgress, isApiCallInProgress } from '../utils/interviewStateManager';
 import { GazeAnalysisResult, VideoAnalysisResponse, AnalysisStatusResponse } from '../components/test/types';
 
+// API Base URL 설정
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
 // API 응답 타입 정의
 interface UploadResponse {
   play_url: string;
@@ -495,7 +498,7 @@ const InterviewGO: React.FC = () => {
       console.log(`[🔊 TTS] ${label} TTS 생성 시작 (타입: ${type}): ${text.slice(0, 50)}...`);
       
       // 타입별 TTS API 호출
-      const response = await fetch('http://localhost:8000/interview/tts', {
+      const response = await fetch(`${API_BASE_URL}/interview/tts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -560,7 +563,7 @@ const InterviewGO: React.FC = () => {
       try {
         console.log(`[🔊 TTS] ${label} 기본 음성으로 TTS 재시도...`);
         
-        const fallbackResponse = await fetch('http://localhost:8000/interview/tts', {
+        const fallbackResponse = await fetch(`${API_BASE_URL}/interview/tts`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1327,7 +1330,7 @@ const InterviewGO: React.FC = () => {
       const fileName = `gaze-recording-${timestamp}.webm`;
       formData.append('file', videoBlob, fileName);
 
-      const response = await fetch(`http://localhost:8000/gaze/upload/temporary/${sessionId}`, {
+      const response = await fetch(`${API_BASE_URL}/gaze/upload/temporary/${sessionId}`, {
         method: 'POST',
         body: formData
       });
@@ -1554,7 +1557,7 @@ const InterviewGO: React.FC = () => {
       
       console.log('🗣️ STT 요청 전송 중...');
       
-      const response = await fetch('http://localhost:8000/interview/stt', {
+      const response = await fetch(`${API_BASE_URL}/interview/stt`, {
         method: 'POST',
         body: formData
       });
