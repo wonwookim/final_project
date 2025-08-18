@@ -71,12 +71,8 @@ const LoginPage: React.FC = () => {
       const result = await login(email, password, redirectPath);
 
       if (!result.success) {
-        // 에러 메시지를 사용자 친화적으로 변환
-        const userFriendlyError = result.error?.includes('validation')
-          ? '이메일 형식이 올바르지 않거나 비밀번호가 너무 짧습니다.'
-          : result.error || '로그인에 실패했습니다.';
-        
-        setError(userFriendlyError);
+        // 로그인 실패 시 항상 같은 메시지로 표시 (보안상 구체적인 오류 정보 숨김)
+        setError('이메일 또는 비밀번호가 일치하지 않습니다.');
       }
     } catch (error: any) {
       // 혹시 모를 예외도 완전히 차단

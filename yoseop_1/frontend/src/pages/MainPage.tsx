@@ -73,7 +73,7 @@ const MainPage: React.FC = () => {
           </h1>
           
           <p className="text-xl text-slate-600 mb-8 max-w-3xl mx-auto">
-            개인화된 AI 면접관과 함께 실전같은 면접을 연습하고, 
+            개인화된 AI 면접관과 함께 실전같은 면접을 연습하고,<br />
             상세한 피드백으로 면접 실력을 한 단계 업그레이드하세요.
           </p>
           
@@ -176,7 +176,7 @@ const MainPage: React.FC = () => {
           </h2>
           
           <p className="text-blue-100 mb-6 max-w-2xl mx-auto">
-            5분만 투자하면 당신만의 맞춤형 면접 연습을 시작할 수 있습니다. 
+            5분만 투자하면 당신만의 맞춤형 면접 연습을 시작할 수 있습니다.<br />
             AI가 실시간으로 분석하고 피드백을 제공합니다.
           </p>
           

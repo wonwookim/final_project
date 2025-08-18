@@ -134,8 +134,8 @@ const SignUpPage: React.FC = () => {
         setVerifyMessage('인증이 완료되었습니다!');
       }
     } catch (error: any) {
-      const errorMessage = handleApiError(error);
-      setVerifyMessage(errorMessage);
+      // 인증번호 실패 시 항상 같은 메시지로 표시
+      setVerifyMessage('인증번호가 일치하지 않습니다. 다시 확인해주세요.');
       console.error('OTP 검증 실패:', error);
     } finally {
       setIsLoading(false);
