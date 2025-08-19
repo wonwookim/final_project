@@ -368,6 +368,9 @@ class InterviewerPromptBuilder:
             
             company_name = company_info.get('name', '회사')
             
+            # 0. 면접관 페르소나 가져오기
+            interviewer_persona = self.interviewer_personas.get(interviewer_role, "")
+            
             # 1. 직무별 전문성 컨텍스트 동적 생성
             position_context = self._build_position_context(position, interviewer_role)
             
@@ -379,7 +382,9 @@ class InterviewerPromptBuilder:
             
             # 4. 통합 프롬프트 생성
             prompt = f"""
-    당신은 {company_name}의 {interviewer_role} 담당 면접관입니다.
+당신은 {company_name}의 {interviewer_role} 담당 면접관입니다.
+
+{interviewer_persona}
 
     {position_context}
 
