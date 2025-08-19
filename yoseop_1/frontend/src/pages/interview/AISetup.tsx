@@ -32,9 +32,9 @@ const AISetup: React.FC = () => {
   const selectedMode = state.interviewMode || 'personalized';
 
   const getAICandidateImage = (level: number): string => {
-    if (level <= 3) return '/img/candidate_1.png';
-    if (level <= 7) return '/img/candidate_2.png';
-    return '/img/candidate_3.png';
+    if (level <= 3) return '/img/nano-banana_____.png';
+    if (level <= 7) return '/img/nano-banana__Create_an_image_of_.png';
+    return '/img/nano-banana______2.png';
   };
 
   const getAICandidateName = (level: number): string => {
@@ -131,7 +131,7 @@ const AISetup: React.FC = () => {
                 >
                   <div className={`w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r ${interviewer.color} flex items-center justify-center overflow-hidden border-2 border-white shadow-lg`}>
                     <img 
-                      src={`/img/${interviewer.id}_interviewer.png`}
+                      src={interviewer.id === 'hr' ? '/img/nano-banana_A_front-facing_port_1.png' : interviewer.id === 'tech1' ? '/img/nano-banana_Change_only_the_back.png' : interviewer.id === 'collabo1' ? '/img/flux-1-kontext-pro__k-tech___.png' : `/img/${interviewer.id}_interviewer.png`}
                       alt={interviewer.name}
                       className="w-full h-full object-cover"
                     />

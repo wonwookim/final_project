@@ -192,9 +192,9 @@ const InterviewGO: React.FC = () => {
 
   // 난이도별 AI 지원자 이미지 매핑 함수
   const getAICandidateImage = (level: number): string => {
-    if (level <= 3) return '/img/candidate_1.png'; // 초급자
-    if (level <= 7) return '/img/candidate_2.png'; // 중급자
-    return '/img/candidate_3.png'; // 고급자
+    if (level <= 3) return '/img/nano-banana_____.png'; // 초급자
+    if (level <= 7) return '/img/nano-banana__Create_an_image_of_.png'; // 중급자
+    return '/img/nano-banana______2.png'; // 고급자
   };
 
   // 난이도별 AI 지원자 이름 매핑 함수
@@ -2083,7 +2083,7 @@ const InterviewGO: React.FC = () => {
             </div>
             <div className="h-full flex items-center justify-center relative">
               <img 
-                src="/img/interviewer_1.jpg"
+                src="/img/nano-banana_A_front-facing_port_1.png"
                 alt="인사 면접관"
                 className="w-full h-full object-cover"
               />
@@ -2095,11 +2095,11 @@ const InterviewGO: React.FC = () => {
             shouldHighlight('collaborate') ? 'border-green-500' : 'border-gray-700'
           }`}>
             <div className="absolute top-4 left-4 font-semibold text-white">
-              🤝 협업 면접관
+              💻 기술 면접관
             </div>
             <div className="h-full flex items-center justify-center relative">
               <img 
-                src="/img/interviewer_2.jpg"
+                src="/img/nano-banana_Change_only_the_back.png"
                 alt="협업 면접관"
                 className="w-full h-full object-cover"
               />
@@ -2111,11 +2111,11 @@ const InterviewGO: React.FC = () => {
             shouldHighlight('tech') ? 'border-green-500' : 'border-gray-700'
           }`}>
             <div className="absolute top-4 left-4 font-semibold text-white">
-              💻 기술 면접관
+              🤝 협업 면접관
             </div>
             <div className="h-full flex items-center justify-center relative">
               <img 
-                src="/img/interviewer_3.jpg"
+                src="/img/flux-1-kontext-pro__k-tech___.png"
                 alt="기술 면접관"
                 className="w-full h-full object-cover"
               />

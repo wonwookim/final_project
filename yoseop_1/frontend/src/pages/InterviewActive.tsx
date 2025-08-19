@@ -2163,7 +2163,7 @@ const InterviewActive: React.FC = () => {
             </div>
             <div className="h-full flex items-center justify-center relative">
               <img 
-                src="/img/interviewer_1.jpg"
+                src="/img/nano-banana_A_front-facing_port_1.png"
                 alt="인사 면접관"
                 className="w-full h-full object-cover"
               />
@@ -2196,11 +2196,11 @@ const InterviewActive: React.FC = () => {
                 ? 'text-green-400' 
                 : 'text-white'
             }`}>
-              🤝 협업 면접관
+              💻 기술 면접관
             </div>
             <div className="h-full flex items-center justify-center relative">
               <img 
-                src="/img/interviewer_2.jpg"
+                src="/img/nano-banana_Change_only_the_back.png"
                 alt="협업 면접관"
                 className="w-full h-full object-cover"
               />
@@ -2233,11 +2233,11 @@ const InterviewActive: React.FC = () => {
                 ? 'text-purple-400' 
                 : 'text-white'
             }`}>
-              💻 기술 면접관
+              🤝 협업 면접관
             </div>
             <div className="h-full flex items-center justify-center relative">
               <img 
-                src="/img/interviewer_3.jpg"
+                src="/img/flux-1-kontext-pro__k-tech___.png"
                 alt="기술 면접관"
                 className="w-full h-full object-cover"
               />
