@@ -154,7 +154,7 @@ __pycache__/
 **/automl/
 **/.claude
 
-*.png
+
 *.jpg
 *.jpeg
 *.pkl
