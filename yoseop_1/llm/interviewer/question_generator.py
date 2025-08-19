@@ -140,11 +140,12 @@ class QuestionGenerator:
         company_info = self.companies_data.get(company_id, {})
         company_name = company_info.get('name', '저희 회사')
         user_name = user_resume.get('name', '지원자') if user_resume else '지원자'
+        user_position = user_resume.get('position', '개발자') if user_resume else '개발자'
         
         intro_message = f"""
+안녕하세요.
 {company_name}에 지원해주셔서 감사합니다.
-
-{user_name}님, 면접을 시작하겠습니다.
+{user_name}님 그리고 춘식이님 {user_position} 전형 면접을 시작하겠습니다.
 """
         
         return {
@@ -717,8 +718,8 @@ AI 지원자 특성을 고려한 질문 생성 가이드라인:
             if not result.get('question'):
                 raise ValueError("question 필드가 비어있습니다")
             
-            # AI용 질문이므로 "AI 지원자님" 호명 추가
-            result['question'] = f"AI 지원자님, {result['question']}"
+            # AI용 질문이므로 "춘식이님" 호명 추가
+            result['question'] = f"춘식이님, {result['question']}"
             result['interviewer_type'] = interviewer_role
             result['question_flow_type'] = 'ai_follow_up'
             result['question_source'] = 'ai_focused_llm'
@@ -729,7 +730,7 @@ AI 지원자 특성을 고려한 질문 생성 가이드라인:
             print(f"[ERROR] AI 중심 꼬리질문 생성 실패: {e}")
             # 폴백: AI용 기본 꼬리질문
             return self._get_fallback_follow_up_question(interviewer_role, previous_question, 
-                                                       {"name": "AI 지원자"})
+                                                       {"name": "춘식이"})
 
     def _inject_data_to_template(self, template: str, user_resume: Dict, company_info: Dict) -> str:
         """템플릿에 실제 데이터 동적 주입"""
@@ -905,7 +906,7 @@ AI 지원자 특성을 고려한 질문 생성 가이드라인:
                 print(f"[ERROR] AI용 DB 템플릿 생성 중 예외: {e}")
         
         # 최종 폴백: AI용 일반적인 질문
-        return self._get_generic_question(interviewer_role, topic, 'AI 지원자')
+        return self._get_generic_question(interviewer_role, topic, '춘식이')
 
     def _generate_from_llm_for_ai_with_topic(self, user_resume: Dict, company_info: Dict, 
                                      interviewer_role: str, topic: str) -> Dict:
@@ -959,8 +960,8 @@ AI 지원자 특성을 고려한 질문 생성 가이드라인:
             if not result.get('question'):
                 raise ValueError("question 필드가 비어있습니다")
             
-            # AI용 질문이므로 "AI 지원자님" 호명 추가
-            result['question'] = f"AI 지원자님, {result['question']}"
+            # AI용 질문이므로 "춘식이님" 호명 추가
+            result['question'] = f"춘식이님, {result['question']}"
             result['interviewer_type'] = interviewer_role
             result['topic'] = topic
             result['question_source'] = 'llm_generated_for_ai'
@@ -990,8 +991,8 @@ AI 지원자 특성을 고려한 질문 생성 가이드라인:
         selected_template = random.choice(role_questions)
         question_content = selected_template.get('question_content', '질문을 생성할 수 없습니다.')
         
-        # AI용 질문이므로 "AI 지원자님" 호명 추가
-        question_with_name = f"AI 지원자님, {question_content}"
+        # AI용 질문이므로 "춘식이님" 호명 추가
+        question_with_name = f"춘식이님, {question_content}"
         
         return {
             'question': question_with_name,

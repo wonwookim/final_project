@@ -286,7 +286,7 @@ class Orchestrator:
                     self.session_state['is_completed'] = True
                     
                     # 🆕 면접 종료 메시지를 TTS 큐에 추가
-                    end_message = "수고하셨습니다."
+                    end_message = "이것으로 면접을 마치겠습니다. 수고하셨습니다.."
                     tts_queue = self.session_state.get('tts_queue', [])
                     tts_queue.append({
                         'type': 'OUTRO',
@@ -311,7 +311,7 @@ class Orchestrator:
                 self.session_state['is_completed'] = True
                 
                 # 🆕 면접 종료 메시지를 TTS 큐에 추가
-                end_message = "수고하셨습니다."
+                end_message = "이것으로 면접을 마치겠습니다. 수고하셨습니다.."
                 tts_queue = self.session_state.get('tts_queue', [])
                 tts_queue.append({
                     'type': 'OUTRO',
@@ -826,7 +826,7 @@ class Orchestrator:
                 print(f"[TRACE] interview complete")
                 result = {
                     "status": "completed",
-                    "message": "수고하셨습니다.",
+                    "message": "이것으로 면접을 마치겠습니다. 수고하셨습니다..",
                     "qa_history": self.session_state.get('qa_history', []),
                     "session_id": self.session_id
                 }
