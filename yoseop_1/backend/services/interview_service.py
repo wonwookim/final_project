@@ -363,7 +363,7 @@ class InterviewService:
                     
                     # 🆕 임시 시선 추적 파일 처리 (interview_id 생성 후)
                     if shared_interview_id:
-                        await self._process_temporary_gaze_file(session_id, shared_interview_id)
+                        # await self._process_temporary_gaze_file(session_id, shared_interview_id) # 레거시 임시 파일 업로드 로직 (현재 미사용)
                         # 🆕 시선 분석 데이터 지연 처리 (Pre-signed URL 기반)
                         await self._process_gaze_data_after_evaluation(shared_interview_id, session_id, user_id)
                     

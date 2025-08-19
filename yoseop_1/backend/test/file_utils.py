@@ -260,7 +260,7 @@ class FileValidator:
     """
     
     ALLOWED_VIDEO_EXTENSIONS = {'.mp4', '.webm', '.avi', '.mov'}
-    MAX_FILE_SIZE_MB = 100
+    MAX_FILE_SIZE_MB = 1024
     MIN_FILE_SIZE_KB = 100
     
     @classmethod
