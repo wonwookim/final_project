@@ -369,7 +369,7 @@ class QuestionGenerator:
         # 프롬프트 빌더를 사용하여 프롬프트 생성
         position = user_resume.get('position', '개발자') if user_resume else '개발자'
         prompt = self.prompt_builder.build_follow_up_question_prompt(
-            previous_question, user_answer, chun_sik_answer, company_info, interviewer_role, position
+            previous_question, user_answer, chun_sik_answer, company_info, interviewer_role, position, user_resume
         )
         system_prompt = self.prompt_builder.build_system_prompt_for_follow_up()
         
@@ -666,7 +666,7 @@ class QuestionGenerator:
         
         # AI 중심 프롬프트 빌드 (user_answer와 ai_answer 순서 바꿈)
         ai_focused_prompt = self.prompt_builder.build_follow_up_question_prompt(
-            previous_question, ai_answer, user_answer, company_info, interviewer_role, position
+            previous_question, user_answer=ai_answer, chun_sik_answer=user_answer, company_info=company_info, interviewer_role=interviewer_role, position=position, user_resume=user_resume
         )
         
         # AI 전용 시스템 프롬프트 (더 기술적/이론적 관점 강조)

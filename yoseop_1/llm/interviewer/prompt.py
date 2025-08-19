@@ -4,6 +4,7 @@
 service.py에서 분리된 모든 프롬프트 관련 로직을 담당
 """
 
+import json
 from typing import Dict, List, Any
 from ..shared.constants import GPT_MODEL
 
@@ -362,7 +363,7 @@ class InterviewerPromptBuilder:
             
     def build_follow_up_question_prompt(self, previous_question: str, user_answer: str, 
                                         chun_sik_answer: str, company_info: Dict, 
-                                        interviewer_role: str, position: str) -> str:
+                                        interviewer_role: str, position: str, user_resume: dict) -> str:
             """고도화된 동적 꼬리 질문 생성 - 직무별 전문성 반영"""
             
             company_name = company_info.get('name', '회사')
@@ -386,7 +387,13 @@ class InterviewerPromptBuilder:
     이전 질문: {previous_question}
     사용자 답변: {user_answer}
     춘식이 답변: {chun_sik_answer}
-
+    사용자 이력서 내역
+    사용자 학적: {user_resume.get('academic_record', '정보 없음')}
+    사용자 경력:   {user_resume.get('career', '정보 없음')}
+    사용자 기술 스택:{user_resume.get('tech', '정보 없음')}
+    사용자 대외활동:{user_resume.get('activities', '정보 없음')}
+    사용자 자격증:{user_resume.get('certificate', '정보 없음')}
+    사용자 수상경력:{user_resume.get('awards', '정보 없음')}
     {answer_analysis}
 
     ### 🎯 {position} 특화 꼬리질문 생성 전략 ###
@@ -394,7 +401,7 @@ class InterviewerPromptBuilder:
 
     ### 📝 질문 생성 가이드라인 ###
     - ****질문 대상 분리****: 사용자의 답변과 춘식이의 답변을 모두 받되, 춘식이의 답변은 참고만 하여 무조건 사용자용 꼬리 질문을 생성하세요.
-    - 
+    - **사용자 이력서** : 꼬리 질문을 생성할 때 사용자의 이력서 내용을 참고하여 사용자용 꼬리 질문을 생성하세요.
     - **직무 전문성**: {position} 관점에서만 질문 (다른 직무 영역 금지)
     - **답변 연결**: 위 답변의 구체적 내용을 반드시 인용
     - **전문가 관점**: {interviewer_role} 면접관다운 날카로운 시각

@@ -211,7 +211,7 @@ class InterviewService:
             
             # 세션 상태 생성
             initial_settings = {
-                'total_question_limit': 2,  # 디버깅용 - 실제 운영시에는 15로 변경
+                'total_question_limit': 5,  # 디버깅용 - 실제 운영시에는 15로 변경
                 'company_id': company_code_for_persona,  # 모델/질문 생성 로직과 호환되는 문자열 코드 유지
                 'company_numeric_id': company_numeric_id,  # DB 연동을 위한 숫자 ID 별도 보관
                 'position': settings['position'],
