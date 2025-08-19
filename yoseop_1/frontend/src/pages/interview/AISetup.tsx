@@ -52,7 +52,7 @@ const AISetup: React.FC = () => {
   const interviewers: Interviewer[] = [
     {
       id: 'hr',
-      name: '김인사',
+      name: '',
       role: '인사 담당자',
       description: '지원동기, 성격, 조직 적합성을 평가합니다.',
       icon: '👔',
@@ -60,7 +60,7 @@ const AISetup: React.FC = () => {
     },
     {
       id: 'tech1',
-      name: '박기술',
+      name: '',
       role: '기술 담당자',
       description: '기술 역량, 문제 해결 능력을 평가합니다.',
       icon: '💻',
@@ -68,7 +68,7 @@ const AISetup: React.FC = () => {
     },
     {
       id: 'collabo1',
-      name: '이협업',
+      name: '',
       role: '협업 담당자',
       description: '소통 능력, 팀워크, 리더십을 평가합니다.',
       icon: '🤝',

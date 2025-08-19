@@ -919,9 +919,6 @@ const ProfilePage: React.FC = () => {
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900">{userInfo.name}</h3>
                   <p className="text-slate-600">{userInfo.email}</p>
-                  <button className="text-blue-600 hover:text-blue-700 text-sm mt-1">
-                    프로필 사진 변경
-                  </button>
                 </div>
               </div>
 

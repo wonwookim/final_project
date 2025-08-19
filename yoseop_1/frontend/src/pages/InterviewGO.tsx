@@ -1121,13 +1121,13 @@ const InterviewGO: React.FC = () => {
     
     // AI 질문은 현재 면접관 타입으로 변환
     if (backendType.includes('ai_question')) {
-      return currentInterviewerType.toLowerCase(); // hr, tech, collaborate
+      return currentInterviewerType.toLowerCase(); // hr, tech, collaboration
     }
     
     // 질문 타입들 (대소문자 모두 처리)
     if (backendType === 'hr' || backendType.includes('HR')) return 'hr';
     if (backendType === 'tech' || backendType.includes('TECH')) return 'tech';
-    if (backendType === 'collaborate' || backendType.includes('COLLABORATION')) return 'collaborate';
+    if (backendType === 'collaboration' || backendType.includes('COLLABORATION')) return 'collaboration';
     
     // 기타
     if (backendType === 'OUTRO') return 'outro';
@@ -1151,7 +1151,7 @@ const InterviewGO: React.FC = () => {
     
     switch (normalizedType) {
       case 'tech': return 'YBRudLRm83BV5Mazcr42'; // 기술 면접관 음성
-      case 'collaborate': return 'mYk0rAapHek2oTw18z8x'; // 협업 면접관 음성
+      case 'collaboration': return 'mYk0rAapHek2oTw18z8x'; // 협업 면접관 음성
       case 'hr': return 'AW5wrnG1jVizOYY7R1Oo'; // HR 면접관 음성 (기본값)
       default: return 'AW5wrnG1jVizOYY7R1Oo'; // 기본값은 HR과 동일
     }
@@ -1164,7 +1164,7 @@ const InterviewGO: React.FC = () => {
       case 'intro': return '🎬 면접을 시작합니다';
       case 'hr': return '💼 인사 면접관이 질문 중입니다';
       case 'tech': return '💻 기술 면접관이 질문 중입니다';
-      case 'collaborate': return '🤝 협업 면접관이 질문 중입니다';
+      case 'collaboration': return '🤝 협업 면접관이 질문 중입니다';
       case 'ai_question': return '🤖 AI 질문이 재생됩니다';
       case 'ai': return '🤖 다른 지원자가 답변 중입니다';
       case 'outro': return '✅ 면접이 완료되었습니다';
@@ -1173,14 +1173,14 @@ const InterviewGO: React.FC = () => {
   };
 
   // 🎯 TTS 타입별 하이라이트 확인 함수
-  const shouldHighlight = (componentType: 'hr' | 'tech' | 'collaborate' | 'ai'): boolean => {
+  const shouldHighlight = (componentType: 'hr' | 'tech' | 'collaboration' | 'ai'): boolean => {
     if (!currentTTSType) return false;
     
     const normalizedType = normalizeTTSType(currentTTSType);
     switch (componentType) {
       case 'hr': return normalizedType === 'hr' || normalizedType === 'intro' || normalizedType === 'outro';
       case 'tech': return normalizedType === 'tech';
-      case 'collaborate': return normalizedType === 'collaborate';
+      case 'collaboration': return normalizedType === 'collaboration';
       case 'ai': return normalizedType === 'ai' || normalizedType === 'ai_question';
       default: return false;
     }
@@ -2275,7 +2275,7 @@ const InterviewGO: React.FC = () => {
 
           {/* 협업 면접관 */}
           <div className={`bg-gray-900 rounded-lg overflow-hidden relative border-4 transition-all duration-300 ${
-            shouldHighlight('collaborate') ? 'border-green-500' : 'border-gray-700'
+            shouldHighlight('collaboration') ? 'border-green-500' : 'border-gray-700'
           }`}>
             <div className="absolute top-4 left-4 font-semibold text-white">
               🤝 협업 면접관
