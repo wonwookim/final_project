@@ -14,3 +14,7 @@ sentence-transformers
 scipy
 scikit-learn
 torch
+opencv-python-headless
+mediapipe
+boto3
+psutil

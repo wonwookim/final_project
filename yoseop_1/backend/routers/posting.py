@@ -63,3 +63,34 @@ async def get_posting_detail(posting_id: int):
     except Exception as e:
         print(f"채용공고 상세 조회 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# 🟢 GET /posting/company/{company_id}/position/{position_id} – 회사+직군으로 채용공고 조회
+@posting_router.get("/company/{company_id}/position/{position_id}", response_model=PostingResponse)
+async def get_posting_by_company_and_position(company_id: int, position_id: int):
+    """company_id와 position_id로 채용공고 조회"""
+    try:
+        posting = await existing_tables_service.get_posting_by_company_and_position_ids(company_id, position_id)
+
+        if not posting:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"해당 회사(ID: {company_id})와 직군(ID: {position_id})에 맞는 채용공고를 찾을 수 없습니다"
+            )
+
+        formatted_posting = {
+            "posting_id": posting.get("posting_id"),
+            "company_id": posting.get("company_id"),
+            "position_id": posting.get("position_id"),
+            "company": posting.get("company", {}).get("name", "Unknown Company"),
+            "position": posting.get("position", {}).get("position_name", "Unknown Position"),
+            "content": posting.get("content", f"{posting.get('company', {}).get('name', '')} {posting.get('position', {}).get('position_name', '')} 채용공고")
+        }
+
+        return formatted_posting
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"회사+직군별 채용공고 조회 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

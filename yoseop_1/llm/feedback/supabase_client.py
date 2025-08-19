@@ -1,7 +1,7 @@
 import os
 from supabase import create_client, Client
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
 # .env 파일 로드
@@ -119,7 +119,7 @@ class SupabaseManager:
                 'posting_id': posting_id,
                 'company_id': company_id,
                 'position_id': position_id,
-                'date': datetime.now().isoformat()
+                'date': (datetime.now(timezone.utc) + timedelta(hours=9)).isoformat()
             }
             
             print("insert_data:", insert_data)

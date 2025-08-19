@@ -6,7 +6,7 @@
 from .supabase_client import get_supabase_client
 from typing import List, Optional, Dict, Any
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ class ExistingTablesService:
                 'company_id': company_id,
                 'position_id': position_id,
                 'posting_id': posting_id,
-                'date': datetime.now().isoformat()
+                'date': (datetime.now(timezone.utc) + timedelta(hours=9)).isoformat()
             }
             result = self.client.table('interview').insert(interview_data).execute()
             return result.data[0] if result.data else None
@@ -168,8 +168,8 @@ class ExistingTablesService:
                 'user_id': user_id,
                 'title': title,
                 'content': content,
-                'created_date': datetime.now().isoformat(),
-                'updated_date': datetime.now().isoformat()
+                'created_date': (datetime.now(timezone.utc) + timedelta(hours=9)).isoformat(),
+                'updated_date': (datetime.now(timezone.utc) + timedelta(hours=9)).isoformat()
             }
             result = self.client.table('user_resume').insert(resume_data).execute()
             return result.data[0] if result.data else None
@@ -303,7 +303,23 @@ class ExistingTablesService:
         except Exception as e:
             logger.error(f"전체 채용공고 조회 실패: {str(e)}")
             return []
-    
+    async def get_posting_by_company_and_position_ids(self, company_id: int, position_id: int) -> Optional[Dict[str, Any]]:
+        """company_id와 position_id로 채용공고 조회 (회사, 직무 정보 포함)"""
+        try:
+            result = self.client.table('posting').select(
+                '*, company(company_id, name), position(position_id, position_name)'
+            ).eq('company_id', company_id).eq('position_id', position_id).execute()
+            
+            if result.data and len(result.data) > 0:
+                logger.info(f"✅ 채용공고 매칭 성공: company_id={company_id}, position_id={position_id}")
+                return result.data[0]  # 첫 번째 매칭되는 채용공고 반환
+            else:
+                logger.warning(f"채용공고를 찾을 수 없음: company_id={company_id}, position_id={position_id}")
+                return None
+        except Exception as e:
+            logger.error(f"채용공고 조회 실패 (company_id: {company_id}, position_id: {position_id}): {str(e)}")
+            return None
+        
     # ===================
     # 유틸리티 함수
     # ===================

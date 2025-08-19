@@ -7,6 +7,7 @@ import { useInterview } from '../../contexts/InterviewContext';
 import { interviewApi } from '../../services/api';
 import VideoCalibration from '../../components/test/VideoCalibration';
 import { GAZE_CONSTANTS } from '../../constants/gazeConstants';
+import { createTTS, checkSpeechSupport } from '../../utils/speechUtils';
 
 interface CheckItem {
   id: string;
@@ -41,6 +42,13 @@ const EnvironmentCheck: React.FC = () => {
       description: '비디오 입력이 정상적으로 작동하는지 확인합니다.',
       status: 'pending',
       icon: '📹'
+    },
+    {
+      id: 'speaker',
+      title: '스피커/TTS 테스트',
+      description: '음성 출력 및 면접관 질문 읽기 기능을 확인합니다.',
+      status: 'pending',
+      icon: '🔊'
     },
     {
       id: 'network',
@@ -90,6 +98,54 @@ const EnvironmentCheck: React.FC = () => {
         }, 1500);
       } catch (error) {
         updateCheckStatus('microphone', 'error', '마이크 권한을 허용해주세요.');
+        reject(error);
+      }
+    });
+  };
+
+  // TTS/스피커 테스트
+  const checkSpeaker = async (): Promise<void> => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        updateCheckStatus('speaker', 'checking');
+        
+        // TTS 지원 여부 확인
+        const { hasTTS } = checkSpeechSupport();
+        if (!hasTTS) {
+          updateCheckStatus('speaker', 'error', 'TTS를 지원하지 않는 브라우저입니다.');
+          reject(new Error('TTS not supported'));
+          return;
+        }
+
+        console.log('🔊 TTS 테스트 시작 - 음성 권한 활성화');
+        
+        // TTS 인스턴스 생성
+        const tts = createTTS();
+        
+        // 음성 목록 확인
+        const voices = window.speechSynthesis.getVoices();
+        console.log('🎵 사용 가능한 음성 수:', voices.length);
+        console.log('🎵 한국어 음성:', voices.filter(v => v.lang.startsWith('ko')).length + '개');
+        
+        // 짧은 테스트 메시지로 TTS 권한 활성화
+        const testMessage = "면접관 음성 테스트입니다. 이 음성이 들리면 정상입니다.";
+        
+        try {
+          console.log('🎤 TTS 재생 시작...');
+          await tts.speak(testMessage);
+          console.log('✅ TTS 테스트 성공 - 음성 권한 활성화됨');
+          console.log('🎯 이제 면접에서 TTS가 정상 작동할 것입니다');
+          updateCheckStatus('speaker', 'success');
+          resolve();
+        } catch (ttsError) {
+          console.error('❌ TTS 재생 실패:', ttsError);
+          updateCheckStatus('speaker', 'error', '음성 재생에 실패했습니다. 스피커를 확인해주세요.');
+          reject(ttsError);
+        }
+        
+      } catch (error) {
+        console.error('❌ 스피커/TTS 체크 실패:', error);
+        updateCheckStatus('speaker', 'error', 'TTS 기능을 사용할 수 없습니다.');
         reject(error);
       }
     });
@@ -233,6 +289,7 @@ const EnvironmentCheck: React.FC = () => {
       await checkNetwork();
       await checkMicrophone();
       await checkCamera();
+      await checkSpeaker(); // 🆕 TTS/스피커 테스트 추가
       
       // 기본 체크 완료 후 시선 캘리브레이션 시작
       startGazeCalibration();
@@ -416,7 +473,7 @@ const EnvironmentCheck: React.FC = () => {
           )}
 
           {/* 체크 항목들 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {checkItems.map((item, index) => (
               <div
                 key={item.id}

@@ -5,7 +5,8 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 import { interviewApi, API_BASE_URL } from '../services/api';
 
 interface FeedbackData {
-  question: string;
+  userQuestion: string;
+  aiQuestion: string;
   userAnswer: string;
   aiAnswer: string;
   userEvaluation: string;
@@ -144,12 +145,13 @@ const InterviewResults: React.FC = () => {
   // 가라 데이터
   const mockFeedbackData: FeedbackData[] = [
     {
-      question: "자기소개를 해주세요",
+      userQuestion: "응가님, 자기소개를 해주세요",
+      aiQuestion: "춘식님, 자기소개를 해주세요",
       userAnswer: "안녕하세요. 저는 3년간 웹 개발 경험을 가진 김개발입니다. React와 Node.js를 주로 사용하여 사용자 친화적인 웹 애플리케이션을 개발해왔습니다. 팀 협업을 통해 프로젝트를 성공적으로 완료한 경험이 있으며, 지속적인 학습을 통해 새로운 기술을 습득하는 것을 즐깁니다.",
       aiAnswer: "안녕하세요. 저는 춘식이입니다. 5년간 다양한 프로젝트에서 풀스택 개발자로 활동해왔습니다. 특히 마이크로서비스 아키텍처와 클라우드 기술에 전문성을 가지고 있으며, 팀 리딩 경험도 있습니다. 사용자 중심의 솔루션을 제공하는 것을 목표로 하고 있습니다.",
       userEvaluation: "전반적으로 좋은 자기소개입니다. 구체적인 성과나 수치를 포함하면 더욱 설득력 있는 답변이 될 것입니다.",
       userImprovement: "예를 들어 '사용자 만족도 20% 향상' 같은 구체적인 결과를 언급해보세요.",
-      aiFeedback: "춘식이의 답변은 경험과 전문성을 잘 보여줍니다. 다만 너무 일반적인 표현보다는 구체적인 프로젝트나 성과를 언급하면 더욱 효과적일 것입니다.",
+      aiFeedback: "",
       aiEvaluation: "답변이 체계적이고 경험을 잘 보여줍니다.",
       aiImprovement: "구체적인 성과 수치를 포함하면 더 좋겠습니다.",
       userScore: 85,
@@ -158,12 +160,13 @@ const InterviewResults: React.FC = () => {
       aiMemo: "춘식이의 경험 수준이 높아 보인다. 나도 더 구체적인 성과를 준비해야겠다."
     },
     {
-      question: "이 직무에 왜 관심이 있나요?",
+      userQuestion: "응가님, 이 직무에 왜 관심이 있나요?",
+      aiQuestion: "춘식님, 이 직무에 왜 관심이 있나요?",
       userAnswer: "사용자 경험을 개선하는 것에 관심이 많고, 이 회사의 혁신적인 제품과 문화가 매력적입니다. 또한 제가 가진 기술을 활용하여 회사에 기여할 수 있다고 생각합니다.",
       aiAnswer: "이 회사의 기술적 도전과 사회적 임팩트에 깊이 공감합니다. 제가 가진 마이크로서비스와 클라우드 경험이 회사의 확장 계획에 도움이 될 것이라 확신합니다. 또한 지속적인 혁신 문화가 개인의 성장과 잘 맞는다고 생각합니다.",
       userEvaluation: "관심을 명확하게 표현했습니다. 회사의 구체적인 제품이나 서비스에 대한 언급을 추가하면 더욱 설득력 있는 답변이 될 것입니다.",
       userImprovement: "회사의 구체적인 제품이나 서비스에 대한 언급을 추가하면 더욱 설득력 있는 답변이 될 것입니다.",
-      aiFeedback: "춘식이는 회사에 대한 이해도가 높고, 자신의 경험과 회사의 니즈를 잘 연결시켰습니다. 다만 너무 형식적인 느낌이 있습니다.",
+      aiFeedback: "",
       aiEvaluation: "회사에 대한 이해도가 높고 경험과 연결점을 잘 찾았습니다.",
       aiImprovement: "더 개인적이고 진정성 있는 답변이 필요합니다.",
       userScore: 80,
@@ -172,12 +175,13 @@ const InterviewResults: React.FC = () => {
       aiMemo: "춘식이의 회사 이해도가 높다. 나도 더 구체적으로 준비해야겠다."
     },
     {
-      question: "실패한 경험을 말해주세요",
+      userQuestion: "응가님, 실패한 경험을 말해주세요",
+      aiQuestion: "춘식님, 실패한 경험을 말해주세요",
       userAnswer: "프로젝트 일정을 맞추지 못한 경험이 있습니다. 초기 계획이 부족했고, 팀원들과의 소통이 원활하지 않았습니다. 이후에는 더 철저한 계획 수립과 정기적인 미팅을 통해 개선했습니다.",
       aiAnswer: "새로운 기술 스택 도입 과정에서 예상보다 많은 시간이 소요된 경험이 있습니다. 충분한 학습 시간을 확보하지 못했고, 팀 전체의 이해도가 낮았습니다. 이후 단계적 도입과 교육 프로그램을 통해 해결했습니다.",
       userEvaluation: "실패를 인정하고 개선점을 찾아낸 점이 좋습니다.",
       userImprovement: "구체적인 개선 결과나 학습한 점을 더 자세히 설명하면 더욱 효과적일 것입니다.",
-      aiFeedback: "춘식이는 실패 경험을 통해 얻은 학습과 개선 방안을 잘 제시했습니다. 다만 너무 완벽한 해결책처럼 보일 수 있습니다.",
+      aiFeedback: "",
       aiEvaluation: "실패 경험을 통해 얻은 학습과 개선 방안을 잘 제시했습니다.",
       aiImprovement: "너무 완벽한 해결책처럼 보이지 않도록, 어려웠던 점을 더 강조하면 좋겠습니다.",
       userScore: 82,
@@ -346,11 +350,13 @@ const InterviewResults: React.FC = () => {
         
         if (!groupedData[questionIndex]) {
           groupedData[questionIndex] = {
-            question: item.question_content || '질문이 없습니다',
+            userQuestion: '',
+            aiQuestion: '',
             userAnswer: '',
             aiAnswer: '',
             userEvaluation: '',
             userImprovement: '',
+            aiFeedback: '',
             aiEvaluation: '',
             aiImprovement: '',
             userScore: 0,
@@ -362,6 +368,7 @@ const InterviewResults: React.FC = () => {
         
         // who 컬럼으로 역할별 데이터 분류
         if (item.who === 'user') {
+          groupedData[questionIndex].userQuestion = item.question_content || '질문이 없습니다';
           groupedData[questionIndex].userAnswer = item.answer || '';
           try {
             const userFeedback = JSON.parse(item.feedback || '{}');
@@ -377,6 +384,7 @@ const InterviewResults: React.FC = () => {
             groupedData[questionIndex].userImprovement = '';
           }
         } else if (item.who === 'ai_interviewer') {
+          groupedData[questionIndex].aiQuestion = item.question_content || 'AI 질문이 없습니다';
           groupedData[questionIndex].aiAnswer = item.answer || '';
           try {
             const aiFeedback = JSON.parse(item.feedback || '{}');
@@ -388,7 +396,8 @@ const InterviewResults: React.FC = () => {
             groupedData[questionIndex].aiMemo = item.memo || '';
           } catch (error) {
             console.log(`🔧 question ${questionIndex} ai feedback 파싱 실패:`, error);
-            groupedData[questionIndex].aiFeedback = item.feedback || '';
+            groupedData[questionIndex].aiEvaluation = item.feedback || '';
+            groupedData[questionIndex].aiImprovement = '';
           }
         }
       });
@@ -863,7 +872,7 @@ const InterviewResults: React.FC = () => {
             <div key={index} className="bg-white rounded-lg shadow-sm p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-xl font-bold text-gray-900">
-                  질문 {index + 1}: {feedback.question}
+                  질문 {index + 1}: {feedback.userQuestion}
                 </h3>
                 <div className="text-center">
                   <span className="text-xs text-gray-500">점수</span>
@@ -975,7 +984,7 @@ const InterviewResults: React.FC = () => {
             <div key={index} className="bg-white rounded-lg shadow-sm p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-xl font-bold text-gray-900">
-                  질문 {index + 1}: {feedback.question}
+                  질문 {index + 1}: {feedback.aiQuestion}
                 </h3>
                 <div className="text-center">
                   <span className="text-xs text-gray-500">점수</span>

@@ -86,7 +86,7 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
       const response = await apiClient.post(`/test/gaze/calibration/frame/${sessionId}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      const feedback = response.data as FrameFeedback;
+      const feedback: FrameFeedback = response.data as FrameFeedback;
       setRealtimeFeedback(feedback);
       if (feedback.status === 'completed') {
         setIsCompleted(true);
@@ -161,7 +161,7 @@ const VideoCalibration: React.FC<CalibrationProps> = ({ onCalibrationComplete, o
     statusCheckInterval.current = setInterval(async () => {
       try {
         const response = await apiClient.get(`/test/gaze/calibration/status/${sessionId}`);
-        const statusData = response.data as CalibrationStatusResponse;
+        const statusData: CalibrationStatusResponse = response.data as CalibrationStatusResponse;
         setStatus(statusData);
         if (statusData.current_phase === 'completed') {
           setIsCompleted(true);

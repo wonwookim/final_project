@@ -531,6 +531,18 @@ export const interviewApi = {
     return response.data as InterviewResponse[];
   },
 
+  // 전체 사용자 통계 조회
+  async getGlobalStats(): Promise<{
+    total_interviews: number;
+    global_average_score: number;
+  }> {
+    const response = await apiClient.get('/interview/global-stats');
+    return response.data as {
+      total_interviews: number;
+      global_average_score: number;
+    };
+  },
+
   // 면접 상세 결과 조회
   async getInterviewDetails(interviewId: string): Promise<any> {
     const response = await apiClient.get(`/interview/history/${interviewId}`);
@@ -924,16 +936,16 @@ export const handleApiError = (error: any): string => {
         return data?.detail || '입력한 정보가 올바르지 않습니다.';
       
       case 401:
-        return '이메일 또는 비밀번호가 올바르지 않습니다.';
+        return '이메일 또는 비밀번호를 다시 확인해주세요.';
       
       case 400:
-        return data?.detail || '잘못된 요청입니다.';
+        return data?.detail || '입력하신 정보를 다시 확인해주세요.';
       
       case 404:
-        return data?.detail || '요청한 정보를 찾을 수 없습니다.';
+        return '요청한 정보를 찾을 수 없습니다.';
       
       case 500:
-        return '서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+        return '일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
       
       default:
         return data?.detail || '서버 오류가 발생했습니다.';
@@ -958,8 +970,60 @@ export const validateFileExtension = (file: File, allowedExtensions: string[] = 
   return extension ? allowedExtensions.includes(extension) : false;
 };
 
+// 🆕 회사 정보 인터페이스
+export interface Company {
+  company_id: number;
+  name: string;
+  talent_profile?: string;
+  core_competencies?: string;
+  tech_focus?: string;
+  interview_keywords?: string;
+  question_direction?: string;
+  company_culture?: string;
+  technical_challenges?: string;
+}
+
+// 🆕 직군 정보 인터페이스
+export interface Position {
+  position_id: number;
+  position_name: string;
+}
+
 // 🆕 채용공고 관련 API 함수들
 export const postingAPI = {
+  // 모든 회사 목록 조회
+  async getAllCompanies(): Promise<Company[]> {
+    try {
+      const response = await apiClient.get('/company');
+      return response.data as Company[];
+    } catch (error) {
+      console.error('회사 목록 조회 실패:', error);
+      return [];
+    }
+  },
+
+  // 모든 직군 목록 조회
+  async getAllPositions(): Promise<Position[]> {
+    try {
+      const response = await apiClient.get('/position');
+      return response.data as Position[];
+    } catch (error) {
+      console.error('직군 목록 조회 실패:', error);
+      return [];
+    }
+  },
+
+  // 회사와 직군으로 공고 조회
+  async getPostingByCompanyAndPosition(companyId: number, positionId: number): Promise<JobPosting | null> {
+    try {
+      const response = await apiClient.get(`/posting/company/${companyId}/position/${positionId}`);
+      return response.data as JobPosting;
+    } catch (error) {
+      console.error('회사/직군별 공고 조회 실패:', error);
+      return null;
+    }
+  },
+
   // 모든 채용공고 조회
   async getAllPostings(): Promise<JobPosting[]> {
     try {
@@ -1098,11 +1162,7 @@ export const tokenManager = {
   },
 };
 
-// 🆕 Position 관련 타입 정의
-export interface Position {
-  position_id: number;
-  position_name: string;
-}
+// 🆕 Position 관련 타입 정의 (중복 제거됨 - 위의 Position 인터페이스 사용)
 
 // 🆕 Resume 관련 타입 정의 (백엔드 스키마와 일치)
 export interface ResumeCreate {

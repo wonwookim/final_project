@@ -1,12 +1,16 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInterview } from '../contexts/InterviewContext';
+import { useAuth } from '../hooks/useAuth';
 import { sessionApi, interviewApi, tokenManager } from '../services/api';
 import apiClient, { handleApiError } from '../services/api';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import SpeechIndicator from '../components/voice/SpeechIndicator';
 import { getInterviewState, markApiCallCompleted, debugInterviewState, setApiCallInProgress, isApiCallInProgress } from '../utils/interviewStateManager';
 import { GazeAnalysisResult, VideoAnalysisResponse, AnalysisStatusResponse } from '../components/test/types';
+
+// API Base URL 설정
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 // API 응답 타입 정의
 interface UploadResponse {
@@ -49,6 +53,7 @@ interface FeedbackEvaluationResponse {
 const InterviewGO: React.FC = () => {
   const navigate = useNavigate();
   const { state, dispatch } = useInterview();
+  const { user } = useAuth();
 
   // sessionId를 InterviewService 상태에서 가져오기
   React.useEffect(() => {
@@ -495,7 +500,7 @@ const InterviewGO: React.FC = () => {
       console.log(`[🔊 TTS] ${label} TTS 생성 시작 (타입: ${type}): ${text.slice(0, 50)}...`);
       
       // 타입별 TTS API 호출
-      const response = await fetch('http://localhost:8000/interview/tts', {
+      const response = await fetch(`${API_BASE_URL}/interview/tts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -560,7 +565,7 @@ const InterviewGO: React.FC = () => {
       try {
         console.log(`[🔊 TTS] ${label} 기본 음성으로 TTS 재시도...`);
         
-        const fallbackResponse = await fetch('http://localhost:8000/interview/tts', {
+        const fallbackResponse = await fetch(`${API_BASE_URL}/interview/tts`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1327,7 +1332,7 @@ const InterviewGO: React.FC = () => {
       const fileName = `gaze-recording-${timestamp}.webm`;
       formData.append('file', videoBlob, fileName);
 
-      const response = await fetch(`http://localhost:8000/gaze/upload/temporary/${sessionId}`, {
+      const response = await fetch(`${API_BASE_URL}/gaze/upload/temporary/${sessionId}`, {
         method: 'POST',
         body: formData
       });
@@ -1378,22 +1383,15 @@ const InterviewGO: React.FC = () => {
 
     try {
       setIsLoading(true);
-      setIsTimerActive(false); // 타이머 정지
-      setCanSubmit(false); // 제출 버튼 비활성화
-      setCanRecord(false); // 🎤 녹음 비활성화
-      // 진행 중인 녹음이 있으면 자동 중지
+      setIsTimerActive(false);
+      setCanSubmit(false);
+      setCanRecord(false);
+
       if (isRecording) {
         stopRecording();
       }
-      
-      console.log('🚀 답변 제출 시작:', {
-        sessionId: sessionId,
-        answer: currentAnswer,
-        answerLength: currentAnswer.length,
-        timeSpent: 120 - timeLeft
-      });
 
-      // 🆕 2단계: 답변 제출 (기존 로직)
+      console.log('💬 텍스트 답변을 백엔드로 제출합니다.');
       const result = await interviewApi.submitUserAnswer(
         sessionId,
         answerText,
@@ -1561,7 +1559,7 @@ const InterviewGO: React.FC = () => {
       
       console.log('🗣️ STT 요청 전송 중...');
       
-      const response = await fetch('http://localhost:8000/interview/stt', {
+      const response = await fetch(`${API_BASE_URL}/interview/stt`, {
         method: 'POST',
         body: formData
       });
@@ -2114,7 +2112,7 @@ const InterviewGO: React.FC = () => {
             : 'border-gray-600'
           }`}>
             <div className="absolute top-4 left-4 text-yellow-400 font-semibold z-10">
-              사용자: {state.settings?.candidate_name || 'You'}
+              사용자: {user?.name || state.settings?.candidate_name || 'You'}
             </div>
             
             {/* 🆕 턴 상태 표시 */}

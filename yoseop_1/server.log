@@ -1,4 +1,4 @@
-2025-07-22 15:39:40,597 - interview_system - INFO - None:0 - AI 비교 면접 시작
+ㅈ2025-07-22 15:39:40,597 - interview_system - INFO - None:0 - AI 비교 면접 시작
 2025-07-22 15:39:40,635 - interview_system - INFO - None:0 - AI 비교 면접 시작
 2025-07-23 10:36:52,736 - interview_system - INFO - None:0 - AI 비교 면접 시작
 2025-07-23 10:36:52,739 - interview_system - ERROR - None:0 - AI 경쟁 면접 시작 오류: No module named 'core'
