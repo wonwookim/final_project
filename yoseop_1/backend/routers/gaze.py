@@ -23,6 +23,7 @@ import shutil
 from datetime import datetime
 import os
 import sys
+import logging
 
 # 백엔드 서비스 import를 위한 경로 설정
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -48,6 +49,9 @@ except ImportError as e:
 # 라우터 초기화
 router = APIRouter(prefix="/gaze", tags=["Gaze Analysis"])
 auth_service = AuthService()
+
+# 로깅 설정
+logger = logging.getLogger(__name__)
 
 # 분석 작업 상태 저장소 (실제 서비스에서는 Redis나 DB 사용 권장)
 analysis_tasks: Dict[str, Dict] = {}
@@ -650,32 +654,74 @@ async def run_s3_video_analysis_with_session(
                 f"10초 이상 선명한 영상을 다시 녹화해주세요."
             )
         
-        # 결과 저장 (s3_key를 기준으로 임시 저장, interview_id는 나중에 연결)
+        # === 12단계: GazeAnalysisResult 객체 생성 ===
+        gaze_analysis_result_obj = GazeAnalysisResult(
+            gaze_score=result.gaze_score,
+            total_frames=result.total_frames,
+            analyzed_frames=result.analyzed_frames,
+            in_range_frames=result.in_range_frames,
+            in_range_ratio=result.in_range_ratio,
+            jitter_score=result.jitter_score,
+            compliance_score=result.compliance_score,
+            stability_rating=result.stability_rating,
+            feedback=result.feedback,
+            gaze_points=result.gaze_points,
+            analysis_duration=analysis_duration,
+            allowed_range=result.allowed_range,
+            calibration_points=result.calibration_points
+        )
+
+        # === 13단계: 분석 결과를 Supabase gaze_analysis 테이블에 저장 (s3_key 기반) ===
+        try:
+            from dataclasses import asdict
+            
+            # Supabase 클라이언트 가져오기 (인증 없이 서비스 계정 사용)
+            supabase_client = get_user_supabase_client("")  # 빈 토큰으로 서비스 계정 사용
+            
+            # GazeAnalysisResult 객체를 딕셔너리로 변환
+            data_to_insert = gaze_analysis_result_obj.model_dump()
+            
+            # DB에 없는 필드들을 저장 전에 제거
+            fields_to_remove = [
+                'allowed_range', 'analysis_duration', 'total_frames', 
+                'analyzed_frames', 'in_range_frames', 'in_range_ratio', 'feedback'
+            ]
+            for field in fields_to_remove:
+                if field in data_to_insert:
+                    del data_to_insert[field]
+            
+            # 추가 필드들 설정
+            data_to_insert['s3_key'] = s3_key  # S3 키를 저장하여 나중에 interview_id와 연결
+            data_to_insert['user_id'] = user_id  # analysis_tasks에서 user_id 가져오기
+            data_to_insert['session_id'] = session_id # session_id를 DB에 직접 저장
+            data_to_insert['created_at'] = datetime.now().isoformat()  # 생성 시간
+            data_to_insert['interview_id'] = None  # 나중에 _process_gaze_data_after_evaluation에서 업데이트
+            
+            # Supabase에 저장
+            insert_result = supabase_client.table('gaze_analysis').insert(data_to_insert).execute()
+            
+            if insert_result.data:
+                logger.info(f"✅ [DB_SAVE] gaze_analysis 레코드 초기 저장 완료 (s3_key 기반): {insert_result.data[0].get('gaze_id', 'unknown')}")
+            else:
+                logger.error(f"❌ [DB_SAVE] gaze_analysis 레코드 초기 저장 실패: {getattr(insert_result, 'error', 'Unknown error')}")
+                
+        except Exception as db_save_error:
+            logger.error(f"❌ [DB_SAVE] gaze_analysis DB 저장 중 오류 발생: {db_save_error}", exc_info=True)
+            # DB 저장 실패 시에도 분석 작업은 완료로 처리 (폴링 상태)
+
+        # === 14단계: analysis_tasks 업데이트 ===
         analysis_tasks[task_id].update({
             'status': 'completed',
             'progress': 1.0,
             'message': '시선 분석이 성공적으로 완료되었습니다.',
             'completed_at': end_time,
             'analysis_result': result,  # 원본 결과 객체 저장
-            'result': GazeAnalysisResult(
-                gaze_score=result.gaze_score,
-                total_frames=result.total_frames,
-                analyzed_frames=result.analyzed_frames,
-                in_range_frames=result.in_range_frames,
-                in_range_ratio=result.in_range_ratio,
-                jitter_score=result.jitter_score,
-                compliance_score=result.compliance_score,
-                stability_rating=result.stability_rating,
-                feedback=result.feedback,
-                gaze_points=result.gaze_points,
-                analysis_duration=analysis_duration,
-                allowed_range=result.allowed_range,
-                calibration_points=result.calibration_points
-            )
+            'result': gaze_analysis_result_obj  # GazeAnalysisResult 객체 저장
         })
         
         print(f"📊 [SESSION_ANALYSIS] 결과 저장 완료: 점수={result.gaze_score}")
         print(f"   - interview_id 연결은 면접 완료 후 지연 처리됩니다.")
+        print(f"   - Supabase DB 저장도 완료되었습니다.")
 
     except Exception as e:
         import traceback

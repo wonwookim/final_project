@@ -541,69 +541,69 @@ class InterviewService:
 
     async def _process_gaze_data_after_evaluation(self, interview_id: int, session_id: str, user_id: int) -> None:
         """
-        면접 평가 완료 후 시선 분석 데이터 지연 처리
+        면접 평가 완료 후 시선 분석 데이터 지연 처리 (DB 기반)
         
         Pre-signed URL 기반 업로드 플로우에서 interview_id가 확정된 후:
-        1. analysis_tasks에서 해당 세션의 시선 분석 결과 찾기
-        2. media_files 테이블에 레코드 삽입
-        3. gaze_analysis 테이블에 분석 결과 저장
+        1. DB에서 session_id에 해당하는 미처리 시선 분석 결과 찾기
+        2. 찾은 gaze_analysis 레코드에 interview_id 업데이트
+        3. media_files 테이블에 관련 레코드 삽입
         """
         try:
-            from backend.routers.gaze import analysis_tasks
-            import os
+            interview_logger.info(f"📊 면접 평가 후 시선 데이터 처리 시작 (DB 기반): interview_id={interview_id}, session_id={session_id}")
             
-            interview_logger.info(f"📊 면접 평가 후 시선 데이터 처리 시작: interview_id={interview_id}, session_id={session_id}")
+            supabase_client = get_supabase_client()
 
-            # 1. analysis_tasks에서 해당 세션의 분석 결과 찾기
-            session_task_data = None
-            session_task_id = None
-            
-            for task_id, task_info in analysis_tasks.items():
-                if (task_info.get("session_id") == session_id and 
-                    task_info.get("user_id") == user_id and 
-                    task_info.get("status") == "completed"):
-                    session_task_data = task_info
-                    session_task_id = task_id
-                    break
+            # 1. DB에서 session_id로 미처리 시선 분석 결과 찾기
+            query_result = supabase_client.table("gaze_analysis").select("*") \
+                .eq("user_id", user_id) \
+                .eq("session_id", session_id) \
+                .is_("interview_id", "null") \
+                .order("created_at", desc=True).limit(1).execute()
 
-            if not session_task_data:
-                interview_logger.info(f"📝 세션 {session_id}에 대한 완료된 시선 분석 결과를 찾을 수 없습니다. Pre-signed URL 업로드가 없었거나 분석이 완료되지 않았을 수 있습니다.")
+            if not query_result.data:
+                interview_logger.info(f"📝 세션 {session_id}에 대한 DB의 미처리 시선 분석 결과를 찾을 수 없습니다.")
                 return
 
-            s3_key_found = session_task_data.get("s3_key")
-            temp_media_id_found = session_task_data.get("temp_media_id")
-            analysis_result = session_task_data.get("analysis_result")  # 원본 분석 결과 객체
+            gaze_record = query_result.data[0]
+            gaze_id = gaze_record['gaze_id']
+            s3_key_found = gaze_record['s3_key']
+            
+            # TODO: analysis_result 객체를 DB 레코드로부터 재구성해야 할 수 있음 (다음 단계에서 처리)
+            analysis_result = gaze_record # 임시로 전체 레코드를 할당
 
-            interview_logger.info(f"✅ 시선 분석 결과 발견: task_id={session_task_id}, s3_key={s3_key_found}")
+            interview_logger.info(f"✅ DB에서 시선 분석 결과 발견: gaze_id={gaze_id}, s3_key={s3_key_found}")
 
-            # 2. media_files 테이블에 레코드 삽입
+            # 2. 찾은 gaze_analysis 레코드에 interview_id 업데이트
+            update_response = supabase_client.table("gaze_analysis") \
+                .update({"interview_id": interview_id}) \
+                .eq("gaze_id", gaze_id) \
+                .execute()
+
+            if not update_response.data:
+                interview_logger.error(f"❌ gaze_analysis 레코드(id:{gaze_id})에 interview_id 업데이트 실패.")
+                # 실패해도 일단 계속 진행
+            else:
+                interview_logger.info(f"✅ gaze_analysis 레코드(id:{gaze_id})에 interview_id({interview_id}) 업데이트 완료.")
+
+            # 3. media_files 테이블에 레코드 삽입 (metadata 필드 제외)
             try:
-                supabase_db_client = get_supabase_client()
-                
-                # S3 URL 및 파일 정보 생성
-                BUCKET_NAME = 'betago-s3'
+                import os
                 AWS_REGION = os.getenv('AWS_REGION', 'ap-northeast-2')
+                BUCKET_NAME = 'betago-s3'
                 file_name = os.path.basename(s3_key_found)
                 s3_url = f"https://{BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{s3_key_found}"
 
                 media_data_to_insert = {
                     'user_id': user_id,
-                    'interview_id': interview_id,  # 확정된 interview_id 사용
+                    'interview_id': interview_id,
                     'file_name': file_name,
                     'file_type': 'video',
                     's3_url': s3_url,
-                    's3_key': s3_key_found,
-                    'media_id': temp_media_id_found,  # 임시 media_id를 최종 media_id로 사용
-                    'metadata': {
-                        'type': 'gaze_tracking',
-                        'purpose': 'gaze_analysis',
-                        'delayed_insert': True,
-                        'original_session_id': session_id
-                    }
-                }
-
+                    's3_key': s3_key_found
+                    # metadata 필드 제거됨 (DB에 해당 컬럼 없음)
+                }                
                 interview_logger.info(f"💾 media_files 테이블 삽입 시도: {media_data_to_insert}")
-                insert_result = supabase_db_client.table('media_files').insert(media_data_to_insert).execute()
+                insert_result = supabase_client.table('media_files').insert(media_data_to_insert).execute()
 
                 if insert_result.data:
                     final_media_id = insert_result.data[0]['media_id']
@@ -613,58 +613,7 @@ class InterviewService:
 
             except Exception as e:
                 interview_logger.error(f"❌ media_files 삽입 중 오류 발생: {e}", exc_info=True)
-                return
-
-            # 3. gaze_analysis 테이블에 분석 결과 저장 (analysis_result가 있는 경우)
-            if analysis_result:
-                try:
-                    supabase_client = get_supabase_client()
-
-                    # video_metadata JSON 객체 구성
-                    video_metadata = {
-                        "total_frames": getattr(analysis_result, 'total_frames', 0),
-                        "analyzed_frames": getattr(analysis_result, 'analyzed_frames', 0),
-                        "in_range_ratio": getattr(analysis_result, 'in_range_ratio', 0),
-                        "analysis_duration_sec": getattr(analysis_result, 'analysis_duration', 0),
-                        "feedback_summary": getattr(analysis_result, 'feedback', "N/A"),
-                        "delayed_processing": True,
-                        "source_session_id": session_id
-                    }
-
-                    # DB에 저장할 데이터 구성
-                    gaze_data_to_insert = {
-                        "interview_id": interview_id,
-                        "user_id": user_id,
-                        "gaze_score": getattr(analysis_result, 'gaze_score', 0),
-                        "jitter_score": getattr(analysis_result, 'jitter_score', 0),
-                        "compliance_score": getattr(analysis_result, 'compliance_score', 0),
-                        "stability_rating": getattr(analysis_result, 'stability_rating', "Unknown"),
-                        "gaze_points": getattr(analysis_result, 'gaze_points', []),
-                        "calibration_points": getattr(analysis_result, 'calibration_points', []),
-                        "video_metadata": video_metadata
-                    }
-
-                    interview_logger.info(f"💾 gaze_analysis 테이블 삽입 시도: interview_id={interview_id}")
-                    gaze_insert_result = supabase_client.table('gaze_analysis').insert(gaze_data_to_insert).execute()
-
-                    if gaze_insert_result.data:
-                        gaze_id = gaze_insert_result.data[0].get('gaze_id')
-                        interview_logger.info(f"✅ gaze_analysis 레코드 삽입 완료: gaze_id={gaze_id}")
-                    else:
-                        error_details = getattr(gaze_insert_result, 'error', 'Unknown error')
-                        raise Exception(f"gaze_analysis 삽입 실패: {error_details}")
-
-                except Exception as e:
-                    interview_logger.error(f"❌ gaze_analysis 삽입 중 오류 발생: {e}", exc_info=True)
-
-            # 4. analysis_tasks에서 처리된 task 정리 (선택적)
-            try:
-                if session_task_id in analysis_tasks:
-                    analysis_tasks[session_task_id]['processed'] = True
-                    analysis_tasks[session_task_id]['linked_interview_id'] = interview_id
-                    interview_logger.info(f"🧹 analysis_task {session_task_id} 처리 완료 표시")
-            except Exception as cleanup_error:
-                interview_logger.warning(f"⚠️ analysis_task 정리 중 오류: {cleanup_error}")
+                # 이 단계 실패는 전체를 중단시키지 않음
 
             interview_logger.info(f"✅ 시선 분석 데이터 지연 처리 완료: interview_id={interview_id}, session_id={session_id}")
 

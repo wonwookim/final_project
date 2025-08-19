@@ -629,7 +629,7 @@ class GazeAnalyzer(GazeCoreProcessor):
                 
                 return GazeAnalysisResult(
                     gaze_score=final_score,
-                    total_frames=corrected_total_frames,
+                    total_frames=frame_count,
                     analyzed_frames=analyzed_count,
                     in_range_frames=in_range_count,
                     in_range_ratio=in_range_ratio,
