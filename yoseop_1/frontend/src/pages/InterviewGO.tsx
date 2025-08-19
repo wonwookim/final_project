@@ -192,9 +192,9 @@ const InterviewGO: React.FC = () => {
 
   // 난이도별 AI 지원자 이미지 매핑 함수
   const getAICandidateImage = (level: number): string => {
-    if (level <= 3) return '/img/candidate_1.png'; // 초급자
-    if (level <= 7) return '/img/candidate_2.png'; // 중급자
-    return '/img/candidate_3.png'; // 고급자
+    if (level <= 3) return '/img/nano-banana_____.png'; // 초급자
+    if (level <= 7) return '/img/nano-banana__Create_an_image_of_.png'; // 중급자
+    return '/img/nano-banana______2.png'; // 고급자
   };
 
   // 난이도별 AI 지원자 이름 매핑 함수
@@ -978,15 +978,23 @@ const InterviewGO: React.FC = () => {
     return 'unknown';
   };
 
-  // 🆕 타입별 voice_id 매핑 함수
+  // 🆕 타입별 voice_id 매핑 함수 (AI 지원자는 난이도별로 다른 음성 사용)
   const getVoiceIdByType = (type: string): string => {
     const normalizedType = normalizeTTSType(type);
+    
+    // AI 지원자인 경우 난이도에 따른 voice_id 선택
+    if (normalizedType === 'ai') {
+      const aiQualityLevel = state.aiSettings?.aiQualityLevel || 6;
+      if (aiQualityLevel <= 3) return 'H8ObVvroE5JXeeUSJakg'; // 초급자 - 높은 톤, 친근한 목소리
+      if (aiQualityLevel <= 7) return 'uyVNoMrnUku1dZyVEXwD'; // 중급자 - 안정적이고 명확한 목소리
+      return 'WzMnDIgiICcj1oXbUBO0'; // 고급자 - 낮고 자신감 있는 목소리
+    }
+    
     switch (normalizedType) {
-      case 'ai': return 'H8ObVvroE5JXeeUSJakg'; // AI 전용 음성 (현재는 기본값과 동일)
-      case 'tech': return 'mYk0rAapHek2oTw18z8x'; // 기술 면접관 음성 (현재는 기본값과 동일)
-      case 'collaborate': return 'ZJCNdZEjYwkOElxugmW2'; // 협업 면접관 음성 (현재는 기본값과 동일)  
-      case 'hr': return 'YBRudLRm83BV5Mazcr42'; // HR 면접관 음성 (기본값)
-      default: return 'YBRudLRm83BV5Mazcr42'; // 기본값은 HR과 동일
+      case 'tech': return 'YBRudLRm83BV5Mazcr42'; // 기술 면접관 음성
+      case 'collaborate': return 'mYk0rAapHek2oTw18z8x'; // 협업 면접관 음성
+      case 'hr': return 'AW5wrnG1jVizOYY7R1Oo'; // HR 면접관 음성 (기본값)
+      default: return 'AW5wrnG1jVizOYY7R1Oo'; // 기본값은 HR과 동일
     }
   };
 
@@ -995,11 +1003,11 @@ const InterviewGO: React.FC = () => {
     const normalizedType = normalizeTTSType(type);
     switch (normalizedType) {
       case 'intro': return '🎬 면접을 시작합니다';
-      case 'hr': return '💼 HR 질문이 진행됩니다';
-      case 'tech': return '💻 기술 질문이 진행됩니다';
-      case 'collaborate': return '🤝 협업 질문이 진행됩니다';
+      case 'hr': return '💼 인사 면접관이 질문 중입니다';
+      case 'tech': return '💻 기술 면접관이 질문 중입니다';
+      case 'collaborate': return '🤝 협업 면접관이 질문 중입니다';
       case 'ai_question': return '🤖 AI 질문이 재생됩니다';
-      case 'ai': return '🤖 AI가 답변 중입니다';
+      case 'ai': return '🤖 다른 지원자가 답변 중입니다';
       case 'outro': return '✅ 면접이 완료되었습니다';
       default: return '🔊 음성이 재생됩니다';
     }
@@ -2083,7 +2091,7 @@ const InterviewGO: React.FC = () => {
             </div>
             <div className="h-full flex items-center justify-center relative">
               <img 
-                src="/img/interviewer_1.jpg"
+                src="/img/nano-banana_A_front-facing_port_1.png"
                 alt="인사 면접관"
                 className="w-full h-full object-cover"
               />
@@ -2095,11 +2103,11 @@ const InterviewGO: React.FC = () => {
             shouldHighlight('collaborate') ? 'border-green-500' : 'border-gray-700'
           }`}>
             <div className="absolute top-4 left-4 font-semibold text-white">
-              🤝 협업 면접관
+              💻 기술 면접관
             </div>
             <div className="h-full flex items-center justify-center relative">
               <img 
-                src="/img/interviewer_2.jpg"
+                src="/img/nano-banana_Change_only_the_back.png"
                 alt="협업 면접관"
                 className="w-full h-full object-cover"
               />
@@ -2111,11 +2119,11 @@ const InterviewGO: React.FC = () => {
             shouldHighlight('tech') ? 'border-green-500' : 'border-gray-700'
           }`}>
             <div className="absolute top-4 left-4 font-semibold text-white">
-              💻 기술 면접관
+              🤝 협업 면접관
             </div>
             <div className="h-full flex items-center justify-center relative">
               <img 
-                src="/img/interviewer_3.jpg"
+                src="/img/flux-1-kontext-pro__k-tech___.png"
                 alt="기술 면접관"
                 className="w-full h-full object-cover"
               />
