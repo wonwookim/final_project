@@ -974,6 +974,13 @@ export const validateFileExtension = (file: File, allowedExtensions: string[] = 
 export interface Company {
   company_id: number;
   name: string;
+  talent_profile?: string;
+  core_competencies?: string;
+  tech_focus?: string;
+  interview_keywords?: string;
+  question_direction?: string;
+  company_culture?: string;
+  technical_challenges?: string;
 }
 
 // 🆕 직군 정보 인터페이스

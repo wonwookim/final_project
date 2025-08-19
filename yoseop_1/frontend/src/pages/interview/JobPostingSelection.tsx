@@ -23,6 +23,57 @@ const JobPostingSelection: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const hasInitialized = useRef(false);
 
+  // 회사 상세 정보 팝업 상태
+  const [selectedCompanyForDetail, setSelectedCompanyForDetail] = useState<Company | null>(null);
+
+  // JSON 파싱 유틸리티 함수
+  const parseJsonField = (field: string | undefined): any => {
+    if (!field) return null;
+    try {
+      return JSON.parse(field);
+    } catch (error) {
+      return field; // 파싱 실패 시 원본 반환
+    }
+  };
+
+  // 직군별 아이콘 매핑 함수
+  const getPositionIcon = (positionName: string): string => {
+    const iconMap: Record<string, string> = {
+      '프론트엔드 개발자': '🖥️',
+      '백엔드 개발자': '⚙️', 
+      '기획': '📊',
+      'AI': '🤖',
+      '데이터 사이언스': '📈',
+      '데이터사이언스': '📈',
+      '풀스택 개발자': '💻',
+      '모바일 개발자': '📱',
+      'DevOps': '🔧',
+      'QA': '🔍',
+      '디자이너': '🎨'
+    };
+    
+    return iconMap[positionName] || '💼';
+  };
+
+  // 직군별 색상 매핑 함수
+  const getPositionColor = (positionName: string): string => {
+    const colorMap: Record<string, string> = {
+      '프론트엔드 개발자': 'from-blue-500 to-blue-600',
+      '백엔드 개발자': 'from-green-500 to-green-600',
+      '기획': 'from-purple-500 to-purple-600',
+      'AI': 'from-red-500 to-red-600',
+      '데이터 사이언스': 'from-orange-500 to-orange-600',
+      '데이터사이언스': 'from-orange-500 to-orange-600',
+      '풀스택 개발자': 'from-indigo-500 to-indigo-600',
+      '모바일 개발자': 'from-pink-500 to-pink-600',
+      'DevOps': 'from-gray-500 to-gray-600',
+      'QA': 'from-teal-500 to-teal-600',
+      '디자이너': 'from-yellow-500 to-yellow-600'
+    };
+    
+    return colorMap[positionName] || 'from-purple-500 to-pink-500';
+  };
+
   // 회사 로고 매핑 함수
   const getCompanyLogo = (companyName: string): string => {
     const logoMap: Record<string, string> = {
@@ -323,7 +374,15 @@ const JobPostingSelection: React.FC = () => {
                     </div>
                     <div>
                       <h3 className="text-lg font-bold text-slate-900">{company.name}</h3>
-                      <p className="text-slate-500 text-sm">{company.name}</p>
+                      <p 
+                        className="text-blue-500 text-sm cursor-pointer hover:text-blue-700 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedCompanyForDetail(company);
+                        }}
+                      >
+                        🔍 자세히보기
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -355,20 +414,19 @@ const JobPostingSelection: React.FC = () => {
                 </div>
               )}
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
                 {positions.map((position) => (
                   <div
                     key={position.position_id}
                     onClick={() => handleSelectPosition(position)}
-                    className="bg-white/80 backdrop-blur-sm rounded-xl p-4 border-2 cursor-pointer transition-all duration-300 hover:shadow-lg hover:border-slate-300 border-slate-200"
+                    className="bg-white/80 backdrop-blur-sm rounded-xl p-3 border-2 cursor-pointer transition-all duration-300 hover:shadow-lg hover:border-slate-300 border-slate-200 text-center"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
-                        <span className="text-white font-bold text-sm">💼</span>
+                    <div className="flex flex-col items-center gap-2">
+                      <div className={`w-12 h-12 bg-gradient-to-r ${getPositionColor(position.position_name)} rounded-lg flex items-center justify-center`}>
+                        <span className="text-white font-bold text-base">{getPositionIcon(position.position_name)}</span>
                       </div>
                       <div>
-                        <h3 className="text-lg font-bold text-slate-900">{position.position_name}</h3>
-                        <p className="text-slate-500 text-sm">{position.position_name}</p>
+                        <h3 className="text-base font-bold text-slate-900">{position.position_name}</h3>
                       </div>
                     </div>
                   </div>
@@ -420,6 +478,207 @@ const JobPostingSelection: React.FC = () => {
             </div>
           )}
 
+          {/* 회사 상세 정보 팝업 */}
+          {selectedCompanyForDetail && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                {/* 헤더 */}
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <img 
+                      src={getCompanyLogo(selectedCompanyForDetail.name)} 
+                      alt={selectedCompanyForDetail.name}
+                      className="w-12 h-12 rounded-lg object-contain"
+                      onError={(e) => {
+                        const img = e.currentTarget;
+                        img.src = '/img/default-company.png';
+                      }}
+                    />
+                    <h2 className="text-2xl font-bold text-slate-900">
+                      {selectedCompanyForDetail.name}
+                    </h2>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedCompanyForDetail(null)}
+                    className="text-slate-400 hover:text-slate-600 text-2xl"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                {/* 상세 정보 */}
+                <div className="space-y-6">
+                  {selectedCompanyForDetail.talent_profile && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900 mb-3">인재상</h3>
+                      <p className="text-slate-700 font-medium bg-slate-50 p-4 rounded-lg leading-relaxed">
+                        {selectedCompanyForDetail.talent_profile}
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedCompanyForDetail.core_competencies && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900 mb-3">핵심 역량</h3>
+                      <div className="bg-slate-50 p-4 rounded-lg">
+                        {(() => {
+                          const competencies = parseJsonField(selectedCompanyForDetail.core_competencies);
+                          if (Array.isArray(competencies)) {
+                            return (
+                              <div className="flex flex-wrap gap-2">
+                                {competencies.map((item, index) => (
+                                  <span key={index} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                                    {item}
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          }
+                          return <p className="text-slate-600">{selectedCompanyForDetail.core_competencies}</p>;
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedCompanyForDetail.tech_focus && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900 mb-3">기술 중점</h3>
+                      <div className="bg-slate-50 p-4 rounded-lg">
+                        {(() => {
+                          const techFocus = parseJsonField(selectedCompanyForDetail.tech_focus);
+                          if (Array.isArray(techFocus)) {
+                            return (
+                              <div className="flex flex-wrap gap-2">
+                                {techFocus.map((item, index) => (
+                                  <span key={index} className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+                                    {item}
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          }
+                          return <p className="text-slate-600">{selectedCompanyForDetail.tech_focus}</p>;
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedCompanyForDetail.interview_keywords && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900 mb-3">면접 키워드</h3>
+                      <div className="bg-slate-50 p-4 rounded-lg">
+                        {(() => {
+                          const keywords = parseJsonField(selectedCompanyForDetail.interview_keywords);
+                          if (Array.isArray(keywords)) {
+                            return (
+                              <div className="flex flex-wrap gap-2">
+                                {keywords.map((item, index) => (
+                                  <span key={index} className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">
+                                    {item}
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          }
+                          return <p className="text-slate-600">{selectedCompanyForDetail.interview_keywords}</p>;
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedCompanyForDetail.question_direction && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900 mb-3">질문 방향</h3>
+                      <p className="text-slate-700 font-medium bg-slate-50 p-4 rounded-lg leading-relaxed">
+                        {selectedCompanyForDetail.question_direction}
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedCompanyForDetail.company_culture && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900 mb-3">회사 문화</h3>
+                      <div className="bg-slate-50 p-4 rounded-lg">
+                        {(() => {
+                          const culture = parseJsonField(selectedCompanyForDetail.company_culture);
+                          if (typeof culture === 'object' && culture !== null) {
+                            return (
+                              <div className="space-y-3">
+                                {culture.work_style && (
+                                  <div>
+                                    <span className="text-sm font-semibold text-slate-800">업무 스타일:</span>
+                                    <p className="text-slate-600 mt-1">{culture.work_style}</p>
+                                  </div>
+                                )}
+                                {culture.decision_making && (
+                                  <div>
+                                    <span className="text-sm font-semibold text-slate-800">의사결정:</span>
+                                    <p className="text-slate-600 mt-1">{culture.decision_making}</p>
+                                  </div>
+                                )}
+                                {culture.growth_support && (
+                                  <div>
+                                    <span className="text-sm font-semibold text-slate-800">성장 지원:</span>
+                                    <p className="text-slate-600 mt-1">{culture.growth_support}</p>
+                                  </div>
+                                )}
+                                {culture.core_values && Array.isArray(culture.core_values) && (
+                                  <div>
+                                    <span className="text-sm font-semibold text-slate-800">핵심 가치:</span>
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                      {culture.core_values.map((value, index) => (
+                                        <span key={index} className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-sm">
+                                          {value}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+                          return <p className="text-slate-600">{selectedCompanyForDetail.company_culture}</p>;
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedCompanyForDetail.technical_challenges && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900 mb-3">기술적 도전</h3>
+                      <div className="bg-slate-50 p-4 rounded-lg">
+                        {(() => {
+                          const challenges = parseJsonField(selectedCompanyForDetail.technical_challenges);
+                          if (Array.isArray(challenges)) {
+                            return (
+                              <div className="flex flex-wrap gap-2">
+                                {challenges.map((item, index) => (
+                                  <span key={index} className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-medium">
+                                    {item}
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          }
+                          return <p className="text-slate-600">{selectedCompanyForDetail.technical_challenges}</p>;
+                        })()}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 닫기 버튼 */}
+                <div className="mt-6 text-center">
+                  <button 
+                    onClick={() => setSelectedCompanyForDetail(null)}
+                    className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  >
+                    닫기
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200">
             <NavigationButtons
