@@ -626,6 +626,72 @@ const InterviewGO: React.FC = () => {
     }
   };
 
+  // 🎵 개별 TTS 생성 함수 - 스트리밍용
+  const generateSingleTTS = async (item: {type: string, content: string}, index: number, totalCount: number): Promise<HTMLAudioElement | null> => {
+    try {
+      console.log(`🎵 [TTS 개별] ${index + 1}/${totalCount} 생성 시작: [${item.type}] ${item.content.substring(0, 50)}...`);
+      
+      // 타입별 TTS API 호출
+      const response = await fetch(`${API_BASE_URL}/interview/tts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: item.content.trim(),
+          voice_id: getVoiceIdByType(item.type)
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`TTS API 오류: ${response.status}`);
+      }
+
+      const audioData = await response.arrayBuffer();
+      const audioBlob = new Blob([audioData], { type: 'audio/mp3' });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audio.volume = 0.8; // 🔊 모든 TTS 볼륨 통일
+      
+      console.log(`🎵 [TTS 개별] ${index + 1}/${totalCount} 생성 완료: [${item.type}]`);
+      return audio;
+      
+    } catch (error) {
+      console.warn(`🎵 [TTS 개별] ${index + 1}/${totalCount} 생성 실패, 폴백 시도: [${item.type}]`, error);
+      
+      // 폴백: 기본 음성으로 재시도
+      try {
+        const fallbackResponse = await fetch(`${API_BASE_URL}/interview/tts`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: item.content.trim(),
+            voice_id: "21m00Tcm4TlvDq8ikWAM" // 기본 Rachel 음성
+          })
+        });
+
+        if (!fallbackResponse.ok) {
+          throw new Error(`폴백 TTS API 오류: ${fallbackResponse.status}`);
+        }
+
+        const fallbackAudioData = await fallbackResponse.arrayBuffer();
+        const audioBlob = new Blob([fallbackAudioData], { type: 'audio/mp3' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        audio.volume = 0.8; // 🔊 폴백 TTS도 동일한 볼륨
+        
+        console.log(`🎵 [TTS 개별] ${index + 1}/${totalCount} 폴백 생성 완료: [${item.type}]`);
+        return audio;
+        
+      } catch (fallbackError) {
+        console.error(`🎵 [TTS 개별] ${index + 1}/${totalCount} 모든 생성 실패: [${item.type}]`, fallbackError);
+        return null;
+      }
+    }
+  };
+
   // 🔊 TTS 확인용 주석입니다 - 큐에 텍스트 추가 함수 (더 이상 사용하지 않음 - 동기적 수집 방식으로 변경)
   // const addToTTSQueue = (text: string, label: string = "") => {
   //   if (text && text.trim()) {
@@ -634,48 +700,141 @@ const InterviewGO: React.FC = () => {
   //   }
   // };
 
-  // 🔊 TTS 확인용 주석입니다 - 전달받은 항목들을 순차 처리 (타입 정보 포함)
+  // 🎵 스트리밍 TTS 큐 처리 - 재생 중 백그라운드 생성
   const processTTSQueue = async (ttsItems: {type: string, content: string}[] = []) => {
-    console.log(`🔊 [큐 처리] 함수 호출됨 - 처리할 항목 수: ${ttsItems.length}`);
-    console.log(`🔊 [큐 처리] 처리 항목들:`, ttsItems.map(item => `${item.type}: ${item.content.substring(0, 50)}...`));
+    console.log(`🎵 [스트리밍 TTS] 함수 호출됨 - 처리할 항목 수: ${ttsItems.length}`);
+    console.log(`🎵 [스트리밍 TTS] 처리 항목들:`, ttsItems.map(item => `${item.type}: ${item.content.substring(0, 50)}...`));
     
     if (ttsItems.length === 0) {
-      console.log('🔊 [큐 처리] 처리할 TTS 없음 - 종료');
+      console.log('🎵 [스트리밍 TTS] 처리할 TTS 없음 - 종료');
       return;
     }
     
     // 🆕 TTS 재생 시작 - 타이머 중지
-    console.log('🔊 [큐 처리] TTS 재생 시작 - 타이머 중지');
+    console.log('🎵 [스트리밍 TTS] TTS 재생 시작 - 타이머 중지');
     setIsTTSPlaying(true);
     setTtsQueue(ttsItems);
     setCurrentTTSIndex(0);
-    setIsTimerActive(false); // 타이머 중지
+    setIsTimerActive(false);
     
-    console.log(`🔊 [큐 처리] ${ttsItems.length}개 항목 순차 처리 시작`);
+    const startTime = Date.now();
     
-    for (let i = 0; i < ttsItems.length; i++) {
-      const item = ttsItems[i];
-      console.log(`🔊 [큐 처리] ${i + 1}/${ttsItems.length} 처리 중: [${item.type}] ${item.content.substring(0, 50)}...`);
+    try {
+      // 🎵 1단계: 첫 번째 TTS만 먼저 생성
+      console.log(`🎵 [스트리밍 TTS] 1단계: 첫 번째 TTS 생성 시작`);
+      const firstItem = ttsItems[0];
+      const firstAudio = await generateSingleTTS(firstItem, 0, ttsItems.length);
       
-      setCurrentTTSIndex(i);
-      
-      try {
-        // 큐의 마지막 요소이고 면접관 타입이면 사용자 질문
-        const isLastItem = (i === ttsItems.length - 1);
-        const isInterviewerType = ['hr', 'tech', 'collaborate'].includes(item.type.toLowerCase());
-        const questionText = (isLastItem) ? item.content : undefined;
-        
-        console.log(`[🔍 질문 텍스트 DEBUG] ${i + 1}/${ttsItems.length}: type="${item.type}", isLastItem=${isLastItem}, isInterviewerType=${isInterviewerType}, questionText=${questionText ? '설정됨' : '없음'}`);
-        
-        await generateAndPlayTTS(item.content, item.type, `${item.type} ${i + 1}`, questionText);
-        console.log(`🔊 [큐 처리] ${i + 1}/${ttsItems.length} 완료 [${item.type}]`);
-      } catch (error) {
-        console.error(`🔊 [큐 처리] ${i + 1}/${ttsItems.length} 실패 [${item.type}]:`, error);
+      if (!firstAudio) {
+        console.error('🎵 [스트리밍 TTS] 첫 번째 TTS 생성 실패 - 중단');
+        setIsTTSPlaying(false);
+        setCurrentTTSIndex(-1);
+        startAnswerTimer();
+        return;
       }
+      
+      // 🎵 2단계: 첫 번째 TTS 재생 시작과 동시에 나머지 TTS들 백그라운드 생성 시작
+      console.log(`🎵 [스트리밍 TTS] 2단계: 첫 번째 재생 시작 + 나머지 ${ttsItems.length - 1}개 백그라운드 생성 시작`);
+      
+      // 나머지 TTS들을 백그라운드에서 생성 (Promise 배열로 관리)
+      const backgroundPromises: Promise<HTMLAudioElement | null>[] = [];
+      const backgroundAudios: (HTMLAudioElement | null)[] = new Array(ttsItems.length - 1).fill(null);
+      
+      for (let i = 1; i < ttsItems.length; i++) {
+        const promise = generateSingleTTS(ttsItems[i], i, ttsItems.length).then(audio => {
+          backgroundAudios[i - 1] = audio;
+          console.log(`🎵 [백그라운드] ${i + 1}/${ttsItems.length} 생성 완료: [${ttsItems[i].type}]`);
+          return audio;
+        });
+        backgroundPromises.push(promise);
+      }
+      
+      // 🎵 3단계: 순차 재생 (첫 번째부터 시작, 나머지는 준비되면 재생)
+      console.log(`🎵 [스트리밍 TTS] 3단계: 순차 재생 시작`);
+      
+      const allAudios: (HTMLAudioElement | null)[] = [firstAudio, ...backgroundAudios];
+      
+      for (let i = 0; i < ttsItems.length; i++) {
+        const item = ttsItems[i];
+        setCurrentTTSIndex(i);
+        
+        let audio: HTMLAudioElement | null;
+        
+        if (i === 0) {
+          // 첫 번째는 이미 준비됨
+          audio = firstAudio;
+        } else {
+          // 나머지는 준비될 때까지 대기
+          console.log(`🎵 [스트리밍 TTS] ${i + 1}/${ttsItems.length} 생성 대기 중...`);
+          
+          // 해당 인덱스의 백그라운드 생성이 완료될 때까지 대기
+          await backgroundPromises[i - 1];
+          audio = backgroundAudios[i - 1];
+          
+          if (audio) {
+            console.log(`🎵 [스트리밍 TTS] ${i + 1}/${ttsItems.length} 생성 완료, 재생 시작`);
+          }
+        }
+        
+        if (audio) {
+          console.log(`🎵 [스트리밍 TTS] ${i + 1}/${ttsItems.length} 재생 중: [${item.type}] ${item.content.substring(0, 50)}...`);
+          
+          try {
+            // 🎯 TTS 재생 시작 - 타입 설정, 로딩 상태 해제, 질문 텍스트 표시
+            setCurrentTTSType(item.type);
+            setIsInitialLoading(false);
+            
+            // 큐의 마지막 요소이고 면접관 타입이면 사용자 질문 표시
+            const isLastItem = (i === ttsItems.length - 1);
+            if (isLastItem) {
+              setCurrentQuestion(item.content);
+              console.log(`[📝 TTS 동기화] 질문 텍스트 표시: ${item.content}`);
+            }
+            
+            console.log(`[🎯 하이라이트] TTS 재생 시작 - 타입: ${item.type} 설정됨`);
+
+            // 재생 완료 대기
+            await new Promise<void>((resolve) => {
+              audio.onended = () => {
+                console.log(`🎵 [스트리밍 TTS] ${i + 1}/${ttsItems.length} 재생 완료 [${item.type}]`);
+                setCurrentTTSType(null);
+                console.log(`[🎯 하이라이트] TTS 재생 완료 - 타입 초기화됨`);
+                URL.revokeObjectURL(audio.src);
+                resolve();
+              };
+              audio.onerror = () => {
+                console.error(`🎵 [스트리밍 TTS] ${i + 1}/${ttsItems.length} 재생 실패 [${item.type}]`);
+                setCurrentTTSType(null);
+                URL.revokeObjectURL(audio.src);
+                resolve();
+              };
+              
+              audio.play().catch((playError) => {
+                console.error(`🎵 [스트리밍 TTS] ${i + 1}/${ttsItems.length} 재생 시작 실패 [${item.type}]:`, playError);
+                setCurrentTTSType(null);
+                URL.revokeObjectURL(audio.src);
+                resolve();
+              });
+            });
+            
+          } catch (error) {
+            console.error(`🎵 [스트리밍 TTS] ${i + 1}/${ttsItems.length} 재생 처리 실패 [${item.type}]:`, error);
+            setCurrentTTSType(null);
+          }
+        } else {
+          console.warn(`🎵 [스트리밍 TTS] ${i + 1}/${ttsItems.length} 오디오가 없음 - 건너뜀 [${item.type}]`);
+        }
+      }
+      
+      const totalTime = Date.now() - startTime;
+      console.log(`🎵 [스트리밍 TTS] 모든 처리 완료: 총 소요시간 ${totalTime}ms`);
+      
+    } catch (error) {
+      console.error('🎵 [스트리밍 TTS] 전체 처리 실패:', error);
     }
     
     // 🆕 모든 TTS 재생 완료 - 타이머 시작
-    console.log('🔊 [큐 처리] 모든 TTS 처리 완료 - 답변 타이머 시작');
+    console.log('🎵 [스트리밍 TTS] 모든 TTS 처리 완료 - 답변 타이머 시작');
     setIsTTSPlaying(false);
     setCurrentTTSIndex(-1);
     startAnswerTimer();

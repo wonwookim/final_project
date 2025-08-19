@@ -1453,7 +1453,7 @@ class Orchestrator:
         return response
 
     def _format_question_for_ai(self, question: str) -> str:
-        """AI에게 보낼 때 사용자 이름 호칭을 'AI 지원자님'으로 최소 치환"""
+        """AI에게 보낼 때 사용자 이름 호칭을 '춘식이님'으로 최소 치환"""
         try:
             if not isinstance(question, str):
                 return question
@@ -1473,19 +1473,19 @@ class Orchestrator:
 
             for pat in patterns:
                 if re.search(pat, question):
-                    question = re.sub(pat, "AI 지원자님, ", question, count=1)
+                    question = re.sub(pat, "춘식이님, ", question, count=1)
                     break
 
             # 일반적인 '지원자님' 호칭 치환 (한 번만)
             if re.search(r"지원자님\s*[,， ]*", question):
-                question = re.sub(r"지원자님\s*[,， ]*", "AI 지원자님, ", question, count=1)
+                question = re.sub(r"지원자님\s*[,， ]*", "춘식이님, ", question, count=1)
 
-            # 선두에 중복된 'AI ' 토큰 정리: 'AI AI 지원자님' -> 'AI 지원자님'
-            question = re.sub(r"^\s*(AI\s+)+지원자님\s*[,， ]*", "AI 지원자님, ", question)
+            # 선두에 중복된 'AI ' 토큰 정리: 'AI AI 지원자님' -> '춘식이님'
+            question = re.sub(r"^\s*(AI\s+)+지원자님\s*[,， ]*", "춘식이님, ", question)
 
             # 호칭이 없으면 앞에만 붙임 (중복 방지)
-            if not question.strip().startswith("AI 지원자님"):
-                question = f"AI 지원자님, {question}"
+            if not question.strip().startswith("춘식이님"):
+                question = f"춘식이님, {question}"
             return question
         except Exception:
             return question
