@@ -2257,9 +2257,9 @@ const InterviewGO: React.FC = () => {
             </div>
           </div>
 
-          {/* 협업 면접관 */}
+          {/* 기술 면접관 */}
           <div className={`bg-gray-900 rounded-lg overflow-hidden relative border-4 transition-all duration-300 ${
-            shouldHighlight('collaborate') ? 'border-green-500' : 'border-gray-700'
+            shouldHighlight('tech') ? 'border-green-500' : 'border-gray-700'
           }`}>
             <div className="absolute top-4 left-4 font-semibold text-white">
               💻 기술 면접관
@@ -2267,15 +2267,15 @@ const InterviewGO: React.FC = () => {
             <div className="h-full flex items-center justify-center relative">
               <img 
                 src="/img/nano-banana_Change_only_the_back.png"
-                alt="협업 면접관"
+                alt="기술 면접관"
                 className="w-full h-full object-cover"
               />
             </div>
           </div>
 
-          {/* 기술 면접관 */}
+          {/* 협업 면접관 */}
           <div className={`bg-gray-900 rounded-lg overflow-hidden relative border-4 transition-all duration-300 ${
-            shouldHighlight('tech') ? 'border-green-500' : 'border-gray-700'
+            shouldHighlight('collaborate') ? 'border-green-500' : 'border-gray-700'
           }`}>
             <div className="absolute top-4 left-4 font-semibold text-white">
               🤝 협업 면접관
@@ -2283,7 +2283,7 @@ const InterviewGO: React.FC = () => {
             <div className="h-full flex items-center justify-center relative">
               <img 
                 src="/img/flux-1-kontext-pro__k-tech___.png"
-                alt="기술 면접관"
+                alt="협업 면접관"
                 className="w-full h-full object-cover"
               />
             </div>
