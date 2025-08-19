@@ -28,10 +28,11 @@ sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__f
 from services.auth_service import AuthService, security
 from services.supabase_client import get_supabase_client, get_user_supabase_client
 from schemas.media import (
-    UploadRequest, TestUploadRequest, UploadResponse, PlayResponse,
+    UploadRequest, TestUploadRequest, GazeUploadRequest, UploadResponse, PlayResponse,
     UploadCompleteRequest, UploadCompleteResponse, MediaFileInfo,
     MediaListResponse, MediaStatsResponse, ErrorResponse
 )
+import uuid
 from models.media import MediaFileType, UploadStatus
 
 # 라우터 초기화
@@ -192,6 +193,60 @@ async def get_test_upload_url(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"테스트 업로드 URL 생성 실패: {str(e)}")
+
+
+@router.post("/gaze/upload-url", response_model=UploadResponse)
+async def get_gaze_upload_url(
+    request: GazeUploadRequest, 
+    current_user=Depends(auth_service.get_current_user),
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """
+    시선 추적 영상 업로드용 Presigned URL 생성
+    
+    시선 추적 분석을 위한 영상 파일의 S3 직접 업로드 URL을 생성합니다.
+    gaze-videos/{user_id}/{session_id}/ 경로 구조를 사용합니다.
+    DB 삽입은 면접 완료 후 interview_id가 확정된 시점에 처리됩니다.
+    """
+    try:
+        print(f"[DEBUG] 시선 영상 업로드 URL 요청: user_id={current_user.user_id}, session_id={request.session_id}")
+        
+        # 시선 전용 S3 키 생성 (gaze-videos/{user_id}/{session_id}/{file_name})
+        s3_key = f"gaze-videos/{current_user.user_id}/{request.session_id}/{request.file_name}"
+        print(f"[DEBUG] 시선 영상 S3 키: {s3_key}")
+        
+        # Presigned URL 생성 (1시간 유효)
+        upload_url = s3_client.generate_presigned_url(
+            'put_object',
+            Params={
+                'Bucket': BUCKET_NAME, 
+                'Key': s3_key,
+                'ContentType': request.content_type or 'video/webm'  # 실제 파일 타입 사용
+            },
+            ExpiresIn=3600
+        )
+        
+        print(f"[DEBUG] 시선 영상 Presigned URL 생성 완료: {upload_url[:100]}...")
+        
+        # 임시 media_id 생성 (DB에 저장하지 않음)
+        temp_media_id = str(uuid.uuid4())
+        print(f"[DEBUG] 임시 media_id 생성: {temp_media_id}")
+        
+        # ❌ DB 삽입 제거 - interview_id가 확정된 후 지연 삽입됨
+        print(f"[INFO] media_files 테이블 삽입을 지연 처리로 변경. 면접 완료 후 interview_id와 함께 삽입될 예정.")
+        
+        return UploadResponse(
+            upload_url=upload_url,
+            media_id=temp_media_id,
+            s3_key=s3_key,
+            expires_in=3600
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] 시선 영상 업로드 URL 생성 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"시선 영상 업로드 URL 생성 실패: {str(e)}")
 
 
 @router.get("/play/{test_id}", response_model=PlayResponse)

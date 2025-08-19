@@ -324,6 +324,9 @@ class GazeAnalyzer(GazeCoreProcessor):
                 check=False   # returncode 수동 확인
             )
             
+            logger.info(f"📊 [TRANSCODE_FFMPEG_OUTPUT] stdout: {result.stdout[:1000]}...") # 🆕 추가
+            logger.error(f"❌ [TRANSCODE_FFMPEG_OUTPUT] stderr: {result.stderr[:1000]}...") # 🆕 추가 (오류가 아니어도 로깅)
+            
             transcode_duration = time.time() - transcode_start
             
             # 트랜스코딩 성공 여부 확인
@@ -715,7 +718,7 @@ class GazeAnalyzer(GazeCoreProcessor):
         logger.info(f"🎬 [ANALYZE] 동영상 분석 시작: s3://{bucket}/{key}")
         analysis_start_time = time.time()
         
-        # 안전한 임시 파일 관리
+        # 안전한 임시 파일 관리 (webm 파일)
         with SecureFileManager.secure_temp_file('.webm') as video_path:
             try:
                 # === 1단계: S3에서 동영상 다운로드 ===
@@ -726,30 +729,51 @@ class GazeAnalyzer(GazeCoreProcessor):
                 if not validation['valid']:
                     raise Exception(f"동영상 파일 검증 실패: {', '.join(validation['errors'])}")
                 
-                # === 2단계: 조건부 트랜스코딩 (OpenCV 호환성 확보) ===
-                final_video_path = video_path  # 기본값은 원본 webm 파일
-                transcoded_path = None         # 변환된 mp4 파일 경로 (필요시)
+                # === 2단계: FFmpeg 트랜스코딩 (ValidationError 근본 해결) ===
+                # 메타데이터 검증 및 FFmpeg 가용성 확인
+                metadata_valid = self._validate_video_metadata(video_path)
+                ffmpeg_available = self._check_ffmpeg_availability()
                 
-                # 메타데이터 검증으로 트랜스코딩 필요 여부 판단
-                if not self._validate_video_metadata(video_path):
-                    logger.info("🔄 [ANALYZE] 메타데이터 무효 - FFmpeg 트랜스코딩 시작")
-                    
-                    # FFmpeg 설치 확인
-                    if not self._check_ffmpeg_availability():
-                        logger.warning("⚠️ [ANALYZE] FFmpeg 미설치 - 원본 파일로 분석 시도")
+                final_video_path = video_path  # 기본값: 원본 webm 파일
+                transcoded_success = False
+                
+                if ffmpeg_available:
+                    # FFmpeg 사용 가능한 경우 트랜스코딩 시도
+                    if not metadata_valid:
+                        logger.info("🔄 [ANALYZE] 메타데이터 오류로 FFmpeg 트랜스코딩 시작")
                     else:
-                        # mp4 임시 파일 경로 생성
-                        transcoded_path = video_path.replace('.webm', '_transcoded.mp4')
-                        
-                        # webm → mp4 트랜스코딩 실행
-                        if self._transcode_webm_to_mp4(video_path, transcoded_path):
-                            # 트랜스코딩 성공 시 변환된 파일 사용
-                            final_video_path = transcoded_path
-                            logger.info(f"✅ [ANALYZE] 트랜스코딩 성공 - mp4 파일 사용: {transcoded_path}")
+                        logger.info("🔄 [ANALYZE] 안정성을 위한 FFmpeg 트랜스코딩 실행")
+                    
+                    # 임시 MP4 파일 경로 생성
+                    import tempfile
+                    mp4_path = video_path.replace('.webm', '_transcoded.mp4')
+                    
+                    try:
+                        if self._transcode_webm_to_mp4(video_path, mp4_path):
+                            # 트랜스코딩 성공 - MP4 파일 메타데이터 검증
+                            if self._validate_video_metadata(mp4_path):
+                                logger.info("✅ [ANALYZE] FFmpeg 트랜스코딩 성공 - 메타데이터 유효")
+                                final_video_path = mp4_path
+                                transcoded_success = True
+                            else:
+                                logger.warning("⚠️ [ANALYZE] 트랜스코딩은 성공했으나 MP4 메타데이터 여전히 문제")
+                                # MP4 파일 정리
+                                if os.path.exists(mp4_path):
+                                    os.remove(mp4_path)
                         else:
-                            logger.warning("⚠️ [ANALYZE] 트랜스코딩 실패 - 원본 webm 파일로 진행")
+                            logger.warning("⚠️ [ANALYZE] FFmpeg 트랜스코딩 실패")
+                    except Exception as e:
+                        logger.error(f"❌ [ANALYZE] 트랜스코딩 중 오류 발생: {e}")
+                        if os.path.exists(mp4_path):
+                            os.remove(mp4_path)
                 else:
-                    logger.info("✅ [ANALYZE] 메타데이터 유효 - 원본 webm 파일 사용")
+                    logger.warning("⚠️ [ANALYZE] FFmpeg를 사용할 수 없음")
+                
+                # 결과 로깅
+                if transcoded_success:
+                    logger.info("📁 [ANALYZE] 트랜스코딩된 MP4 파일 사용")
+                else:
+                    logger.info("📁 [ANALYZE] 원본 WebM 파일 사용 (메타데이터 보정 적용 예정)")
                 
                 # === 3단계: 허용 시선 범위 계산 ===
                 logger.info(f"🎯 [ANALYZE] Calibration points: {calibration_points}")
@@ -762,22 +786,24 @@ class GazeAnalyzer(GazeCoreProcessor):
                 if not cap.isOpened():
                     raise Exception(f"동영상을 열 수 없습니다: {final_video_path}")
                 
-                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                fps = cap.get(cv2.CAP_PROP_FPS)
+                # 🆕 동영상 정보 유효성 검사 및 처리
+                raw_total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                raw_fps = cap.get(cv2.CAP_PROP_FPS)
 
-                # 👇 [수정 시작] 동영상 정보 유효성 검사 및 처리
-                if total_frames <= 0:
-                    logger.warning(f"⚠️ [ANALYZE] 동영상 총 프레임 수가 유효하지 않습니다: {total_frames}. 기본값 1로 설정.")
-                    total_frames = 1 # 0으로 나누는 것을 방지
+                corrected_total_frames = raw_total_frames
+                corrected_fps = raw_fps
 
-                if fps <= 0:
-                    logger.warning(f"⚠️ [ANALYZE] 동영상 FPS가 유효하지 않습니다: {fps}. 기본값 30으로 설정.")
-                    fps = 30.0 # 0으로 나누는 것을 방지
+                if corrected_total_frames <= 0:
+                    logger.warning(f"⚠️ [ANALYZE] 동영상 총 프레임 수가 유효하지 않습니다: {corrected_total_frames}. 기본값 1로 설정.")
+                    corrected_total_frames = 1 # Corrected value
 
-                duration = total_frames / fps
+                if corrected_fps <= 0:
+                    logger.warning(f"⚠️ [ANALYZE] 동영상 FPS가 유효하지 않습니다: {corrected_fps}. 기본값 30으로 설정.")
+                    corrected_fps = 30.0 # Corrected value
 
-                logger.info(f"📹 [ANALYZE] 동영상 정보: {total_frames}프레임, {fps:.1f}FPS, {duration:.1f}초")
-                # 👆 [수정 끝] 동영상 정보 유효성 검사 및 처리
+                duration = corrected_total_frames / corrected_fps
+
+                logger.info(f"📹 [ANALYZE] 동영상 정보: {corrected_total_frames}프레임, {corrected_fps:.1f}FPS, {duration:.1f}초 (원본: {raw_total_frames}프레임, {raw_fps:.1f}FPS)")
 
                 # duration = total_frames / fps if fps > 0 else 0
                 
@@ -872,17 +898,11 @@ class GazeAnalyzer(GazeCoreProcessor):
                 logger.info(f"✅ [ANALYZE] 분석 완료: 점수={final_score}, 소요시간={analysis_duration:.1f}초")
                 logger.info(f"🎯 [ANALYZE] Final allowed range in result: {current_allowed_range}")
                 
-                # === 11단계: 임시 파일 정리 ===
-                if transcoded_path and os.path.exists(transcoded_path):
-                    try:
-                        os.remove(transcoded_path)
-                        logger.info(f"🗑️ [CLEANUP] 트랜스코딩된 임시 파일 삭제: {transcoded_path}")
-                    except Exception as cleanup_error:
-                        logger.warning(f"⚠️ [CLEANUP] 임시 파일 삭제 실패: {cleanup_error}")
+                # === 11단계: 분석 완료 ===
                 
                 return GazeAnalysisResult(
                     gaze_score=final_score,
-                    total_frames=total_frames,
+                    total_frames=corrected_total_frames,
                     analyzed_frames=analyzed_count,
                     in_range_frames=in_range_count,
                     in_range_ratio=in_range_ratio,
@@ -896,16 +916,17 @@ class GazeAnalyzer(GazeCoreProcessor):
                 )
                 
             except Exception as e:
-                # 에러 발생 시에도 임시 파일 정리
-                if 'transcoded_path' in locals() and transcoded_path and os.path.exists(transcoded_path):
-                    try:
-                        os.remove(transcoded_path)
-                        logger.info(f"🗑️ [CLEANUP] 에러 처리 중 트랜스코딩된 임시 파일 삭제: {transcoded_path}")
-                    except Exception as cleanup_error:
-                        logger.warning(f"⚠️ [CLEANUP] 에러 처리 중 임시 파일 삭제 실패: {cleanup_error}")
-                
                 logger.error(f"❌ [ANALYZE] 분석 실패: {e}")
                 raise
+            finally:
+                # 트랜스코딩된 임시 파일 정리
+                if 'transcoded_success' in locals() and transcoded_success and 'mp4_path' in locals():
+                    try:
+                        if os.path.exists(mp4_path):
+                            os.remove(mp4_path)
+                            logger.debug(f"🗑️ [CLEANUP] 트랜스코딩된 임시 파일 정리: {mp4_path}")
+                    except Exception as cleanup_error:
+                        logger.warning(f"⚠️ [CLEANUP] 임시 파일 정리 실패: {cleanup_error}")
 
 
 # 싱글톤 인스턴스 생성 (기존 API 호환성 유지)

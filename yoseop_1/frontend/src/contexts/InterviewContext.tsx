@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef, useCallback, useState, ReactNode } from 'react';
 import { InterviewSettings, Question, InterviewResult, interviewApi } from '../services/api';
 import { tokenManager } from '../services/api';
-import { GazeAnalysisResult } from '../components/test/types';
+import { GazeAnalysisResult, CalibrationResult } from '../components/test/types';
 
 // JobPosting 타입 정의 - 실제 DB 구조에 맞게 최종 단순화
 interface JobPosting {
@@ -147,6 +147,12 @@ interface InterviewState {
     analysisProgress: number;
     testId: string | null;
     mediaId: string | null;
+    calibrationResultData: CalibrationResult | null;
+    // S3 Pre-signed URL 플로우용 추가 필드들
+    gazeAnalysisTaskId: string | null;
+    gazeAnalysisStatus: 'idle' | 'uploading' | 'analyzing' | 'completed' | 'failed';
+    gazeAnalysisProgress: number;
+    gazeS3Key: string | null;
   };
 }
 
@@ -174,6 +180,7 @@ type InterviewAction =
   | { type: 'SET_PROGRESS'; payload: number }
   | { type: 'SET_TEXT_COMPETITION_DATA'; payload: { initialQuestion: any; aiPersona: any; progress: { current: number; total: number; percentage: number }; extracted_ai_resume_id?: number | null } }
   | { type: 'SET_GAZE_CALIBRATION'; payload: { sessionId: string } }
+  | { type: 'SET_GAZE_CALIBRATION_DATA'; payload: CalibrationResult | null }
   | { type: 'SET_GAZE_RECORDING'; payload: boolean }
   | { type: 'SET_GAZE_ANALYSIS_RESULT'; payload: GazeAnalysisResult }
   | { type: 'SET_GAZE_ANALYSIS_PROGRESS'; payload: number }
@@ -187,7 +194,11 @@ type InterviewAction =
   | { type: 'SET_HISTORY_ERROR'; payload: string | null }
   | { type: 'LOAD_INTERVIEW_HISTORY_START' }
   | { type: 'LOAD_INTERVIEW_HISTORY_SUCCESS'; payload: InterviewRecord[] }
-  | { type: 'LOAD_INTERVIEW_HISTORY_ERROR'; payload: string };
+  | { type: 'LOAD_INTERVIEW_HISTORY_ERROR'; payload: string }
+  | { type: 'SET_GAZE_ANALYSIS_TASK'; payload: string }
+  | { type: 'SET_GAZE_ANALYSIS_STATUS'; payload: 'idle' | 'uploading' | 'analyzing' | 'completed' | 'failed' }
+  | { type: 'SET_GAZE_S3_ANALYSIS_PROGRESS'; payload: number }
+  | { type: 'SET_GAZE_S3_KEY'; payload: string };
 
 // 초기 상태
 const initialState: InterviewState = {
@@ -231,6 +242,12 @@ const initialState: InterviewState = {
     analysisProgress: 0,
     testId: null,
     mediaId: null,
+    calibrationResultData: null,
+    // S3 Pre-signed URL 플로우용 기본값
+    gazeAnalysisTaskId: null,
+    gazeAnalysisStatus: 'idle',
+    gazeAnalysisProgress: 0,
+    gazeS3Key: null,
   },
 };
 
@@ -411,6 +428,15 @@ function interviewReducer(state: InterviewState, action: InterviewAction): Inter
         }
       };
     
+    case 'SET_GAZE_CALIBRATION_DATA':
+      return {
+        ...state,
+        gazeTracking: {
+          ...state.gazeTracking,
+          calibrationResultData: action.payload
+        }
+      };
+    
     case 'SET_GAZE_RECORDING':
       return {
         ...state,
@@ -464,7 +490,48 @@ function interviewReducer(state: InterviewState, action: InterviewAction): Inter
           isAnalyzing: false,
           analysisProgress: 0,
           testId: null,
-          mediaId: null
+          mediaId: null,
+          calibrationResultData: null,
+          gazeAnalysisTaskId: null,
+          gazeAnalysisStatus: 'idle',
+          gazeAnalysisProgress: 0,
+          gazeS3Key: null,
+        }
+      };
+    
+    case 'SET_GAZE_ANALYSIS_TASK':
+      return {
+        ...state,
+        gazeTracking: {
+          ...state.gazeTracking,
+          gazeAnalysisTaskId: action.payload
+        }
+      };
+    
+    case 'SET_GAZE_ANALYSIS_STATUS':
+      return {
+        ...state,
+        gazeTracking: {
+          ...state.gazeTracking,
+          gazeAnalysisStatus: action.payload
+        }
+      };
+    
+    case 'SET_GAZE_S3_ANALYSIS_PROGRESS':
+      return {
+        ...state,
+        gazeTracking: {
+          ...state.gazeTracking,
+          gazeAnalysisProgress: action.payload
+        }
+      };
+    
+    case 'SET_GAZE_S3_KEY':
+      return {
+        ...state,
+        gazeTracking: {
+          ...state.gazeTracking,
+          gazeS3Key: action.payload
         }
       };
     

@@ -47,13 +47,13 @@ const InterviewRecorder: React.FC<RecorderProps> = ({ interviewId, onUploadCompl
       });
       
       // MediaRecorder 지원 확인
-      if (!MediaRecorder.isTypeSupported('video/webm')) {
-        console.warn('WebM 형식을 지원하지 않음, 기본 형식 사용');
-      }
-      
       const options: MediaRecorderOptions = {};
       if (MediaRecorder.isTypeSupported('video/webm')) {
         options.mimeType = 'video/webm';
+      } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+        options.mimeType = 'video/mp4';
+      } else {
+        console.warn('WebM과 MP4 형식을 모두 지원하지 않음, 기본 형식 사용');
       }
       
       const mediaRecorder = new MediaRecorder(stream, options);

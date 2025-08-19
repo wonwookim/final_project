@@ -381,4 +381,89 @@ class GazeAnalysisResponse(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class GazeAnalysisTriggerRequest(BaseModel):
+    """
+    시선 분석 트리거 요청 스키마
+    
+    프론트엔드에서 S3 업로드 완료 후 백엔드에 시선 분석을 요청할 때 사용됩니다.
+    """
+    session_id: str = Field(..., description="면접 세션 ID", min_length=1)
+    s3_key: str = Field(..., description="S3에 업로드된 영상의 키 (경로)", min_length=1)
+    calibration_data: CalibrationResult = Field(..., description="캘리브레이션 결과 데이터")
+    media_id: str = Field(..., description="임시 미디어 ID (Pre-signed URL 응답에서 받은 값)", min_length=1)
+    
+    @validator('s3_key')
+    def validate_s3_key_format(cls, v):
+        """S3 키 형식 검증"""
+        if not v.startswith('gaze-videos/'):
+            raise ValueError('S3 키는 gaze-videos/로 시작해야 합니다')
+        return v
+    
+    @validator('calibration_data')
+    def validate_calibration_data(cls, v):
+        """캘리브레이션 데이터 검증"""
+        if not v.calibration_points or len(v.calibration_points) != 4:
+            raise ValueError('캘리브레이션 포인트는 정확히 4개여야 합니다')
+        if v.initial_face_size is not None and v.initial_face_size <= 0:
+            raise ValueError('초기 얼굴 크기는 0보다 커야 합니다')
+        return v
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "session_id": "comp_abc123def456",
+                "s3_key": "gaze-videos/user123/comp_abc123def456/gaze_video_20250818_123456.webm",
+                "calibration_data": {
+                    "session_id": "cal_uuid4_generated_id",
+                    "calibration_points": [
+                        [100.0, 100.0],
+                        [500.0, 100.0],
+                        [100.0, 400.0],
+                        [500.0, 400.0]
+                    ],
+                    "initial_face_size": 150.5,
+                    "point_details": {},
+                    "collection_stats": {},
+                    "completed_at": 1692345678,
+                    "allowed_range": {
+                        "left_bound": 80.0,
+                        "right_bound": 520.0,
+                        "top_bound": 80.0,
+                        "bottom_bound": 420.0
+                    }
+                },
+                "media_id": "temp_uuid4_generated_id"
+            }
+        }
+
+
+class GazeAnalysisTriggerResponse(BaseModel):
+    """
+    시선 분석 트리거 응답 스키마
+    
+    시선 분석 요청에 대한 응답으로 task_id를 반환하여 진행률 추적이 가능합니다.
+    """
+    task_id: str = Field(..., description="분석 작업 ID", min_length=1)
+    status: str = Field(..., description="작업 상태", min_length=1)
+    message: Optional[str] = Field(None, description="응답 메시지")
+    
+    @validator('status')
+    def validate_status(cls, v):
+        """상태 값 검증"""
+        allowed_statuses = ['started', 'processing', 'completed', 'failed']
+        if v not in allowed_statuses:
+            raise ValueError(f'상태는 {allowed_statuses} 중 하나여야 합니다')
+        return v
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "task_id": "task_uuid4_generated_id",
+                "status": "started",
+                "message": "시선 분석이 시작되었습니다"
+            }
+        }
+
 # === 김원우 작성 끝 ===

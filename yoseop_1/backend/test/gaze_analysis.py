@@ -517,11 +517,24 @@ class GazeAnalyzer(GazeCoreProcessor):
                 if not cap.isOpened():
                     raise Exception(f"동영상을 열 수 없습니다: {video_path}")
                 
-                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                fps = cap.get(cv2.CAP_PROP_FPS)
-                duration = total_frames / fps if fps > 0 else 0
+                # 🆕 동영상 정보 유효성 검사 및 처리
+                raw_total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                raw_fps = cap.get(cv2.CAP_PROP_FPS)
+
+                corrected_total_frames = raw_total_frames
+                corrected_fps = raw_fps
+
+                if corrected_total_frames <= 0:
+                    logger.warning(f"⚠️ [ANALYZE] 동영상 총 프레임 수가 유효하지 않습니다: {corrected_total_frames}. 기본값 1로 설정.")
+                    corrected_total_frames = 1 # Corrected value
+
+                if corrected_fps <= 0:
+                    logger.warning(f"⚠️ [ANALYZE] 동영상 FPS가 유효하지 않습니다: {corrected_fps}. 기본값 30으로 설정.")
+                    corrected_fps = 30.0 # Corrected value
+
+                duration = corrected_total_frames / corrected_fps
                 
-                logger.info(f"📹 [ANALYZE] 동영상 정보: {total_frames}프레임, {fps:.1f}FPS, {duration:.1f}초")
+                logger.info(f"📹 [ANALYZE] 동영상 정보: {corrected_total_frames}프레임, {corrected_fps:.1f}FPS, {duration:.1f}초 (원본: {raw_total_frames}프레임, {raw_fps:.1f}FPS)")
                 
                 # 분석 변수 초기화
                 gaze_points = []
@@ -616,7 +629,7 @@ class GazeAnalyzer(GazeCoreProcessor):
                 
                 return GazeAnalysisResult(
                     gaze_score=final_score,
-                    total_frames=total_frames,
+                    total_frames=frame_count,
                     analyzed_frames=analyzed_count,
                     in_range_frames=in_range_count,
                     in_range_ratio=in_range_ratio,

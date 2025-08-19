@@ -6,6 +6,7 @@ import { sessionApi, interviewApi, tokenManager } from '../services/api';
 import apiClient, { handleApiError } from '../services/api';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import SpeechIndicator from '../components/voice/SpeechIndicator';
+import GazeVideoUploader from '../components/gaze/GazeVideoUploader';
 import { getInterviewState, markApiCallCompleted, debugInterviewState, setApiCallInProgress, isApiCallInProgress } from '../utils/interviewStateManager';
 import { GazeAnalysisResult, VideoAnalysisResponse, AnalysisStatusResponse } from '../components/test/types';
 
@@ -182,9 +183,9 @@ const InterviewGO: React.FC = () => {
       setIsGazeRecording(false);
       setGazeError(null);
       setGazeAnalysisResult(null);
-      setAnalysisTaskId(null);
-      setIsPolling(false);
       setPollingError(null);
+      // Context 상태 초기화
+      dispatch({ type: 'RESET_GAZE_TRACKING' });
       console.log('✨ 시선 추적 상태가 초기화되었습니다.');
     }
   }, [currentPhase]);
@@ -270,9 +271,7 @@ const InterviewGO: React.FC = () => {
   const gazeMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const gazeChunksRef = useRef<Blob[]>([]);
 
-  // 👁️ 시선 분석 폴링 관련 상태
-  const [analysisTaskId, setAnalysisTaskId] = useState<string | null>(null);
-  const [isPolling, setIsPolling] = useState(false);
+  // 👁️ 시선 분석 폴링 관련 상태 (Context로 이전됨)
   const [pollingError, setPollingError] = useState<string | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -590,6 +589,11 @@ const InterviewGO: React.FC = () => {
 
         // 🎯 폴백 TTS 재생 시작 - 타입 설정
         setCurrentTTSType(type);
+        // 질문 텍스트를 TTS와 동기화하여 표시
+        if (questionText) {
+          setCurrentQuestion(questionText);
+          console.log(`[📝 TTS 동기화] 질문 텍스트 표시: ${questionText}`);
+        }
         console.log(`[🎯 하이라이트] 폴백 TTS 재생 시작 - 타입: ${type} 설정됨`);
 
         // 재생 완료 대기
@@ -1322,30 +1326,75 @@ const InterviewGO: React.FC = () => {
 
   // 🆕 주기적 턴 상태 확인 제거 - 턴 정보는 답변 제출 후 응답에서만 받아옴
 
-  // 🆕 시선 추적 영상 임시 업로드 함수 (빠른 응답을 위해)
-  const uploadGazeVideoTemporary = async (sessionId: string, videoBlob: Blob) => {
+  // 🆕 S3 Pre-signed URL 기반 시선 추적 영상 업로드 및 분석 트리거
+  const uploadGazeVideoS3 = async (sessionId: string, videoBlob: Blob) => {
     try {
-      console.log('📤 시선 추적 비디오 임시 업로드 시작...', { blobSize: videoBlob.size });
+      console.log('📤 S3 시선 추적 비디오 업로드 시작...', { blobSize: videoBlob.size });
 
-      const formData = new FormData();
-      const timestamp = Date.now();
-      const fileName = `gaze-recording-${timestamp}.webm`;
-      formData.append('file', videoBlob, fileName);
+      // interview_id 체크 제거 - session_id 기반으로 변경됨
 
-      const response = await fetch(`${API_BASE_URL}/gaze/upload/temporary/${sessionId}`, {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!response.ok) {
-        throw new Error(`임시 업로드 실패: ${response.status} ${response.statusText}`);
+      if (!state.gazeTracking?.calibrationResultData) {
+        throw new Error('캘리브레이션 데이터를 찾을 수 없습니다.');
       }
 
-      const result = await response.json();
-      console.log('✅ 시선 추적 비디오 임시 업로드 완료:', result);
+      // 1. 실제 Blob 타입에 따른 파일명 결정
+      const timestamp = Date.now();
+      const actualMimeType = videoBlob.type || 'video/webm'; // Blob의 실제 MIME 타입
+      const fileExtension = actualMimeType.includes('mp4') ? 'mp4' : 'webm';
+      const fileName = `gaze-recording-${timestamp}.${fileExtension}`;
+      
+      console.log('📝 S3 업로드 URL 요청 중... (session_id:', sessionId, ', 실제 타입:', actualMimeType, ')');
+      const uploadResponse = await interviewApi.getGazeUploadUrl({
+        session_id: sessionId,  // interview_id 대신 session_id 사용
+        file_name: fileName,
+        file_size: videoBlob.size,
+        file_type: 'video',
+        content_type: actualMimeType  // 실제 Blob MIME 타입 전달
+      });
+
+      console.log('✅ S3 업로드 URL 받음:', uploadResponse.media_id);
+
+      // 2. S3에 직접 업로드
+      console.log('📤 S3 직접 업로드 시작...');
+      const uploadResult = await fetch(uploadResponse.upload_url, {
+        method: 'PUT',
+        body: videoBlob,
+        headers: {
+          'Content-Type': actualMimeType  // 실제 Blob MIME 타입 사용
+        }
+      });
+
+      if (!uploadResult.ok) {
+        throw new Error(`S3 업로드 실패: ${uploadResult.status} ${uploadResult.statusText}`);
+      }
+
+      console.log('✅ S3 업로드 완료');
+
+      // 3. Context에 S3 키 저장
+      dispatch({ type: 'SET_GAZE_S3_KEY', payload: uploadResponse.s3_key });
+
+      // 4. 시선 분석 트리거 (session_id 기반으로 변경)
+      console.log('🚀 시선 분석 트리거 중... (session_id:', sessionId, ')');
+      const analysisResponse = await interviewApi.triggerGazeAnalysis({
+        session_id: sessionId,  // interview_id 대신 session_id 사용
+        s3_key: uploadResponse.s3_key,
+        calibration_data: state.gazeTracking.calibrationResultData,
+        media_id: uploadResponse.media_id  // 임시 media_id 전달
+      });
+
+      console.log('✅ 시선 분석 트리거 완료:', analysisResponse.task_id);
+      console.log('📋 시선 분석은 백그라운드에서 처리되며, interview_id는 면접 완료 후 연결됩니다.');
+
+      // 5. Context에 분석 작업 ID 저장
+      dispatch({ type: 'SET_GAZE_ANALYSIS_TASK', payload: analysisResponse.task_id });
+      dispatch({ type: 'SET_GAZE_ANALYSIS_STATUS', payload: 'analyzing' });
+
+      return analysisResponse.task_id;
 
     } catch (error) {
-      console.error('❌ 시선 추적 비디오 임시 업로드 실패:', error);
+      console.error('❌ S3 시선 추적 비디오 업로드 실패:', error);
+      dispatch({ type: 'SET_GAZE_ANALYSIS_STATUS', payload: 'failed' });
+      throw error;
     }
   };
 
@@ -1409,8 +1458,9 @@ const InterviewGO: React.FC = () => {
         const finalGazeBlob = await stopGazeRecording();
 
         if (finalGazeBlob && finalGazeBlob.size > 0) {
-          console.log(`UPLOAD_CALL: 이제 uploadGazeVideoTemporary 함수를 호출합니다. sessionId: ${sessionId}`);
-          await uploadGazeVideoTemporary(sessionId, finalGazeBlob);
+          console.log(`UPLOAD_CALL: 이제 uploadGazeVideoS3 함수를 호출합니다. sessionId: ${sessionId}`);
+          const taskId = await uploadGazeVideoS3(sessionId, finalGazeBlob);
+          console.log('🎯 시선 분석 작업 ID:', taskId);
         } else {
           console.log('⚠️ 최종 gazeBlob이 없거나 크기가 0이므로 업로드를 건너뜁니다.');
         }
@@ -1699,36 +1749,6 @@ const InterviewGO: React.FC = () => {
   // 👁️ 이전 업로드 및 분석 함수는 새로운 "선-업로드, 후-분석" 아키텍처로 대체되었습니다.
   // 시선 추적 비디오는 이제 답변 제출 시 임시 업로드되고, 백그라운드에서 분석됩니다.
 
-  // 👁️ 분석 결과를 Supabase에 저장
-  const saveGazeAnalysisToDatabase = async (result: GazeAnalysisResult) => {
-    try {
-      const user = tokenManager.getUser();
-      const userId = user?.user_id;
-      const calibrationSessionId = state.gazeTracking?.calibrationSessionId;
-
-      if (!userId || !state.sessionId || !calibrationSessionId) {
-        console.error('❌ 필수 정보 누락:', { userId, sessionId: state.sessionId, calibrationSessionId });
-        return;
-      }
-
-      // Supabase gaze_analysis 테이블에 저장
-      const saveResponse = await apiClient.post('/gaze/analysis/save', {
-        interview_id: parseInt(state.sessionId),
-        user_id: userId,
-        calibration_session_id: calibrationSessionId,
-        gaze_score: result.gaze_score,
-        jitter_score: result.jitter_score,
-        compliance_score: result.compliance_score,
-        stability_rating: result.stability_rating
-      });
-
-      console.log('✅ 시선 분석 결과 DB 저장 완료:', saveResponse.data);
-
-    } catch (error) {
-      console.error('❌ 시선 분석 결과 DB 저장 실패:', error);
-      // DB 저장 실패해도 면접 진행에는 영향 없도록 처리
-    }
-  };
 
   // 🆕 필요한 데이터 추출 함수들
   const getCurrentUserId = (): number => {
@@ -1950,13 +1970,16 @@ const InterviewGO: React.FC = () => {
     startAutoGazeTracking();
   }, [state.gazeTracking?.calibrationSessionId, isRestoring, isGazeRecording, gazeBlob, currentPhase]);
 
-  // 👁️ 시선 분석 상태 폴링 useEffect
+  // 👁️ 시선 분석 상태 폴링 useEffect (새로운 Context 기반)
   useEffect(() => {
-    if (!analysisTaskId || !isPolling) {
+    const taskId = state.gazeTracking?.gazeAnalysisTaskId;
+    const analysisStatus = state.gazeTracking?.gazeAnalysisStatus;
+    
+    if (!taskId || analysisStatus !== 'analyzing') {
       return;
     }
 
-    console.log('🔄 시선 분석 폴링 시작:', analysisTaskId);
+    console.log('🔄 새로운 시선 분석 폴링 시작:', taskId);
 
     const stopPolling = () => {
       // 모든 타이머 정리
@@ -1976,34 +1999,33 @@ const InterviewGO: React.FC = () => {
 
     const pollAnalysisStatus = async () => {
       try {
-        const statusResponse = await apiClient.get<AnalysisStatusResponse>(`/test/gaze/analyze/status/${analysisTaskId}`);
+        const statusResponse = await apiClient.get<AnalysisStatusResponse>(`/gaze/analyze/status/${taskId}`);
         const statusData = statusResponse.data;
 
         if (statusData.status === 'completed' && statusData.result) {
           // 분석 완료
           console.log('🎉 시선 분석 완료:', statusData.result);
           setGazeAnalysisResult(statusData.result);
-          setIsPolling(false);
+          dispatch({ type: 'SET_GAZE_ANALYSIS_STATUS', payload: 'completed' });
+          dispatch({ type: 'SET_GAZE_S3_ANALYSIS_PROGRESS', payload: 100 });
           setPollingError(null);
           stopPolling(); // 모든 타이머 정리
           
-          // DB에 결과 저장
-          try {
-            await saveGazeAnalysisToDatabase(statusData.result);
-          } catch (saveError) {
-            console.error('❌ DB 저장 실패:', saveError);
-            // DB 저장 실패해도 분석 결과는 유지
-          }
 
         } else if (statusData.status === 'failed') {
           // 분석 실패
           console.error('❌ 시선 분석 실패:', statusData.error);
           setGazeError('시선 분석에 실패했습니다.');
-          setIsPolling(false);
+          dispatch({ type: 'SET_GAZE_ANALYSIS_STATUS', payload: 'failed' });
           setPollingError('시선 분석에 실패했습니다.');
           stopPolling(); // 모든 타이머 정리
+        } else {
+          // 분석 진행 중
+          console.log('⏳ 시선 분석 진행 중...', statusData.status);
+          if (statusData.progress) {
+            dispatch({ type: 'SET_GAZE_S3_ANALYSIS_PROGRESS', payload: statusData.progress });
+          }
         }
-        // 진행 중인 경우는 계속 폴링
       } catch (error) {
         console.error('❌ 분석 상태 체크 실패:', error);
         setPollingError('시선 분석 상태를 확인할 수 없습니다.');
@@ -2022,7 +2044,7 @@ const InterviewGO: React.FC = () => {
     // 5분 후 타임아웃 처리
     pollingMainTimeoutRef.current = setTimeout(() => {
       console.warn('⏰ 시선 분석 타임아웃 (5분)');
-      setIsPolling(false);
+      dispatch({ type: 'SET_GAZE_ANALYSIS_STATUS', payload: 'failed' });
       setPollingError('시선 분석이 시간 초과되었습니다.');
       setGazeError('시선 분석이 시간 초과되었습니다.');
       
@@ -2037,7 +2059,7 @@ const InterviewGO: React.FC = () => {
 
     // Cleanup function - 컴포넌트 언마운트나 의존성 변경 시
     return stopPolling;
-  }, [analysisTaskId, isPolling, saveGazeAnalysisToDatabase]);
+  }, [state.gazeTracking?.gazeAnalysisTaskId, state.gazeTracking?.gazeAnalysisStatus]);
 
   // 👁️ gazeBlob이 설정되었을 때 상태만 업데이트 (분석은 피드백 후 실행)
   useEffect(() => {
@@ -2221,10 +2243,10 @@ const InterviewGO: React.FC = () => {
                   ) : currentPhase === 'interview_completed' ? (
                     <div className="text-blue-400 text-xs space-y-1">
                       <div className="flex items-center justify-center">
-                        {isPolling ? (
+                        {state.gazeTracking?.gazeAnalysisStatus === 'analyzing' ? (
                           <div className="w-2 h-2 bg-blue-400 rounded-full mr-1 animate-pulse"></div>
                         ) : null}
-                        👁️ 시선 분석 {isPolling ? '진행 중' : '완료'}
+                        👁️ 시선 분석 {state.gazeTracking?.gazeAnalysisStatus === 'analyzing' ? `진행 중 (${state.gazeTracking?.gazeAnalysisProgress || 0}%)` : state.gazeTracking?.gazeAnalysisStatus === 'completed' ? '완료' : state.gazeTracking?.gazeAnalysisStatus === 'failed' ? '실패' : '대기 중'}
                       </div>
                       <div className="flex items-center justify-center">
                         {isFeedbackProcessing ? (
@@ -2348,7 +2370,7 @@ const InterviewGO: React.FC = () => {
                {currentPhase === 'interview_completed' ? (
                  // 면접 완료 시 나가기 버튼 표시
                  <div className="space-y-2">
-                   {(isPolling || isFeedbackProcessing) && !pollingError && !feedbackProcessingError ? (
+                   {(state.gazeTracking?.gazeAnalysisStatus === 'analyzing' || isFeedbackProcessing) && !pollingError && !feedbackProcessingError ? (
                      <div className="text-center text-sm text-yellow-400 mb-2">
                        💫 분석이 완료될 때까지 잠시만 기다려주세요
                      </div>
@@ -2363,12 +2385,12 @@ const InterviewGO: React.FC = () => {
                    <button 
                      onClick={() => navigate('/mypage')}
                      className={`w-full py-3 text-white rounded-lg font-semibold transition-colors ${
-                       (isPolling || isFeedbackProcessing) && !pollingError && !feedbackProcessingError
+                       (state.gazeTracking?.gazeAnalysisStatus === 'analyzing' || isFeedbackProcessing) && !pollingError && !feedbackProcessingError
                          ? 'bg-gray-600 hover:bg-gray-500' 
                          : 'bg-blue-600 hover:bg-blue-500'
                      }`}
                    >
-                     {(isPolling || isFeedbackProcessing) && !pollingError && !feedbackProcessingError
+                     {(state.gazeTracking?.gazeAnalysisStatus === 'analyzing' || isFeedbackProcessing) && !pollingError && !feedbackProcessingError
                        ? '🔄 분석 중... (나가기 가능)'
                        : '🏠 면접 나가기'
                      }
